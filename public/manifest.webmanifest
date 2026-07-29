@@ -1,0 +1,10 @@
+{
+  "name": "LoopiCafe",
+  "short_name": "LoopiCafe",
+  "description": "Quản lý ca làm và vận hành hàng ngày cho quán cà phê.",
+  "start_url": "/app/today",
+  "display": "standalone",
+  "background_color": "#fffaf4",
+  "theme_color": "#6f2939",
+  "lang": "vi"
+}
