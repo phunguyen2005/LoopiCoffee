@@ -84,13 +84,17 @@ ALTER TABLE `attendance_capture_sessions` ADD `nonce_hash` text;--> statement-br
 ALTER TABLE `attendance_events` ADD `photo_status` text DEFAULT 'unavailable' NOT NULL;--> statement-breakpoint
 ALTER TABLE `attendance_photos` ADD `sha256` text DEFAULT '' NOT NULL;--> statement-breakpoint
 ALTER TABLE `attendance_sessions` ADD `rule_version_id` text REFERENCES attendance_rules(id);--> statement-breakpoint
-ALTER TABLE `checklist_items` ADD `updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL;--> statement-breakpoint
+ALTER TABLE `checklist_items` ADD `updated_at` text;--> statement-breakpoint
+UPDATE `checklist_items` SET `updated_at` = CURRENT_TIMESTAMP WHERE `updated_at` IS NULL;--> statement-breakpoint
 ALTER TABLE `handovers` ADD `acknowledged_at` text;--> statement-breakpoint
-ALTER TABLE `incidents` ADD `updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL;--> statement-breakpoint
+ALTER TABLE `incidents` ADD `updated_at` text;--> statement-breakpoint
+UPDATE `incidents` SET `updated_at` = CURRENT_TIMESTAMP WHERE `updated_at` IS NULL;--> statement-breakpoint
 ALTER TABLE `shifts` ADD `timezone_snapshot` text DEFAULT 'Asia/Ho_Chi_Minh' NOT NULL;--> statement-breakpoint
 ALTER TABLE `shifts` ADD `is_shift_lead` integer DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE `shifts` ADD `created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL;--> statement-breakpoint
+ALTER TABLE `shifts` ADD `created_at` text;--> statement-breakpoint
+UPDATE `shifts` SET `created_at` = CURRENT_TIMESTAMP WHERE `created_at` IS NULL;--> statement-breakpoint
 ALTER TABLE `stores` ADD `attendance_enabled` integer DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE `stores` ADD `updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL;
+ALTER TABLE `stores` ADD `updated_at` text;--> statement-breakpoint
+UPDATE `stores` SET `updated_at` = CURRENT_TIMESTAMP WHERE `updated_at` IS NULL;
 --> statement-breakpoint
 CREATE UNIQUE INDEX `active_attendance_session_employee_idx` ON `attendance_sessions` (`employee_email`) WHERE `closed_at` IS NULL;

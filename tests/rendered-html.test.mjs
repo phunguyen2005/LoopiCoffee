@@ -64,3 +64,17 @@ test("enforces membership, protected retention, and persistent workflows", async
   assert.match(report, /SUM\(s\.worked_minutes\)/);
   assert.doesNotMatch(report, /Trần Gia Hân/);
 });
+
+test("keeps upgrade migrations compatible with Cloudflare D1", async () => {
+  const migration = await readFile(
+    new URL("../drizzle/0001_eager_peter_parker.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /ALTER TABLE[^;]+ADD[^;]+DEFAULT CURRENT_TIMESTAMP/gi,
+  );
+  assert.match(migration, /UPDATE `checklist_items` SET `updated_at` = CURRENT_TIMESTAMP/);
+  assert.match(migration, /UPDATE `stores` SET `updated_at` = CURRENT_TIMESTAMP/);
+});
