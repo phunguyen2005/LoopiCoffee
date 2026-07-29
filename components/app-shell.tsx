@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Menu,
   Settings,
+  ShieldCheck,
   TriangleAlert,
   UserRound,
   UsersRound,
@@ -32,9 +33,11 @@ const primaryNavigation = [
 ];
 
 const managementNavigation = [
-  { href: "/app/team", label: "Nhân sự", icon: UsersRound },
-  { href: "/app/reports/attendance", label: "Báo cáo", icon: FileBarChart },
-  { href: "/app/settings/store", label: "Thiết lập", icon: Settings },
+  { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["owner", "manager"] },
+  { href: "/app/team", label: "Nhân sự", icon: UsersRound, roles: ["owner", "manager"] },
+  { href: "/app/reports/attendance", label: "Báo cáo", icon: FileBarChart, roles: ["owner", "manager"] },
+  { href: "/app/settings/store", label: "Thiết lập", icon: Settings, roles: ["owner"] },
+  { href: "/app/audit", label: "Nhật ký", icon: FileBarChart, roles: ["owner"] },
 ];
 
 const mobileNavigation = [
@@ -46,6 +49,7 @@ const mobileNavigation = [
 ];
 
 function isActive(pathname: string, href: string) {
+  if (href === "/app/attendance") return pathname === href;
   return href === "/app" ? pathname === href : pathname.startsWith(href);
 }
 
@@ -65,6 +69,7 @@ export function AppShell({
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+  const visibleManagement = managementNavigation.filter((item) => item.roles.includes(user.role));
 
   return (
     <div className="app-frame">
@@ -85,9 +90,9 @@ export function AppShell({
             </Link>
           ))}
         </nav>
-        <span className="nav-section-label" style={{ marginTop: 24 }}>Quản lý</span>
-        <nav className="app-nav" aria-label="Điều hướng quản lý">
-          {managementNavigation.map(({ href, label, icon: Icon }) => (
+        {visibleManagement.length > 0 && <span className="nav-section-label" style={{ marginTop: 24 }}>Quản lý</span>}
+        {visibleManagement.length > 0 && <nav className="app-nav" aria-label="Điều hướng quản lý">
+          {visibleManagement.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -96,12 +101,12 @@ export function AppShell({
               <Icon size={17} /> {label}
             </Link>
           ))}
-        </nav>
+        </nav>}
         <div className="sidebar-bottom">
           <span className="avatar">{initials}</span>
           <span>
             <strong>{user.displayName}</strong>
-            <small>Chủ cửa hàng</small>
+            <small>{roleLabel(user.role)}</small>
           </span>
         </div>
       </aside>
@@ -120,7 +125,7 @@ export function AppShell({
           </div>
           <div className="header-actions">
             <span className="date-pill"><CalendarDays size={14} /> {dateLabel}</span>
-            <button className="icon-button" aria-label="Thông báo"><Bell size={17} /></button>
+            <Link href="/app/notifications" className="icon-button" aria-label="Thông báo"><Bell size={17} /></Link>
             <span className="avatar">{initials}</span>
           </div>
         </header>
@@ -154,5 +159,13 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/app/team")) return "Nhân sự";
   if (pathname.startsWith("/app/reports")) return "Báo cáo chấm công";
   if (pathname.startsWith("/app/settings")) return "Thiết lập cửa hàng";
+  if (pathname.startsWith("/app/notifications")) return "Thông báo";
+  if (pathname.startsWith("/app/audit")) return "Nhật ký kiểm toán";
   return "LoopiCafe";
+}
+
+function roleLabel(role: LoopiUser["role"]) {
+  if (role === "owner") return "Chủ cửa hàng";
+  if (role === "manager") return "Quản lý";
+  return "Nhân viên";
 }

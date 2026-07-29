@@ -1,4 +1,5 @@
 import { LegalPage } from "@/components/legal-page";
+import { ConsentAction } from "@/components/consent-action";
 
 export default function CameraLocationNoticePage() {
   return (
@@ -46,6 +47,7 @@ export default function CameraLocationNoticePage() {
           Quản lý sẽ xem xét thủ công thay vì hệ thống làm mất thời gian làm việc.
         </p>
       </section>
+      <ConsentAction />
     </LegalPage>
   );
 }

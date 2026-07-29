@@ -38,6 +38,29 @@ test("keeps camera and geolocation collection explicit and fresh", async () => {
   assert.match(capture, /timeout:\s*10000/);
   assert.match(capture, /"check_in"\s*\|\s*"check_out"/);
   assert.match(serverAction, /new Date\(\)\.toISOString\(\)/);
-  assert.match(serverAction, /90 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(serverAction, /evidence_retention_days/);
   assert.match(headers, /camera=\(self\), geolocation=\(self\)/);
+  assert.match(serverAction, /createServerStampedSvg/);
+  assert.match(serverAction, /evidence\.put/);
+  assert.match(serverAction, /body\.photo/);
+  assert.doesNotMatch(capture, /fetch\(\"\/api\/attendance\/evidence/);
+});
+
+test("enforces membership, protected retention, and persistent workflows", async () => {
+  const [auth, retention, operations, report] = await Promise.all([
+    readFile(new URL("../server/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/cron/retention/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational-views.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/reports/attendance.csv/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(auth, /SELECT COUNT\(\*\) AS count FROM employees/);
+  assert.match(auth, /status !== "active"/);
+  assert.match(auth, /employee_consents/);
+  assert.match(retention, /if \(!secret\)/);
+  assert.match(retention, /attendance_locations/);
+  assert.match(operations, /fetch\(\"\/api\/checklists/);
+  assert.match(operations, /fetch\(\"\/api\/incidents/);
+  assert.match(operations, /fetch\(\"\/api\/handovers/);
+  assert.match(report, /SUM\(s\.worked_minutes\)/);
+  assert.doesNotMatch(report, /Trần Gia Hân/);
 });

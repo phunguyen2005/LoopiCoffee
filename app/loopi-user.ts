@@ -1,4 +1,5 @@
 import { getChatGPTUser, requireChatGPTUser } from "./chatgpt-auth";
+import { getApiUser } from "@/server/auth";
 
 export type LoopiUser = {
   email: string;
@@ -7,27 +8,23 @@ export type LoopiUser = {
 };
 
 export async function getLoopiUser(returnTo: string): Promise<LoopiUser> {
-  const user = await getChatGPTUser();
-  if (user) {
+  let authenticated = await getChatGPTUser();
+  if (!authenticated && process.env.NODE_ENV === "production") {
+    authenticated = await requireChatGPTUser(returnTo);
+  }
+  const actor = await getApiUser();
+  if (actor) {
     return {
-      email: user.email,
-      displayName: user.fullName ?? user.displayName,
-      role: "owner",
+      email: actor.email,
+      displayName: actor.displayName,
+      role: actor.role,
     };
   }
-
-  if (process.env.NODE_ENV !== "production") {
-    return {
-      email: "linh.nguyen@loopicafe.local",
-      displayName: "Nguyễn Minh Linh",
-      role: "owner",
-    };
+  if (!authenticated && process.env.NODE_ENV !== "production") {
+    return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh", role: "owner" };
   }
-
-  const authenticated = await requireChatGPTUser(returnTo);
-  return {
-    email: authenticated.email,
-    displayName: authenticated.fullName ?? authenticated.displayName,
-    role: "owner",
-  };
+  if (!authenticated) {
+    authenticated = await requireChatGPTUser(returnTo);
+  }
+  throw new Error(`Tài khoản ${authenticated.email} chưa được thêm vào LoopiCafe.`);
 }

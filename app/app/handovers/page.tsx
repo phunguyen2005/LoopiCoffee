@@ -1,5 +1,5 @@
-import { HandoversView } from "@/components/app-views";
+import { PersistentHandoversView } from "@/components/operational-views";
 
 export default function HandoversPage() {
-  return <HandoversView />;
+  return <PersistentHandoversView />;
 }

@@ -13,7 +13,12 @@ type LocationEvidence = {
 
 type CaptureSession = {
   id: string;
+  captureToken: string;
   expiresAt: string;
+  storeLocation: {
+    latitude: number;
+    longitude: number;
+  };
 };
 
 type AttendanceAction = "check_in" | "check_out";
@@ -25,9 +30,9 @@ type AttendanceResult = {
   verification: string[];
   reviewRequired: boolean;
   distance: number | null;
+  photoStatus: "stored" | "unavailable" | "failed";
+  evidenceStored: boolean;
 };
-
-const storeLocation = { latitude: 10.754128, longitude: 106.66754 };
 
 export function AttendanceCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +44,7 @@ export function AttendanceCapture() {
   const [session, setSession] = useState<CaptureSession | null>(null);
   const [result, setResult] = useState<AttendanceResult | null>(null);
   const [error, setError] = useState("");
+  const [explanation, setExplanation] = useState("");
   const [preview, setPreview] = useState("");
 
   useEffect(() => () => stopStream(), []);
@@ -64,34 +70,47 @@ export function AttendanceCapture() {
       const captureSession = (await sessionResponse.json()) as CaptureSession;
       setSession(captureSession);
 
-      const [stream, position] = await Promise.all([
+      const [streamResult, positionResult] = await Promise.allSettled([
         navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
           audio: false,
         }),
         getFreshPosition(),
       ]);
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      if (positionResult.status === "fulfilled") {
+        const position = positionResult.value;
+        setLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp,
+          distance: distanceInMeters(
+            position.coords.latitude,
+            position.coords.longitude,
+            captureSession.storeLocation.latitude,
+            captureSession.storeLocation.longitude,
+          ),
+        });
       }
-
-      const evidence = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        timestamp: position.timestamp,
-        distance: distanceInMeters(
-          position.coords.latitude,
-          position.coords.longitude,
-          storeLocation.latitude,
-          storeLocation.longitude,
-        ),
-      };
-      setLocation(evidence);
-      setStep("ready");
+      if (streamResult.status === "fulfilled") {
+        const stream = streamResult.value;
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+      }
+      if (streamResult.status === "fulfilled" && positionResult.status === "fulfilled") {
+        setStep("ready");
+      } else {
+        stopStream();
+        const failures = [
+          streamResult.status === "rejected" ? permissionMessage(streamResult.reason) : "",
+          positionResult.status === "rejected" ? permissionMessage(positionResult.reason) : "",
+        ].filter(Boolean);
+        setError(failures.join(" "));
+        setStep("error");
+      }
     } catch (caught) {
       stopStream();
       setError(permissionMessage(caught));
@@ -115,6 +134,7 @@ export function AttendanceCapture() {
       return;
     }
     context.drawImage(video, 0, 0, width, height);
+    const rawPhoto = canvas.toDataURL("image/jpeg", 0.84);
 
     try {
       const actionResponse = await fetch("/api/attendance/actions", {
@@ -122,27 +142,17 @@ export function AttendanceCapture() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           captureSessionId: session.id,
+          captureToken: session.captureToken,
           idempotencyKey: crypto.randomUUID(),
           action,
           location,
-          hasPhoto: true,
+          photo: rawPhoto,
         }),
       });
       const payload = (await actionResponse.json()) as AttendanceResult & { error?: string };
       if (!actionResponse.ok) throw new Error(payload.error || "Không thể ghi nhận chấm công.");
 
-      drawServerOverlay(context, canvas, payload, location, action);
-      const stampedPhoto = canvas.toDataURL("image/jpeg", 0.86);
-      setPreview(stampedPhoto);
-      const evidenceResponse = await fetch("/api/attendance/evidence", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ eventId: payload.eventId, captureSessionId: session.id, photo: stampedPhoto }),
-      });
-      if (!evidenceResponse.ok) {
-        payload.reviewRequired = true;
-        payload.verification = [...payload.verification, "photo_stamp_failed", "manual_review_required"];
-      }
+      setPreview(rawPhoto);
       setResult(payload);
       stopStream();
       setStep("success");
@@ -169,12 +179,13 @@ export function AttendanceCapture() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           captureSessionId: currentSession.id,
+          captureToken: currentSession.captureToken,
           idempotencyKey: crypto.randomUUID(),
           action,
-          hasPhoto: false,
           cameraError: error || "camera_unavailable",
           locationError: location ? null : "location_unavailable",
-          exceptionReason: "Thiết bị không thể cung cấp đủ ảnh hoặc vị trí; cần quản lý xem xét.",
+          location,
+          exceptionReason: explanation,
         }),
       });
       if (!actionResponse.ok) throw new Error("Không thể gửi yêu cầu duyệt.");
@@ -194,6 +205,7 @@ export function AttendanceCapture() {
     setResult(null);
     setPreview("");
     setError("");
+    setExplanation("");
     setStep("idle");
   }
 
@@ -232,6 +244,12 @@ export function AttendanceCapture() {
             {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)} · ±{Math.round(location.accuracy)} m · cách quán {Math.round(location.distance)} m
           </div>
         )}
+        {step === "success" && result && preview && (
+          <div className="capture-overlay">
+            <strong>{result.evidenceStored ? "Máy chủ đã đóng dấu & lưu riêng tư" : "Đã ghi nhận ngoại lệ để xem xét"}</strong><br />
+            {result.localTime} · {result.reviewRequired ? "Cần quản lý duyệt" : "Bằng chứng đầy đủ"}
+          </div>
+        )}
       </div>
 
       <canvas ref={canvasRef} hidden />
@@ -260,6 +278,17 @@ export function AttendanceCapture() {
             Việc mở/đóng ca chưa hoàn tất vẫn không chặn ra ca. Bạn sẽ được yêu cầu giải thích và quản lý sẽ xem lại.
           </p>
         )}
+        {step === "error" && (
+          <div className="field exception-field">
+            <label htmlFor="attendance-explanation">Giải thích cho quản lý</label>
+            <textarea
+              id="attendance-explanation"
+              value={explanation}
+              onChange={(event) => setExplanation(event.target.value)}
+              placeholder="Ví dụ: Camera điện thoại đang bị lỗi, tôi đã báo trực tiếp cho trưởng ca."
+            />
+          </div>
+        )}
         <div className="capture-evidence">
           <Evidence label="Thời gian" value={result ? result.localTime : "Máy chủ xác nhận"} icon={Clock3} />
           <Evidence label="Vị trí" value={location ? `±${Math.round(location.accuracy)} m` : "Chờ quyền truy cập"} icon={MapPin} />
@@ -272,7 +301,7 @@ export function AttendanceCapture() {
           {step === "error" && (
             <>
               <button className="button-secondary button-compact" onClick={reset}><RefreshCw size={15} /> Thử lại</button>
-              <button className="button button-compact" onClick={submitException}>Gửi để duyệt thủ công</button>
+              <button className="button button-compact" onClick={submitException} disabled={explanation.trim().length < 5}>Gửi để duyệt thủ công</button>
             </>
           )}
           {step === "success" && <button className="button-secondary button-compact" onClick={reset}>Hoàn tất</button>}
@@ -317,31 +346,6 @@ function distanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function drawServerOverlay(
-  context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  result: AttendanceResult,
-  location: LocationEvidence,
-  action: AttendanceAction,
-) {
-  const height = Math.max(104, Math.round(canvas.height * 0.19));
-  context.fillStyle = "rgba(35, 20, 24, 0.84)";
-  context.fillRect(0, canvas.height - height, canvas.width, height);
-  const fontSize = Math.max(16, Math.round(canvas.width / 48));
-  context.fillStyle = "#ffffff";
-  context.font = `700 ${fontSize}px sans-serif`;
-  context.fillText(`LoopiCafe • ${action === "check_in" ? "VÀO CA" : "RA CA"}`, 22, canvas.height - height + fontSize + 12);
-  context.font = `500 ${Math.round(fontSize * 0.78)}px sans-serif`;
-  context.fillStyle = "#ffe1e7";
-  context.fillText(`${result.localTime} • Giờ máy chủ`, 22, canvas.height - height + fontSize * 2.35);
-  context.fillStyle = "#ffffff";
-  context.fillText(
-    `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)} • ±${Math.round(location.accuracy)} m • cách quán ${Math.round(result.distance ?? location.distance)} m`,
-    22,
-    canvas.height - 20,
-  );
 }
 
 function permissionMessage(caught: unknown) {

@@ -1,12 +1,19 @@
 import { distanceInMeters, formatStoreTime, isCoordinate } from "@/lib/attendance";
-import { ensureDatabase } from "@/db/runtime";
-import { getApiUser } from "@/server/auth";
+import {
+  createServerStampedSvg,
+  evidenceObjectKey,
+  sha256Hex,
+  validateJpegDataUrl,
+} from "@/lib/evidence";
+import { ensureDatabase, getBindings } from "@/db/runtime";
+import { auditStatement, requireApiUser } from "@/server/auth";
 
 type AttendanceBody = {
   captureSessionId?: string;
+  captureToken?: string;
   idempotencyKey?: string;
   action?: "check_in" | "check_out";
-  hasPhoto?: boolean;
+  photo?: string;
   cameraError?: string;
   locationError?: string | null;
   exceptionReason?: string;
@@ -18,133 +25,273 @@ type AttendanceBody = {
   };
 };
 
+type Rule = {
+  id: string;
+  early_checkin_minutes: number;
+  late_minutes: number;
+  early_departure_minutes: number;
+  absence_minutes: number;
+  missing_checkout_minutes: number;
+  evidence_retention_days: number;
+};
+
+type Shift = {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+};
+
 export async function POST(request: Request) {
-  const user = await getApiUser();
-  if (!user) return Response.json({ error: "Bạn cần đăng nhập." }, { status: 401 });
+  const auth = await requireApiUser();
+  if (!auth.actor) return auth.response;
+  const actor = auth.actor;
   const body = (await request.json().catch(() => ({}))) as AttendanceBody;
-  if (!body.captureSessionId || !body.idempotencyKey || (body.action !== "check_in" && body.action !== "check_out")) {
+  if (
+    !body.captureSessionId ||
+    !body.captureToken ||
+    !body.idempotencyKey ||
+    (body.action !== "check_in" && body.action !== "check_out")
+  ) {
     return Response.json({ error: "Thiếu thông tin phiên chấm công." }, { status: 400 });
   }
 
   const db = await ensureDatabase();
   const existing = await db.prepare(
-    "SELECT id, recorded_at FROM attendance_events WHERE idempotency_key = ?",
-  ).bind(body.idempotencyKey).first<{ id: string; recorded_at: string }>();
+    `SELECT e.id, e.session_id, e.recorded_at, e.verification_results,
+            e.review_required, l.distance_from_store_meters
+     FROM attendance_events e
+     LEFT JOIN attendance_locations l ON l.event_id = e.id
+     WHERE e.idempotency_key = ? AND e.employee_email = ?`,
+  ).bind(body.idempotencyKey, actor.email).first<{
+    id: string;
+    session_id: string;
+    recorded_at: string;
+    verification_results: string;
+    review_required: number;
+    distance_from_store_meters: number | null;
+  }>();
   if (existing) {
     return Response.json({
       eventId: existing.id,
+      sessionId: existing.session_id,
       recordedAt: existing.recorded_at,
-      localTime: formatStoreTime(existing.recorded_at),
-      verification: ["manual_review_required"],
-      reviewRequired: true,
-      distance: null,
+      localTime: `${formatStoreTime(existing.recorded_at)} GMT+7`,
+      verification: safeJsonArray(existing.verification_results),
+      reviewRequired: Boolean(existing.review_required),
+      distance: existing.distance_from_store_meters,
     });
   }
 
   const capture = await db.prepare(
-    `SELECT id, employee_email, action, expires_at, used_at
+    `SELECT id, employee_email, store_id, action, nonce_hash, expires_at, used_at
      FROM attendance_capture_sessions WHERE id = ?`,
   ).bind(body.captureSessionId).first<{
     id: string;
     employee_email: string;
+    store_id: string;
     action: string;
+    nonce_hash: string | null;
     expires_at: string;
     used_at: string | null;
   }>();
-
-  if (!capture || capture.employee_email !== user.email || capture.action !== body.action || capture.used_at) {
+  const suppliedNonceHash = await sha256Hex(new TextEncoder().encode(body.captureToken));
+  if (
+    !capture ||
+    capture.employee_email.toLowerCase() !== actor.email.toLowerCase() ||
+    capture.store_id !== actor.storeId ||
+    capture.action !== body.action ||
+    capture.used_at ||
+    !capture.nonce_hash ||
+    capture.nonce_hash !== suppliedNonceHash
+  ) {
     return Response.json({ error: "Phiên chấm công không còn hợp lệ." }, { status: 409 });
   }
   if (new Date(capture.expires_at).getTime() < Date.now()) {
-    return Response.json({ error: "Phiên chụp đã hết 60 giây. Vui lòng bắt đầu lại.", code: "capture_expired" }, { status: 409 });
+    return Response.json(
+      { error: "Phiên chụp đã hết 60 giây. Vui lòng bắt đầu lại.", code: "capture_expired" },
+      { status: 409 },
+    );
   }
 
   const recordedAt = new Date().toISOString();
   const verification: string[] = [];
-  if (!body.hasPhoto) verification.push("camera_unavailable");
+  const store = await db.prepare(
+    "SELECT latitude, longitude, attendance_enabled FROM stores WHERE id = ?",
+  ).bind(actor.storeId).first<{
+    latitude: number;
+    longitude: number;
+    attendance_enabled: number;
+  }>();
+  const rule = await db.prepare(
+    `SELECT id, early_checkin_minutes, late_minutes, early_departure_minutes,
+            absence_minutes, missing_checkout_minutes, evidence_retention_days
+     FROM attendance_rules WHERE store_id = ? AND active = 1
+     ORDER BY version DESC LIMIT 1`,
+  ).bind(actor.storeId).first<Rule>();
+  if (!store || !store.attendance_enabled || !rule) {
+    return Response.json({ error: "Cửa hàng chưa hoàn tất quy tắc chấm công." }, { status: 503 });
+  }
 
   const latitude = body.location?.latitude;
   const longitude = body.location?.longitude;
   const accuracy = body.location?.accuracy;
+  const positionTimestamp = body.location?.timestamp;
+  const positionAge = typeof positionTimestamp === "number"
+    ? Date.now() - positionTimestamp
+    : Number.POSITIVE_INFINITY;
   const hasLocation =
     isCoordinate(latitude, -90, 90) &&
     isCoordinate(longitude, -180, 180) &&
     typeof accuracy === "number" &&
     Number.isFinite(accuracy) &&
-    accuracy >= 0;
+    accuracy >= 0 &&
+    positionAge >= -30_000 &&
+    positionAge <= 120_000;
   if (!hasLocation) verification.push("location_unavailable");
-
-  const store = await db.prepare("SELECT latitude, longitude FROM stores WHERE id = ?")
-    .bind("store-loopi-nguyen-trai")
-    .first<{ latitude: number; longitude: number }>();
-  if (!store) return Response.json({ error: "Cửa hàng chưa được thiết lập." }, { status: 503 });
-
   const distance = hasLocation
     ? distanceInMeters(latitude, longitude, store.latitude, store.longitude)
     : null;
 
   const activeSession = await db.prepare(
-    `SELECT id, opened_at
+    `SELECT id, opened_at, shift_id, rule_version_id
      FROM attendance_sessions
-     WHERE employee_email = ? AND closed_at IS NULL
+     WHERE employee_email = ? AND store_id = ? AND closed_at IS NULL
        AND status IN ('open', 'review_required')
-     ORDER BY opened_at DESC
-     LIMIT 1`,
-  ).bind(user.email).first<{ id: string; opened_at: string | null }>();
-
+     ORDER BY opened_at DESC LIMIT 1`,
+  ).bind(actor.email, actor.storeId).first<{
+    id: string;
+    opened_at: string | null;
+    shift_id: string | null;
+    rule_version_id: string | null;
+  }>();
   if (body.action === "check_in" && activeSession) {
     return Response.json(
       { error: "Bạn đã có một ca đang mở. Hãy chấm ra ca trước khi bắt đầu ca mới.", code: "duplicate_action" },
       { status: 409 },
     );
   }
-  if (body.action === "check_out" && !activeSession) {
-    verification.push("no_assigned_shift");
+
+  const shift = body.action === "check_in"
+    ? await findNearestShift(db, actor.email, actor.storeId, recordedAt)
+    : activeSession?.shift_id
+      ? await db.prepare("SELECT id, starts_at, ends_at FROM shifts WHERE id = ?")
+          .bind(activeSession.shift_id).first<Shift>()
+      : null;
+  evaluateShiftWindow(body.action, shift, rule, recordedAt, verification);
+  if (body.action === "check_out" && !activeSession) verification.push("no_active_session");
+
+  const eventId = crypto.randomUUID();
+  const sessionId = activeSession?.id ?? crypto.randomUUID();
+  const expiresAt = new Date(
+    Date.now() + rule.evidence_retention_days * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  let objectKey: string | null = null;
+  let stampedBytes: Uint8Array | null = null;
+  let stampedHash: string | null = null;
+  let photoStatus: "stored" | "unavailable" | "failed" = "unavailable";
+
+  if (body.photo) {
+    let photo;
+    try {
+      photo = validateJpegDataUrl(body.photo);
+    } catch (error) {
+      return Response.json(
+        { error: error instanceof Error ? error.message : "Ảnh chấm công không hợp lệ.", code: "invalid_photo" },
+        { status: 400 },
+      );
+    }
+    if (!hasLocation || distance === null) {
+      verification.push("photo_stamp_failed");
+      photoStatus = "failed";
+    } else {
+      stampedBytes = createServerStampedSvg({
+        photo,
+        action: body.action,
+        localTime: formatStoreTime(recordedAt),
+        latitude,
+        longitude,
+        accuracy,
+        distance,
+        eventId,
+      });
+      stampedHash = await sha256Hex(stampedBytes);
+      objectKey = evidenceObjectKey(actor.storeId, actor.id, eventId, recordedAt);
+      try {
+        const { evidence } = getBindings();
+        if (!evidence) throw new Error("Evidence storage unavailable");
+        await evidence.put(objectKey, stampedBytes, {
+          httpMetadata: { contentType: "image/svg+xml; charset=utf-8" },
+          customMetadata: {
+            eventId,
+            sha256: stampedHash,
+            overlayVersion: "server-svg-v1",
+          },
+        });
+        photoStatus = "stored";
+      } catch {
+        objectKey = null;
+        stampedBytes = null;
+        stampedHash = null;
+        photoStatus = "failed";
+        verification.push("photo_stamp_failed");
+      }
+    }
+  } else {
+    verification.push("camera_unavailable");
   }
 
   const reviewRequired = verification.length > 0;
   if (reviewRequired) verification.push("manual_review_required");
   else verification.push("verified");
-
-  const sessionId = activeSession?.id ?? crypto.randomUUID();
-  const eventId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
-  const auditId = crypto.randomUUID();
+  const employeeReason = body.exceptionReason?.trim().slice(0, 500);
+  if (
+    (verification.includes("camera_unavailable") || verification.includes("location_unavailable")) &&
+    (!employeeReason || employeeReason.length < 5)
+  ) {
+    if (objectKey) {
+      const { evidence } = getBindings();
+      await evidence?.delete(objectKey);
+    }
+    return Response.json(
+      { error: "Vui lòng giải thích ngắn gọn vì sao ảnh hoặc vị trí không khả dụng.", code: "explanation_required" },
+      { status: 422 },
+    );
+  }
 
   const statements: D1PreparedStatement[] = [];
-
   if (body.action === "check_in") {
     statements.push(
       db.prepare(
         `INSERT INTO attendance_sessions
-          (id, employee_email, store_id, status, opened_at)
-         VALUES (?, ?, ?, ?, ?)`,
+          (id, employee_email, store_id, shift_id, rule_version_id, status, opened_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         sessionId,
-        user.email,
-        "store-loopi-nguyen-trai",
+        actor.email,
+        actor.storeId,
+        shift?.id ?? null,
+        rule.id,
         reviewRequired ? "review_required" : "open",
         recordedAt,
       ),
     );
   } else if (activeSession) {
     const workedMinutes = activeSession.opened_at
-      ? Math.max(0, Math.floor((Date.parse(recordedAt) - Date.parse(activeSession.opened_at)) / 60000))
+      ? Math.max(0, Math.floor((Date.parse(recordedAt) - Date.parse(activeSession.opened_at)) / 60_000))
       : null;
     statements.push(
       db.prepare(
         `UPDATE attendance_sessions
-         SET status = ?, closed_at = ?, worked_minutes = ?
-         WHERE id = ?`,
+         SET status = ?, closed_at = ?, worked_minutes = ? WHERE id = ?`,
       ).bind(reviewRequired ? "review_required" : "completed", recordedAt, workedMinutes, sessionId),
     );
   } else {
     statements.push(
       db.prepare(
         `INSERT INTO attendance_sessions
-          (id, employee_email, store_id, status, opened_at, closed_at, worked_minutes)
-         VALUES (?, ?, ?, 'review_required', NULL, ?, NULL)`,
-      ).bind(sessionId, user.email, "store-loopi-nguyen-trai", recordedAt),
+          (id, employee_email, store_id, shift_id, rule_version_id, status, opened_at, closed_at)
+         VALUES (?, ?, ?, ?, ?, 'review_required', NULL, ?)`,
+      ).bind(sessionId, actor.email, actor.storeId, shift?.id ?? null, rule.id, recordedAt),
     );
   }
 
@@ -152,36 +299,37 @@ export async function POST(request: Request) {
     db.prepare(
       `INSERT INTO attendance_events
         (id, session_id, employee_email, action, recorded_at, idempotency_key,
-         verification_results, review_required, exception_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         verification_results, review_required, photo_status, exception_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       eventId,
       sessionId,
-      user.email,
+      actor.email,
       body.action,
       recordedAt,
       body.idempotencyKey,
       JSON.stringify(verification),
       reviewRequired ? 1 : 0,
-      body.exceptionReason?.slice(0, 500) ?? null,
+      photoStatus,
+      employeeReason ?? defaultExceptionReason(verification),
     ),
-    db.prepare("UPDATE attendance_capture_sessions SET used_at = ? WHERE id = ?")
-      .bind(recordedAt, capture.id),
     db.prepare(
-      `INSERT INTO audit_events
-        (id, actor_email, entity_type, entity_id, action, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      auditId,
-      user.email,
+      "UPDATE attendance_capture_sessions SET used_at = ? WHERE id = ? AND used_at IS NULL",
+    ).bind(recordedAt, capture.id),
+    db.prepare(
+      `INSERT INTO attendance_action_limits (id, employee_email, action, created_at)
+       VALUES (?, ?, ?, ?)`,
+    ).bind(crypto.randomUUID(), actor.email, body.action, recordedAt),
+    auditStatement(
+      db,
+      actor.email,
       "attendance_event",
       eventId,
       `attendance.${body.action}`,
-      JSON.stringify({ verification, hasPhoto: Boolean(body.hasPhoto), hasLocation }),
+      { verification, photoStatus, hasLocation, shiftId: shift?.id ?? null },
       recordedAt,
     ),
   );
-
   if (hasLocation && distance !== null) {
     statements.push(
       db.prepare(
@@ -194,15 +342,62 @@ export async function POST(request: Request) {
         latitude,
         longitude,
         accuracy,
-        body.location?.timestamp ? new Date(body.location.timestamp).toISOString() : null,
+        positionTimestamp ? new Date(positionTimestamp).toISOString() : null,
         recordedAt,
         distance,
         expiresAt,
       ),
     );
   }
+  if (objectKey && stampedBytes && stampedHash) {
+    statements.push(
+      db.prepare(
+        `INSERT INTO attendance_photos
+          (event_id, object_key, mime_type, size_bytes, sha256, overlay_version, expires_at)
+         VALUES (?, ?, 'image/svg+xml', ?, ?, 'server-svg-v1', ?)`,
+      ).bind(eventId, objectKey, stampedBytes.byteLength, stampedHash, expiresAt),
+    );
+  }
+  if (reviewRequired) {
+    statements.push(
+      db.prepare(
+        `INSERT INTO attendance_exceptions
+          (id, event_id, employee_reason, status, created_at)
+         VALUES (?, ?, ?, 'pending', ?)`,
+      ).bind(
+        crypto.randomUUID(),
+        eventId,
+        employeeReason ?? defaultExceptionReason(verification),
+        recordedAt,
+      ),
+    );
+    const reviewers = await db.prepare(
+      `SELECT email FROM employees
+       WHERE store_id = ? AND role IN ('owner', 'manager') AND status = 'active'`,
+    ).bind(actor.storeId).all<{ email: string }>();
+    statements.push(...reviewers.results.map((reviewer) =>
+      db.prepare(
+        `INSERT INTO notifications
+          (id, recipient_email, type, title, entity_href, created_at)
+         VALUES (?, ?, 'attendance_exception', ?, '/app/attendance/review', ?)`,
+      ).bind(
+        crypto.randomUUID(),
+        reviewer.email,
+        `${actor.displayName} có chấm công cần xem xét`,
+        recordedAt,
+      )));
+  }
 
-  await db.batch(statements);
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    if (objectKey) {
+      const { evidence } = getBindings();
+      await evidence?.delete(objectKey);
+    }
+    throw error;
+  }
+
   return Response.json({
     eventId,
     sessionId,
@@ -211,5 +406,73 @@ export async function POST(request: Request) {
     verification,
     reviewRequired,
     distance,
+    photoStatus,
+    evidenceStored: photoStatus === "stored",
   });
+}
+
+async function findNearestShift(
+  db: D1Database,
+  employeeEmail: string,
+  storeId: string,
+  recordedAt: string,
+) {
+  const dayBefore = new Date(Date.parse(recordedAt) - 24 * 60 * 60 * 1000).toISOString();
+  const dayAfter = new Date(Date.parse(recordedAt) + 24 * 60 * 60 * 1000).toISOString();
+  return db.prepare(
+    `SELECT id, starts_at, ends_at FROM shifts
+     WHERE employee_email = ? AND store_id = ? AND status = 'published'
+       AND starts_at BETWEEN ? AND ?
+     ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1`,
+  ).bind(employeeEmail, storeId, dayBefore, dayAfter, recordedAt).first<Shift>();
+}
+
+function evaluateShiftWindow(
+  action: "check_in" | "check_out",
+  shift: Shift | null,
+  rule: Rule,
+  recordedAt: string,
+  verification: string[],
+) {
+  if (!shift) {
+    verification.push("no_assigned_shift");
+    return;
+  }
+  const now = Date.parse(recordedAt);
+  const startsAt = Date.parse(shift.starts_at);
+  const endsAt = Date.parse(shift.ends_at);
+  if (action === "check_in") {
+    if (
+      now < startsAt - rule.early_checkin_minutes * 60_000 ||
+      now > startsAt + rule.absence_minutes * 60_000
+    ) {
+      verification.push("outside_shift_window");
+    } else if (now > startsAt + rule.late_minutes * 60_000) {
+      verification.push("late");
+    }
+  } else {
+    if (now < startsAt - rule.early_checkin_minutes * 60_000 || now > endsAt + rule.missing_checkout_minutes * 60_000) {
+      verification.push("outside_shift_window");
+    } else if (now < endsAt - rule.early_departure_minutes * 60_000) {
+      verification.push("early_departure");
+    }
+  }
+}
+
+function defaultExceptionReason(verification: string[]) {
+  if (verification.includes("no_assigned_shift")) return "Không tìm thấy ca được phân công phù hợp.";
+  if (verification.includes("outside_shift_window")) return "Hành động nằm ngoài khung giờ chấm công.";
+  if (verification.includes("late")) return "Chấm công sau ngưỡng đi trễ.";
+  if (verification.includes("early_departure")) return "Ra ca trước ngưỡng cho phép.";
+  if (verification.includes("photo_stamp_failed")) return "Máy chủ chưa lưu được ảnh đã đóng dấu.";
+  return "Cần quản lý xem xét bằng chứng chấm công.";
+}
+
+function safeJsonArray(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

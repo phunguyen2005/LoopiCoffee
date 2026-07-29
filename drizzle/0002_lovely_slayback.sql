@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `attendance_event_session_action_idx` ON `attendance_events` (`session_id`,`action`);

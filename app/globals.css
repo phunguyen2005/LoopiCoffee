@@ -1259,6 +1259,15 @@ select:focus-visible {
   text-align: center;
 }
 
+.exception-field {
+  width: min(560px, 100%);
+  margin: 0 auto 14px;
+}
+
+.exception-field textarea {
+  min-height: 76px;
+}
+
 .capture-evidence {
   margin-bottom: 16px;
   display: grid;
@@ -1361,6 +1370,29 @@ select:focus-visible {
   line-height: 1.8;
 }
 
+.consent-card {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid #efd2d8;
+  border-radius: 20px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  background: #fff4f6;
+  color: var(--burgundy);
+}
+
+.consent-card h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.consent-card p {
+  margin: 0;
+  font-size: 11px;
+}
+
 .toast {
   position: fixed;
   right: 22px;
@@ -1376,6 +1408,150 @@ select:focus-visible {
   color: white;
   box-shadow: var(--shadow);
   font-size: 11px;
+}
+
+.operation-row-button {
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.supporting-copy {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.preserve-lines {
+  white-space: pre-line;
+}
+
+.operation-form {
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.operation-form .form-actions,
+.operation-form .field.full {
+  grid-column: 1 / -1;
+}
+
+.operation-message {
+  margin: 12px 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--mint);
+  color: #326f59;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.danger-text {
+  color: #a53d4a;
+}
+
+.map-placeholder {
+  min-height: 180px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(145deg, rgba(226, 242, 234, 0.92), rgba(246, 236, 231, 0.92)),
+    repeating-linear-gradient(45deg, transparent, transparent 14px, rgba(255,255,255,.45) 15px);
+}
+
+.map-pin {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.review-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fffcfa;
+}
+
+.review-card strong,
+.review-card small {
+  display: block;
+}
+
+.review-card strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.review-card small,
+.review-card p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.review-photo {
+  width: 100%;
+  max-height: 360px;
+  margin-top: 12px;
+  border-radius: 13px;
+  object-fit: contain;
+  background: #2b2022;
+}
+
+.location-readout {
+  margin: 10px 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #f3ece9;
+  color: var(--coffee);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.report-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.report-table th,
+.report-table td {
+  padding: 13px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.report-table th {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.report-table td:first-child {
+  font-weight: 700;
 }
 
 @media (max-width: 980px) {
@@ -1597,6 +1773,21 @@ select:focus-visible {
 
   .notice-hero {
     padding: 28px;
+  }
+
+  .consent-card,
+  .operation-form,
+  .review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .consent-card {
+    align-items: start;
+  }
+
+  .operation-form .form-actions,
+  .operation-form .field.full {
+    grid-column: auto;
   }
 }
 

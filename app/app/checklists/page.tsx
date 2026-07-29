@@ -1,5 +1,5 @@
-import { ChecklistsView } from "@/components/app-views";
+import { PersistentChecklistsView } from "@/components/operational-views";
 
 export default function ChecklistsPage() {
-  return <ChecklistsView />;
+  return <PersistentChecklistsView />;
 }
