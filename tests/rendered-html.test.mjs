@@ -17,6 +17,28 @@ test("renders the LoopiCafe Vietnamese landing page", async () => {
   assert.doesNotMatch(`${page}${layout}`, /Your site is taking shape|Building your site|vinext-starter/i);
 });
 
+test("places the opt-in introduction video between the hero and benefits", async () => {
+  const [page, video, poster] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/loopicafe-introduce-vid.mp4", import.meta.url)),
+    readFile(new URL("../public/loopicafe-introduce-poster.jpg", import.meta.url)),
+  ]);
+
+  const heroEnd = page.indexOf("landing-video-section");
+  const benefitsStart = page.indexOf("benefit-section");
+  assert.ok(heroEnd > 0 && benefitsStart > heroEnd);
+  assert.match(page, /LoopiCafe trong 10 giây/);
+  assert.match(page, /controls/);
+  assert.match(page, /playsInline/);
+  assert.match(page, /preload="metadata"/);
+  assert.match(page, /poster="\/loopicafe-introduce-poster\.jpg"/);
+  assert.match(page, /Mở video giới thiệu LoopiCafe/);
+  assert.doesNotMatch(page, /\bautoPlay\b|\bloop\b/);
+  assert.ok(video.byteLength > 1_000_000);
+  assert.equal(poster[0], 0xff);
+  assert.equal(poster[1], 0xd8);
+});
+
 test("keeps camera and geolocation collection explicit and fresh", async () => {
   const capture = await readFile(
     new URL("../components/attendance-capture.tsx", import.meta.url),

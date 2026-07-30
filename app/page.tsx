@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { LoopyMark } from "@/components/loopy-mark";
 import { LoopySticker } from "@/components/loopy-sticker";
+import "./landing-video.css";
 
 const benefits = [
   {
@@ -87,6 +88,31 @@ export default function Home() {
             <span><strong>Mở ca hoàn tất</strong><small>6/6 công việc</small></span>
           </div>
         </div>
+      </section>
+
+      <section className="landing-video-section" aria-labelledby="landing-video-title">
+        <div className="landing-video-heading">
+          <span>10 giây cùng LoopiCafe</span>
+          <h2 id="landing-video-title">LoopiCafe trong 10 giây</h2>
+          <p>
+            Một góc nhìn vui vẻ về cách LoopiCafe giúp mọi việc trong quán luôn
+            đúng nhịp.
+          </p>
+        </div>
+        <figure className="landing-video-card">
+          <video
+            className="landing-intro-video"
+            controls
+            playsInline
+            preload="metadata"
+            poster="/loopicafe-introduce-poster.jpg"
+            aria-label="Video giới thiệu thương hiệu LoopiCafe trong 10 giây"
+          >
+            <source src="/loopicafe-introduce-vid.mp4" type="video/mp4" />
+            Trình duyệt của bạn không hỗ trợ video MP4.{" "}
+            <a href="/loopicafe-introduce-vid.mp4">Mở video giới thiệu LoopiCafe</a>.
+          </video>
+        </figure>
       </section>
 
       <section className="benefit-section" aria-labelledby="benefit-title">
