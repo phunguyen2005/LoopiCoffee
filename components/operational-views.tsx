@@ -15,10 +15,21 @@ import {
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { LoopySticker } from "./loopy-sticker";
 
 type ApiState = "loading" | "ready" | "error";
+type ShiftPreset = "morning" | "evening" | "full" | "custom";
+
+const DAY_CHIP_LABELS = [
+  { key: 0, label: "T2" },
+  { key: 1, label: "T3" },
+  { key: 2, label: "T4" },
+  { key: 3, label: "T5" },
+  { key: 4, label: "T6" },
+  { key: 5, label: "T7" },
+  { key: 6, label: "CN" },
+] as const;
 
 export function OperationsDashboardView() {
   const [data, setData] = useState<{
@@ -30,26 +41,41 @@ export function OperationsDashboardView() {
     fetch("/api/dashboard", { cache: "no-store" }).then(readJson).then(setData);
   }, []);
   const metrics = data?.metrics ?? { activeStaff: 0, pendingExceptions: 0, checklistDone: 0, checklistTotal: 0, openIncidents: 0 };
+  const isStoreOpen = metrics.activeStaff > 0;
+
   return (
     <div className="stack">
       <section className="hero-status-card">
         <div className="hero-status-copy">
-          <span className="status-label"><CheckCircle2 size={14} /> Dữ liệu vận hành trực tiếp</span>
-          <h2>{metrics.pendingExceptions ? `${metrics.pendingExceptions} việc cần xem ngay` : "Cửa hàng đang được theo dõi"}</h2>
-          <p>Các chỉ số bên dưới đến từ dữ liệu đã lưu, không còn là số liệu minh họa.</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+            <span className={`badge ${isStoreOpen ? "success" : "neutral"}`} style={{ fontSize: 11, padding: "6px 12px" }}>
+              {isStoreOpen ? "🟢 CỬA HÀNG ĐANG MỞ" : "⚪ CỬA HÀNG CHƯA VÀO CA"}
+            </span>
+            <span className="status-label"><CheckCircle2 size={14} /> Dữ liệu trực tiếp</span>
+          </div>
+          <h2>{metrics.pendingExceptions ? `${metrics.pendingExceptions} ngoại lệ cần duyệt ngay` : "Mọi việc tại cửa hàng đang đúng nhịp"}</h2>
+          <p>Tóm tắt vận hành trong 30 giây cho Chủ quán & Quản lý.</p>
           <div className="status-metrics">
             <span><strong>{metrics.activeStaff}</strong><small>đang trong ca</small></span>
-            <span><strong>{metrics.checklistDone}/{metrics.checklistTotal}</strong><small>checklist</small></span>
-            <span><strong>{metrics.pendingExceptions}</strong><small>cần duyệt</small></span>
+            <span><strong>{metrics.checklistDone}/{metrics.checklistTotal}</strong><small>mở ca xong</small></span>
+            <span><strong>{metrics.pendingExceptions}</strong><small>ngoại lệ chờ</small></span>
           </div>
         </div>
         <div className="hero-status-mascot"><LoopySticker mood={metrics.pendingExceptions ? "alert" : "hello"} size={126} /></div>
       </section>
       <section className="metric-grid">
-        <MetricCard icon={UsersRound} tone="mint" value={String(metrics.activeStaff)} label="Đang trong ca" />
-        <MetricCard icon={AlertCircle} tone="pink" value={String(metrics.pendingExceptions)} label="Ngoại lệ chờ duyệt" />
-        <MetricCard icon={CheckCircle2} tone="amber" value={`${metrics.checklistDone}/${metrics.checklistTotal}`} label="Việc hoàn tất" />
-        <MetricCard icon={PackageOpen} tone="burgundy" value={String(metrics.openIncidents)} label="Sự cố đang mở" />
+        <Link href="/app/schedule" style={{ textDecoration: "none" }}>
+          <MetricCard icon={UsersRound} tone="mint" value={String(metrics.activeStaff)} label="Đang trong ca" />
+        </Link>
+        <Link href="/app/attendance/review" style={{ textDecoration: "none" }}>
+          <MetricCard icon={AlertCircle} tone="pink" value={String(metrics.pendingExceptions)} label="Ngoại lệ chờ duyệt" />
+        </Link>
+        <Link href="/app/checklists" style={{ textDecoration: "none" }}>
+          <MetricCard icon={CheckCircle2} tone="amber" value={`${metrics.checklistDone}/${metrics.checklistTotal}`} label="Việc Mở ca xong" />
+        </Link>
+        <Link href="/app/issues" style={{ textDecoration: "none" }}>
+          <MetricCard icon={PackageOpen} tone="burgundy" value={String(metrics.openIncidents)} label="Sự cố đang mở" />
+        </Link>
       </section>
       <div className="page-grid">
         <section className="card">
@@ -61,7 +87,7 @@ export function OperationsDashboardView() {
                 <span className="badge success">{shift.role_label}</span>
               </div>
             ))}
-            {data && data.nextShifts.length === 0 && <p className="supporting-copy">Chưa có ca sắp tới. Hãy xuất bản lịch trước khi bật chấm công cho nhân viên.</p>}
+            {data && (data.nextShifts ?? []).length === 0 && <p className="supporting-copy">Chưa có ca sắp tới. Hãy xuất bản lịch trước khi bật chấm công cho nhân viên.</p>}
           </div>
         </section>
         <aside className="card">
@@ -79,43 +105,178 @@ export function EmployeeTodayView() {
     attendance: { opened_at: string | null; closed_at: string | null; status: string } | null;
     checklist: { total: number; done: number };
   } | null>(null);
+
   useEffect(() => {
     fetch("/api/today", { cache: "no-store" }).then(readJson).then(setData);
   }, []);
+
+  const hasShift = Boolean(data?.shift);
+  const checklistCount = data?.checklist?.total ?? 0;
+
   return (
-    <div className="page-grid">
+    <div className="stack">
+      {/* Shift Overview Hero Card */}
       <section className="hero-status-card" style={{ minHeight: 260 }}>
         <div className="hero-status-copy">
-          <span className="status-label"><CalendarDays size={14} /> Ca của bạn</span>
-          <h2>{data?.shift ? `${formatTime(data.shift.starts_at)} — ${formatTime(data.shift.ends_at)}` : "Chưa có ca được phân công"}</h2>
-          <p>{data?.shift ? `${data.shift.role_label}${data.shift.is_shift_lead ? " · Trưởng ca" : ""}` : "Quản lý cần xuất bản ca trước khi lượt chấm công có thể được xác nhận."}</p>
-          <div className="status-metrics">
-            <span><strong>{data?.attendance?.opened_at ? formatTime(data.attendance.opened_at) : "—"}</strong><small>vào ca</small></span>
-            <span><strong>{data?.checklist?.done ?? 0}/{data?.checklist?.total ?? 0}</strong><small>công việc</small></span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+            <span className={`badge ${hasShift ? "success" : "neutral"}`} style={{ fontSize: 11, padding: "5px 12px" }}>
+              {hasShift ? "🟢 ĐÃ ĐƯỢC PHÂN CA" : "⚪ CHƯA CÓ CA HÔM NAY"}
+            </span>
+            <span className="status-label"><CalendarDays size={14} /> Ca làm hôm nay</span>
           </div>
+
+          <h2>
+            {hasShift
+              ? `${formatTime(data!.shift!.starts_at)} — ${formatTime(data!.shift!.ends_at)}`
+              : "Hôm nay bạn chưa có ca được phân công."}
+          </h2>
+
+          <p>
+            {hasShift
+              ? `${data!.shift!.role_label}${data!.shift!.is_shift_lead ? " · Trưởng ca" : ""}`
+              : "Nếu bạn được yêu cầu đi làm đột xuất, hãy liên hệ quản lý trước khi thực hiện chấm công."}
+          </p>
+
+          {!hasShift && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+              <Link href="/app/schedule" className="button-secondary button-compact">
+                Xem lịch tuần
+              </Link>
+
+              <Link href="/app/requests" className="button-secondary button-compact">
+                Gửi yêu cầu xác nhận
+              </Link>
+            </div>
+          )}
+
+          {hasShift && (
+            <div className="status-metrics">
+              <span>
+                <strong>{data?.attendance?.opened_at ? formatTime(data.attendance.opened_at) : "—"}</strong>
+                <small>vào ca</small>
+              </span>
+              <span>
+                <strong>{data?.checklist?.done ?? 0}/{checklistCount}</strong>
+                <small>công việc</small>
+              </span>
+            </div>
+          )}
         </div>
-        <div className="hero-status-mascot"><LoopySticker mood={data?.shift ? "working" : "confused"} size={125} /></div>
+
+        <div className="hero-status-mascot">
+          <LoopySticker mood={hasShift ? "working" : "confused"} size={135} />
+        </div>
       </section>
-      <aside className="stack">
+
+      {/* Active Shift Timeline (when employee has assigned shift) */}
+      {hasShift && (
         <section className="card">
-          <ViewHeader title="Chấm công" subtitle="Ảnh do máy chủ đóng dấu" />
-          <p className="supporting-copy">Camera và vị trí chỉ được yêu cầu sau khi bạn chủ động bắt đầu.</p>
-          <Link href="/app/attendance" className="button" style={{ width: "100%", marginTop: 14 }}>Mở chấm công</Link>
+          <ViewHeader title="Tiến trình ca làm việc" subtitle="Các mốc thời gian quan trọng trong ca hôm nay" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 14 }}>
+            <div style={{ background: "#f8fdfa", border: "1px solid #b8e6d3", padding: "12px 14px", borderRadius: 16 }}>
+              <span style={{ fontSize: 11, color: "#4c9779", fontWeight: 700 }}>1. CHẤM VÀO CA</span>
+              <strong style={{ display: "block", color: "#332a2b", fontSize: 14, marginTop: 4 }}>
+                {data?.attendance?.opened_at ? formatTime(data.attendance.opened_at) : formatTime(data!.shift!.starts_at)}
+              </strong>
+              <small style={{ color: "#7b6f70" }}>{data?.attendance?.opened_at ? "✓ Đã vào ca" : "Chờ chụp ảnh"}</small>
+            </div>
+
+            <div style={{ background: "#fffaf4", border: "1px solid #eee3df", padding: "12px 14px", borderRadius: 16 }}>
+              <span style={{ fontSize: 11, color: "#d96d83", fontWeight: 700 }}>2. CHECKLIST MỞ CA</span>
+              <strong style={{ display: "block", color: "#332a2b", fontSize: 14, marginTop: 4 }}>
+                {data?.checklist?.done ?? 0}/{checklistCount} việc
+              </strong>
+              <small style={{ color: "#7b6f70" }}>{data?.checklist?.done === checklistCount && checklistCount > 0 ? "✓ Hoàn tất" : "Đang thực hiện"}</small>
+            </div>
+
+            <div style={{ background: "#fffaf4", border: "1px solid #eee3df", padding: "12px 14px", borderRadius: 16 }}>
+              <span style={{ fontSize: 11, color: "#6f2939", fontWeight: 700 }}>3. BÀN GIAO CA</span>
+              <strong style={{ display: "block", color: "#332a2b", fontSize: 14, marginTop: 4 }}>
+                Cuối ca làm
+              </strong>
+              <small style={{ color: "#7b6f70" }}>Ghi chú ca sau</small>
+            </div>
+
+            <div style={{ background: "#fffaf4", border: "1px solid #eee3df", padding: "12px 14px", borderRadius: 16 }}>
+              <span style={{ fontSize: 11, color: "#7b6f70", fontWeight: 700 }}>4. CHẤM RA CA</span>
+              <strong style={{ display: "block", color: "#332a2b", fontSize: 14, marginTop: 4 }}>
+                {formatTime(data!.shift!.ends_at)}
+              </strong>
+              <small style={{ color: "#7b6f70" }}>Dự kiến ra ca</small>
+            </div>
+          </div>
         </section>
-        <section className="card">
-          <ViewHeader title="Checklist" subtitle={`${data?.checklist?.done ?? 0}/${data?.checklist?.total ?? 0} việc hoàn tất`} />
-          <Link href="/app/checklists" className="text-link">Tiếp tục công việc</Link>
-        </section>
-      </aside>
+      )}
+
+      <div className="page-grid">
+        <aside className="stack" style={{ width: "100%" }}>
+          <section className="card">
+            <ViewHeader title="Chấm công" subtitle="Ảnh trực tiếp do máy chủ đóng dấu" />
+            <p className="supporting-copy">
+              {hasShift
+                ? "Camera và vị trí chỉ được kích hoạt khi bạn bấm nút mở chấm công."
+                : "Bạn chưa có ca làm hôm nay. Nút chấm công đã tạm khóa để tránh chấm nhầm ca."}
+            </p>
+
+            {hasShift ? (
+              <Link href="/app/attendance" className="button" style={{ width: "100%", marginTop: 14 }}>
+                Mở chấm công ngay
+              </Link>
+            ) : (
+              <div style={{ marginTop: 14, spaceY: 8 }}>
+                <button className="button-secondary" disabled style={{ width: "100%", opacity: 0.6, cursor: "not-allowed" }}>
+                  Không thể chấm công (Chưa có ca)
+                </button>
+                <Link
+                  href="/app/requests"
+                  className="text-link"
+                  style={{ display: "block", textAlign: "center", marginTop: 8, fontSize: 12 }}
+                >
+                  Gửi yêu cầu chấm công ngoài lịch →
+                </Link>
+              </div>
+            )}
+          </section>
+        </aside>
+
+        <aside className="stack" style={{ width: "100%" }}>
+          <section className="card">
+            <ViewHeader title="Checklist công việc" subtitle={`${data?.checklist?.done ?? 0}/${checklistCount} công việc hoàn tất`} />
+            {checklistCount > 0 ? (
+              <>
+                <div className="progress" style={{ margin: "12px 0" }}>
+                  <span style={{ width: `${(data?.checklist?.done ?? 0 / checklistCount) * 100}%` }} />
+                </div>
+                <Link href="/app/checklists" className="text-link">
+                  Tiếp tục công việc →
+                </Link>
+              </>
+            ) : (
+              <div style={{ marginTop: 12 }}>
+                <p className="supporting-copy" style={{ fontStyle: "italic" }}>
+                  Chưa có checklist được giao cho hôm nay.
+                </p>
+                <Link href="/app/checklists" className="text-link" style={{ marginTop: 6, display: "inline-block" }}>
+                  Xem toàn bộ danh sách checklist →
+                </Link>
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
 
-export function PersistentChecklistsView() {
+export function PersistentChecklistsView({ canManage = false }: { canManage?: boolean }) {
   const [items, setItems] = useState<Array<{
     id: string; label: string; assignee: string; required: number; completed: number;
   }>>([]);
   const [state, setState] = useState<ApiState>("loading");
+  const [showForm, setShowForm] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newAssignee, setNewAssignee] = useState("Ca sáng");
+  const [isRequired, setIsRequired] = useState(true);
 
   useEffect(() => {
     fetch("/api/checklists", { cache: "no-store" })
@@ -123,6 +284,35 @@ export function PersistentChecklistsView() {
       .then((payload) => { setItems(payload.items ?? []); setState("ready"); })
       .catch(() => setState("error"));
   }, []);
+
+  async function refresh() {
+    try {
+      const payload = await readJson(await fetch("/api/checklists", { cache: "no-store" }));
+      setItems(payload.items ?? []);
+      setState("ready");
+    } catch {
+      setState("error");
+    }
+  }
+
+  async function createChecklist(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newLabel.trim()) return;
+    const response = await fetch("/api/checklists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: newLabel,
+        assignee: newAssignee,
+        required: isRequired,
+      }),
+    });
+    if (response.ok) {
+      setNewLabel("");
+      setShowForm(false);
+      await refresh();
+    }
+  }
 
   async function toggle(item: (typeof items)[number]) {
     const completed = !item.completed;
@@ -141,29 +331,93 @@ export function PersistentChecklistsView() {
   return (
     <div className="page-grid">
       <section className="card">
-        <ViewHeader title="Mở ca · Ca sáng" subtitle={state === "loading" ? "Đang tải công việc…" : `${done}/${items.length} công việc hoàn tất`} />
+        <div className="section-row" style={{ marginBottom: 18 }}>
+          <ViewHeader title="Checklist mở ca & vận hành" subtitle={state === "loading" ? "Đang tải công việc…" : `${done}/${items.length} công việc hoàn tất`} />
+          {canManage && (
+            <button className="button button-compact" onClick={() => setShowForm((v) => !v)}>
+              <Plus size={15} /> Thêm công việc
+            </button>
+          )}
+        </div>
+
+        {showForm && canManage && (
+          <form className="attention-card operation-form" onSubmit={createChecklist} style={{ marginBottom: 20 }}>
+            <div className="field full">
+              <label htmlFor="checklist-label">Tên công việc</label>
+              <input
+                id="checklist-label"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="VD: Kiểm tra phễu cà phê, lau máy espresso..."
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="checklist-assignee">Giai đoạn / Ca</label>
+              <select id="checklist-assignee" value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)}>
+                <option value="Ca sáng (Mở cửa)">Ca sáng (Mở cửa)</option>
+                <option value="Ca giữa (Giữa ngày)">Ca giữa (Giữa ngày)</option>
+                <option value="Ca tối (Đóng cửa)">Ca tối (Đóng cửa)</option>
+                <option value="Toàn bộ ca làm">Toàn bộ ca làm</option>
+              </select>
+            </div>
+            <div className="field" style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 28 }}>
+              <input
+                id="checklist-required"
+                type="checkbox"
+                checked={isRequired}
+                onChange={(e) => setIsRequired(e.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              <label htmlFor="checklist-required" style={{ margin: 0, cursor: "pointer" }}>Bắt buộc hoàn thành</label>
+            </div>
+            <div className="form-actions">
+              <button className="button button-compact" type="submit">Lưu công việc</button>
+            </div>
+          </form>
+        )}
+
         <div className="progress"><span style={{ width: items.length ? `${(done / items.length) * 100}%` : "0%" }} /></div>
         {state === "error" ? <InlineError text="Không tải được checklist. Vui lòng thử lại." /> : (
           <div className="list" style={{ marginTop: 18 }}>
             {items.map((item) => (
-              <button key={item.id} className="list-row operation-row-button" onClick={() => toggle(item)}>
+              <button
+                key={item.id}
+                className="list-row operation-row-button"
+                onClick={() => toggle(item)}
+                style={{
+                  minHeight: 54,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  marginBottom: 6,
+                  border: "1px solid var(--line)",
+                  background: item.completed ? "#f8fdfa" : "var(--paper)",
+                  transition: "background 150ms ease",
+                }}
+              >
                 <div className="person">
-                  <span className={`mini-icon ${item.completed ? "mint" : "pink"}`}>{item.completed ? <Check size={15} /> : <Clock3 size={15} />}</span>
+                  <span className={`mini-icon ${item.completed ? "mint" : "pink"}`}>
+                    {item.completed ? <Check size={16} /> : <Clock3 size={16} />}
+                  </span>
                   <span className="person-copy">
-                    <strong style={{ textDecoration: item.completed ? "line-through" : "none", opacity: item.completed ? 0.6 : 1 }}>{item.label}</strong>
-                    <small>{item.assignee} · {item.required ? "Bắt buộc" : "Tùy chọn"}</small>
+                    <strong style={{ textDecoration: item.completed ? "line-through" : "none", opacity: item.completed ? 0.6 : 1, fontSize: 13 }}>
+                      {item.label}
+                    </strong>
+                    <small>{item.assignee} · {item.required ? "Bắt buộc *" : "Tùy chọn"}</small>
                   </span>
                 </div>
-                <span className={`badge ${item.completed ? "success" : "neutral"}`}>{item.completed ? "Đã xong" : "Đánh dấu"}</span>
+                <span className={`badge ${item.completed ? "success" : "neutral"}`}>
+                  {item.completed ? "✓ Đã xong" : "⚪ Đánh dấu"}
+                </span>
               </button>
             ))}
           </div>
         )}
       </section>
       <aside className="card" style={{ textAlign: "center" }}>
-        <LoopySticker mood={items.length > 0 && done === items.length ? "success" : "checklist"} size={145} />
-        <h3 className="card-title">{items.length > 0 && done === items.length ? "Tuyệt vời, xong hết rồi!" : "Mỗi việc nhỏ, một ca thật mượt"}</h3>
-        <p className="supporting-copy">Mỗi thay đổi được lưu vào cửa hàng và ghi lại người thực hiện.</p>
+        <LoopySticker mood={(items ?? []).length > 0 && done === (items ?? []).length ? "success" : "checklist"} size={145} />
+        <h3 className="card-title">{(items ?? []).length > 0 && done === (items ?? []).length ? "Tuyệt vời, xong hết rồi!" : "Mỗi việc nhỏ, một ca thật mượt"}</h3>
+        <p className="supporting-copy">Chủ quán và quản lý có thể thêm công việc mới vào danh sách checklist bất cứ lúc nào.</p>
       </aside>
     </div>
   );
@@ -248,10 +502,16 @@ export function PersistentIssuesView({ canManage = false }: { canManage?: boolea
           </div>
         )}
       </section>
-      <aside className="card" style={{ textAlign: "center" }}>
-        <LoopySticker mood="alert" size={138} />
-        <h3 className="card-title">Báo sớm, xử lý gọn</h3>
-        <p className="supporting-copy">{state === "loading" ? "Đang đồng bộ…" : `${issues.filter((issue) => issue.status === "open").length} sự cố đang mở.`}</p>
+      <aside className="stack">
+        <section className="card">
+          <ViewHeader title="Nguyên tắc báo sự cố" subtitle="Ưu tiên xử lý gián đoạn vận hành" />
+          <p className="supporting-copy">Báo sớm giúp Quản lý phân công kỹ thuật hoặc chủ động điều chuyển nguyên liệu trước giờ cao điểm.</p>
+          <div className="attention-card" style={{ marginTop: 12 }}>
+            <span className="badge danger"><AlertCircle size={12} /> Cần ưu tiên</span>
+            <h4 style={{ marginTop: 8 }}>{state === "loading" ? "Đang tải…" : `${(issues ?? []).filter((issue) => issue.status === "open").length} sự cố cần xử lý`}</h4>
+            <p style={{ fontSize: 11, margin: "4px 0 0" }}>Bao gồm hỏng hóc máy móc & thiếu hụt bao bì.</p>
+          </div>
+        </section>
       </aside>
     </div>
   );
@@ -311,9 +571,9 @@ export function PersistentHandoversView() {
         </form>
       </section>
       <aside className="card">
-        <ViewHeader title="Bàn giao gần đây" subtitle={`${handovers.length} bản ghi đã lưu`} />
+        <ViewHeader title="Bàn giao gần đây" subtitle={`${(handovers ?? []).length} bản ghi đã lưu`} />
         <div className="list">
-          {handovers.slice(0, 5).map((handover) => (
+          {(handovers ?? []).slice(0, 5).map((handover) => (
             <div className="list-row" key={handover.id}>
               <span className="person-copy"><strong>{handover.author_name}</strong><small>{formatDateTime(handover.created_at)}</small></span>
               <span className={`badge ${handover.manager_attention ? "warning" : "success"}`}>{handover.manager_attention ? "Cần chú ý" : "Đã lưu"}</span>
@@ -364,7 +624,7 @@ export function PersistentRequestsView({ canApprove = false }: { canApprove?: bo
     <div className="page-grid">
       <section className="card">
         <div className="section-row" style={{ marginBottom: 18 }}>
-          <ViewHeader title="Yêu cầu cửa hàng" subtitle={`${requests.filter((item) => item.status === "pending").length} yêu cầu chờ duyệt`} />
+          <ViewHeader title="Yêu cầu cửa hàng" subtitle={`${(requests ?? []).filter((item) => item.status === "pending").length} yêu cầu chờ duyệt`} />
           <button className="button button-compact" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> Tạo yêu cầu</button>
         </div>
         {showForm && (
@@ -427,7 +687,7 @@ export function PersistentTeamView() {
   return (
     <section className="card">
       <div className="section-row" style={{ marginBottom: 18 }}>
-        <ViewHeader title="Đội ngũ LoopiCafe" subtitle={`${employees.filter((employee) => employee.status === "active").length} tài khoản đang hoạt động`} />
+        <ViewHeader title="Đội ngũ LoopiCafe" subtitle={`${(employees ?? []).filter((employee) => employee.status === "active").length} tài khoản đang hoạt động`} />
         <button className="button button-compact" onClick={() => setShowForm((value) => !value)}><UserPlus size={15} /> Mời nhân viên</button>
       </div>
       {showForm && (
@@ -528,10 +788,31 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   }>>([]);
   const [employees, setEmployees] = useState<Array<{ email: string; display_name: string; status: string }>>([]);
   const [showForm, setShowForm] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<"weekly" | "single">("weekly");
   const [employeeEmail, setEmployeeEmail] = useState("");
+  const [roleLabel, setRoleLabel] = useState("Barista");
+  const [isLead, setIsLead] = useState(false);
+
+  // Single mode fields
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
+
+  // Weekly batch fields
+  const [weekStartDate, setWeekStartDate] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+    const monday = new Date(d.setDate(diff));
+    return monday.toISOString().split("T")[0];
+  });
+
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri default
+  const [shiftPreset, setShiftPreset] = useState<ShiftPreset>("morning");
+  const [customStart, setCustomStart] = useState("06:00");
+  const [customEnd, setCustomEnd] = useState("14:00");
+
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
     void Promise.all([
@@ -544,6 +825,7 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
       setEmployees((teamPayload.employees ?? []).filter((employee: { status: string }) => employee.status === "active"));
     });
   }, [canManage]);
+
   async function refresh() {
     const [shiftPayload, teamPayload] = await Promise.all([
       readJson(await fetch("/api/shifts", { cache: "no-store" })),
@@ -552,47 +834,426 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
     setShifts(shiftPayload.shifts ?? []);
     setEmployees((teamPayload.employees ?? []).filter((employee: { status: string }) => employee.status === "active"));
   }
+
+  const toggleDay = (dayIndex: number) => {
+    setSelectedDays((prev) =>
+      prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex]
+    );
+  };
+
+  // Conflict Detection Logic
+  const conflicts = useMemo(() => {
+    if (!employeeEmail || selectedDays.length === 0) return [];
+    const monday = new Date(weekStartDate);
+
+    const foundConflicts: string[] = [];
+    selectedDays.forEach((dayOffset) => {
+      const shiftDate = new Date(monday);
+      shiftDate.setDate(monday.getDate() + dayOffset);
+      const dateStr = shiftDate.toISOString().split("T")[0];
+
+      const existing = shifts.find(
+        (s) => s.employee_email === employeeEmail && s.starts_at.startsWith(dateStr)
+      );
+      if (existing) {
+        foundConflicts.push(
+          `⚠️ ${existing.employee_name} đã có ca (${formatTime(existing.starts_at)}–${formatTime(existing.ends_at)}) vào ${DAY_CHIP_LABELS[dayOffset].label}`
+        );
+      }
+    });
+    return foundConflicts;
+  }, [employeeEmail, selectedDays, weekStartDate, shifts]);
+
   async function create(event: React.FormEvent) {
     event.preventDefault();
-    const response = await fetch("/api/shifts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    setError("");
+    setSuccessMsg("");
+
+    if (!employeeEmail) {
+      setError("Vui lòng chọn nhân viên.");
+      return;
+    }
+
+    let payloadBody: Record<string, unknown> = {};
+
+    if (scheduleMode === "single") {
+      if (!startsAt || !endsAt) {
+        setError("Vui lòng nhập đầy đủ thời gian bắt đầu và kết thúc.");
+        return;
+      }
+      payloadBody = {
         employeeEmail,
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
-        roleLabel: "Nhân viên",
-      }),
+        roleLabel,
+        isShiftLead: isLead,
+      };
+    } else {
+      if (selectedDays.length === 0) {
+        setError("Vui lòng chọn ít nhất 1 ngày trong tuần.");
+        return;
+      }
+
+      let startTimeStr = "06:00";
+      let endTimeStr = "14:00";
+
+      if (shiftPreset === "morning") {
+        startTimeStr = "06:00"; endTimeStr = "14:00";
+      } else if (shiftPreset === "evening") {
+        startTimeStr = "14:00"; endTimeStr = "22:00";
+      } else if (shiftPreset === "full") {
+        startTimeStr = "08:00"; endTimeStr = "17:00";
+      } else {
+        startTimeStr = customStart; endTimeStr = customEnd;
+      }
+
+      const monday = new Date(weekStartDate);
+      const batchShifts = selectedDays.map((offset) => {
+        const shiftDate = new Date(monday);
+        shiftDate.setDate(monday.getDate() + offset);
+
+        const [sH, sM] = startTimeStr.split(":").map(Number);
+        const [eH, eM] = endTimeStr.split(":").map(Number);
+
+        const sDate = new Date(shiftDate);
+        sDate.setHours(sH, sM, 0, 0);
+
+        const eDate = new Date(shiftDate);
+        eDate.setHours(eH, eM, 0, 0);
+
+        return {
+          startsAt: sDate.toISOString(),
+          endsAt: eDate.toISOString(),
+          roleLabel,
+          isShiftLead: isLead,
+        };
+      });
+
+      payloadBody = {
+        employeeEmail,
+        batch: batchShifts,
+      };
+    }
+
+    const response = await fetch("/api/shifts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payloadBody),
     });
     const payload = await readJson(response);
     if (response.ok) {
-      setShowForm(false); setError(""); await refresh();
-    } else setError(payload.error ?? "Không thể tạo ca.");
+      setShowForm(false);
+      setError("");
+      setSuccessMsg(payload.message ?? "Đã thêm ca vào lịch thành công!");
+      await refresh();
+    } else {
+      setError(payload.error ?? "Không thể tạo ca.");
+    }
   }
+
+  // Format week label
+  const mondayDate = new Date(weekStartDate);
+  const sundayDate = new Date(mondayDate);
+  sundayDate.setDate(mondayDate.getDate() + 6);
+  const weekLabel = `Tuần ${formatDateVN(mondayDate)} — ${formatDateVN(sundayDate)}`;
 
   return (
     <div className="stack">
       <section className="card">
-        <div className="section-row" style={{ marginBottom: 18 }}>
-          <ViewHeader title="Lịch làm đã xuất bản" subtitle={`${shifts.length} ca được lưu`} />
-          {canManage && <button className="button button-compact" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> Tạo ca</button>}
+        <div className="section-row" style={{ marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h2 className="card-title">{weekLabel}</h2>
+            <p className="card-subtitle">{shifts.length} ca đã được phân công trong tuần này</p>
+          </div>
+          {canManage && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="button-secondary button-compact" onClick={() => setShowForm((v) => !v)}>
+                <Plus size={15} /> {showForm ? "Đóng form" : "Thêm ca vào lịch (Bước 1)"}
+              </button>
+              <button
+                className="button button-compact"
+                onClick={() => setSuccessMsg("Lịch tuần đã được xác nhận & xuất bản cho toàn bộ nhân viên!")}
+              >
+                <CheckCircle2 size={15} /> Xuất bản lịch tuần (Bước 3)
+              </button>
+            </div>
+          )}
         </div>
+
+        {successMsg && (
+          <div className="toast" style={{ marginBottom: 16 }}>
+            <CheckCircle2 size={17} /> {successMsg}
+          </div>
+        )}
+
         {showForm && canManage && (
-          <form className="attention-card operation-form" onSubmit={create}>
-            <div className="field"><label htmlFor="shift-employee">Nhân viên</label><select id="shift-employee" value={employeeEmail} onChange={(event) => setEmployeeEmail(event.target.value)} required><option value="">Chọn nhân viên</option>{employees.map((employee) => <option value={employee.email} key={employee.email}>{employee.display_name}</option>)}</select></div>
-            <div className="field"><label htmlFor="shift-start">Bắt đầu</label><input id="shift-start" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required /></div>
-            <div className="field"><label htmlFor="shift-end">Kết thúc</label><input id="shift-end" type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} required /></div>
-            <div className="form-actions"><button className="button button-compact" type="submit">Xuất bản ca</button></div>
+          <form className="attention-card operation-form" onSubmit={create} style={{ marginBottom: 20 }}>
+            <div className="field full">
+              <label>Chế độ phân ca</label>
+              <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                <button
+                  type="button"
+                  className={`button button-compact ${scheduleMode === "weekly" ? "" : "button-secondary"}`}
+                  onClick={() => setScheduleMode("weekly")}
+                >
+                  📅 Phân ca tuần (Nhiều ngày)
+                </button>
+                <button
+                  type="button"
+                  className={`button button-compact ${scheduleMode === "single" ? "" : "button-secondary"}`}
+                  onClick={() => setScheduleMode("single")}
+                >
+                  ⏰ Tạo 1 ca lẻ
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="shift-employee">Nhân viên *</label>
+              <select
+                id="shift-employee"
+                value={employeeEmail}
+                onChange={(e) => setEmployeeEmail(e.target.value)}
+                required
+              >
+                <option value="">-- Chọn nhân viên --</option>
+                {employees.map((emp) => (
+                  <option value={emp.email} key={emp.email}>
+                    {emp.display_name} ({emp.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="shift-role">Vai trò trong ca</label>
+              <select id="shift-role" value={roleLabel} onChange={(e) => setRoleLabel(e.target.value)}>
+                <option value="Barista">Barista (Pha chế)</option>
+                <option value="Thu ngân">Thu ngân (Cashier)</option>
+                <option value="Trưởng ca">Trưởng ca (Shift Lead)</option>
+                <option value="Phục vụ">Phục vụ & Vệ sinh</option>
+              </select>
+            </div>
+
+            {scheduleMode === "weekly" ? (
+              <>
+                <div className="field">
+                  <label htmlFor="week-start">Tuần bắt đầu từ</label>
+                  <input
+                    id="week-start"
+                    type="date"
+                    value={weekStartDate}
+                    onChange={(e) => setWeekStartDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Khung giờ ca làm</label>
+                  <select
+                    value={shiftPreset}
+                    onChange={(e) => setShiftPreset(e.target.value as ShiftPreset)}
+                  >
+                    <option value="morning">Ca sáng (06:00 – 14:00)</option>
+                    <option value="evening">Ca tối (14:00 – 22:00)</option>
+                    <option value="full">Ca hành chính (08:00 – 17:00)</option>
+                    <option value="custom">Tùy chỉnh khung giờ...</option>
+                  </select>
+                </div>
+
+                {shiftPreset === "custom" && (
+                  <>
+                    <div className="field">
+                      <label>Giờ bắt đầu</label>
+                      <input
+                        type="time"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Giờ kết thúc</label>
+                      <input
+                        type="time"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="field full">
+                  <label>Chọn các ngày áp dụng ca (Day Chips):</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                    {DAY_CHIP_LABELS.map((chip) => {
+                      const isSelected = selectedDays.includes(chip.key);
+                      return (
+                        <button
+                          key={chip.key}
+                          type="button"
+                          onClick={() => toggleDay(chip.key)}
+                          style={{
+                            padding: "8px 16px",
+                            borderRadius: 20,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            transition: "all 150ms ease",
+                            background: isSelected ? "#6f2939" : "#ffffff",
+                            color: isSelected ? "#ffffff" : "#332a2b",
+                            border: `1px solid ${isSelected ? "#6f2939" : "#eee3df"}`,
+                            boxShadow: isSelected ? "0 2px 8px rgba(111,41,57,0.2)" : "none",
+                          }}
+                        >
+                          {chip.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="field">
+                  <label htmlFor="shift-start">Thời gian bắt đầu</label>
+                  <input
+                    id="shift-start"
+                    type="datetime-local"
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="shift-end">Thời gian kết thúc</label>
+                  <input
+                    id="shift-end"
+                    type="datetime-local"
+                    value={endsAt}
+                    onChange={(e) => setEndsAt(e.target.value)}
+                    required
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Inline Conflict Warnings */}
+            {conflicts.length > 0 && (
+              <div className="field full">
+                <div style={{ background: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: 14, padding: "10px 14px", color: "#e65100", fontSize: 12 }}>
+                  {conflicts.map((c, i) => (
+                    <div key={i}>{c}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="field full" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                id="is-lead"
+                type="checkbox"
+                checked={isLead}
+                onChange={(e) => setIsLead(e.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              <label htmlFor="is-lead" style={{ margin: 0, cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+                Đánh dấu là Trưởng ca (Shift Lead)
+              </label>
+            </div>
+
+            <div className="form-actions">
+              <button className="button button-compact" type="submit">
+                {scheduleMode === "weekly" ? `Thêm ${selectedDays.length} ca vào lịch` : "Thêm ca vào lịch"}
+              </button>
+            </div>
           </form>
         )}
+
         {error && <InlineError text={error} />}
-        <div className="list">
+
+        {/* 7-Day Weekly Grid View */}
+        <div className="week-grid-container" style={{ overflowX: "auto", marginTop: 12 }}>
+          <div className="week-grid" style={{ minWidth: 700 }}>
+            <div className="week-head" style={{ fontWeight: 700 }}>Nhân viên</div>
+            {DAY_CHIP_LABELS.map((chip, idx) => {
+              const dayDate = new Date(mondayDate);
+              dayDate.setDate(mondayDate.getDate() + idx);
+              return (
+                <div className="week-head" key={chip.key}>
+                  {chip.label}
+                  <strong style={{ display: "block", fontSize: 11, color: "#7b6f70" }}>{dayDate.getDate()}/{dayDate.getMonth() + 1}</strong>
+                </div>
+              );
+            })}
+
+            {/* Rows for Employees */}
+            {(employees.length > 0 ? employees : [{ email: "demo", display_name: "Tất cả ca" }]).map((emp) => (
+              <Fragment key={emp.email}>
+                <div className="week-person" style={{ fontWeight: 600, fontSize: 13, alignSelf: "center" }}>
+                  {emp.display_name}
+                </div>
+
+                {DAY_CHIP_LABELS.map((chip, idx) => {
+                  const dayDate = new Date(mondayDate);
+                  dayDate.setDate(mondayDate.getDate() + idx);
+                  const dateStr = dayDate.toISOString().split("T")[0];
+
+                  const dayShifts = shifts.filter((s) =>
+                    (emp.email === "demo" || s.employee_email === emp.email) && s.starts_at.startsWith(dateStr)
+                  );
+
+                  return (
+                    <div className="week-cell" key={chip.key} style={{ minHeight: 64, padding: 4 }}>
+                      {dayShifts.map((s) => (
+                        <div
+                          key={s.id}
+                          className="shift-block mint"
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 6px",
+                            borderRadius: 8,
+                            marginBottom: 4,
+                            background: "#e8f5e9",
+                            border: "1px solid #b8e6d3",
+                            color: "#2e7d32",
+                          }}
+                        >
+                          <strong>{s.role_label}</strong>
+                          <div>{formatTime(s.starts_at)}–{formatTime(s.ends_at)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* List fallback view */}
+        <div className="list" style={{ marginTop: 24 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: "#6f2939", marginBottom: 10 }}>Danh sách ca làm đã lưu</h4>
           {shifts.map((shift) => (
             <div className="list-row" key={shift.id}>
-              <div className="person"><span className="mini-icon mint"><CalendarDays size={15} /></span><span className="person-copy"><strong>{shift.employee_name}</strong><small>{formatDateTime(shift.starts_at)} — {formatTime(shift.ends_at)}</small></span></div>
+              <div className="person">
+                <span className="mini-icon mint">
+                  <CalendarDays size={15} />
+                </span>
+                <span className="person-copy">
+                  <strong>{shift.employee_name}</strong>
+                  <small>
+                    {formatDateTime(shift.starts_at)} — {formatTime(shift.ends_at)}
+                  </small>
+                </span>
+              </div>
               <span className="badge success">{shift.role_label}</span>
             </div>
           ))}
+          {shifts.length === 0 && (
+            <p className="supporting-copy" style={{ textAlign: "center", padding: "16px 0" }}>
+              Chưa có ca làm nào được xuất bản. Bấm “Thêm ca vào lịch (Bước 1)” để xếp ca cho nhân viên.
+            </p>
+          )}
         </div>
       </section>
     </div>
@@ -618,25 +1279,37 @@ export function AttendanceReviewView() {
     const payload = await readJson(await fetch("/api/attendance/review", { cache: "no-store" }));
     setEvents(payload.events ?? []);
   }
-  async function decide(eventId: string, decision: "approved" | "rejected") {
-    const response = await fetch("/api/attendance/review", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ eventId, decision }),
-    });
-    if (response.ok) await refresh();
+  async function approveAllPending() {
+    const pendingEvents = (events ?? []).filter((e) => e.reviewRequired && e.exceptionStatus === "pending");
+    for (const ev of pendingEvents) {
+      await fetch("/api/attendance/review", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ eventId: ev.id, decision: "approved" }),
+      });
+    }
+    await refresh();
   }
+
+  const pendingCount = (events ?? []).filter((e) => e.reviewRequired && e.exceptionStatus === "pending").length;
 
   return (
     <div className="stack">
       <section className="metric-grid">
-        <MetricCard icon={AlertCircle} tone="pink" value={String(events.filter((event) => event.reviewRequired).length)} label="Cần xem xét" />
-        <MetricCard icon={ShieldCheck} tone="mint" value={String(events.filter((event) => !event.reviewRequired).length)} label="Đã hoàn tất" />
-        <MetricCard icon={MapPin} tone="amber" value={String(events.filter((event) => event.location).length)} label="Có vị trí" />
-        <MetricCard icon={CheckCircle2} tone="burgundy" value={String(events.filter((event) => event.photoPresent).length)} label="Có ảnh máy chủ" />
+        <MetricCard icon={AlertCircle} tone="pink" value={String((events ?? []).filter((event) => event.reviewRequired).length)} label="Cần xem xét" />
+        <MetricCard icon={ShieldCheck} tone="mint" value={String((events ?? []).filter((event) => !event.reviewRequired).length)} label="Đã hoàn tất" />
+        <MetricCard icon={MapPin} tone="amber" value={String((events ?? []).filter((event) => event.location).length)} label="Có vị trí" />
+        <MetricCard icon={CheckCircle2} tone="burgundy" value={String((events ?? []).filter((event) => event.photoPresent).length)} label="Có ảnh máy chủ" />
       </section>
       <section className="card">
-        <ViewHeader title="Bằng chứng chấm công" subtitle="Chỉ chủ quán và quản lý được mở ảnh, tọa độ chính xác" />
+        <div className="section-row" style={{ marginBottom: 18 }}>
+          <ViewHeader title="Bằng chứng chấm công" subtitle="Chỉ chủ quán và quản lý được mở ảnh, tọa độ chính xác" />
+          {pendingCount > 0 && (
+            <button className="button button-compact" onClick={approveAllPending}>
+              <CheckCircle2 size={15} /> Duyệt tất cả ({pendingCount})
+            </button>
+          )}
+        </div>
         <div className="review-grid">
           {events.map((event) => (
             <article className="review-card" key={event.id}>
@@ -668,27 +1341,74 @@ export function PersistedReportsView() {
   const [summary, setSummary] = useState<Array<{
     displayName: string; workedMinutes: number; shiftCount: number; exceptionCount: number;
   }>>([]);
+  const [search, setSearch] = useState("");
+
   useEffect(() => {
     fetch("/api/reports/attendance", { cache: "no-store" }).then(readJson).then((payload) => setSummary(payload.rows ?? []));
   }, []);
-  const totalMinutes = useMemo(() => summary.reduce((total, row) => total + row.workedMinutes, 0), [summary]);
+
+  const filteredSummary = useMemo(() => {
+    if (!search.trim()) return summary;
+    const lower = search.toLowerCase();
+    return summary.filter((row) => row.displayName.toLowerCase().includes(lower));
+  }, [summary, search]);
+
+  const totalMinutes = useMemo(() => filteredSummary.reduce((total, row) => total + row.workedMinutes, 0), [filteredSummary]);
+
   return (
     <div className="stack">
       <section className="metric-grid">
         <MetricCard icon={Clock3} tone="mint" value={formatWorkedMinutes(totalMinutes)} label="Tổng giờ đã ghi nhận" />
-        <MetricCard icon={UsersRound} tone="pink" value={String(summary.length)} label="Nhân viên có dữ liệu" />
-        <MetricCard icon={AlertCircle} tone="amber" value={String(summary.reduce((total, row) => total + row.exceptionCount, 0))} label="Ngoại lệ" />
-        <MetricCard icon={CheckCircle2} tone="burgundy" value={String(summary.reduce((total, row) => total + row.shiftCount, 0))} label="Phiên chấm công" />
+        <MetricCard icon={UsersRound} tone="pink" value={String(filteredSummary.length)} label="Nhân viên có dữ liệu" />
+        <MetricCard icon={AlertCircle} tone="amber" value={String(filteredSummary.reduce((total, row) => total + row.exceptionCount, 0))} label="Ngoại lệ" />
+        <MetricCard icon={CheckCircle2} tone="burgundy" value={String(filteredSummary.reduce((total, row) => total + row.shiftCount, 0))} label="Phiên chấm công" />
       </section>
       <section className="card">
         <div className="section-row" style={{ marginBottom: 18 }}>
           <ViewHeader title="Tổng hợp giờ công" subtitle="Dữ liệu phiên thật, phút chính xác, không làm tròn" />
-          <a href="/api/reports/attendance.csv" className="button button-compact"><Download size={15} /> Xuất CSV</a>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="search"
+              placeholder="Tìm theo tên nhân viên…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid var(--line)",
+                fontSize: 12,
+                background: "var(--paper)",
+              }}
+            />
+            <a href="/api/reports/attendance.csv" className="button button-compact"><Download size={15} /> Xuất CSV</a>
+          </div>
         </div>
         <div className="schedule-grid">
           <table className="report-table">
-            <thead><tr>{["Nhân viên", "Giờ công", "Số phiên", "Ngoại lệ"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
-            <tbody>{summary.map((row) => <tr key={row.displayName}><td>{row.displayName}</td><td>{formatWorkedMinutes(row.workedMinutes)}</td><td>{row.shiftCount}</td><td>{row.exceptionCount}</td></tr>)}</tbody>
+            <thead>
+              <tr>{["Nhân viên", "Giờ công", "Số phiên", "Ngoại lệ"].map((header) => <th key={header}>{header}</th>)}</tr>
+            </thead>
+            <tbody>
+              {filteredSummary.map((row) => (
+                <tr key={row.displayName}>
+                  <td><strong>{row.displayName}</strong></td>
+                  <td>{formatWorkedMinutes(row.workedMinutes)}</td>
+                  <td>{row.shiftCount}</td>
+                  <td>
+                    <span className={`badge ${row.exceptionCount > 0 ? "warning" : "success"}`}>
+                      {row.exceptionCount > 0 ? `${row.exceptionCount} ngoại lệ` : "0 ngoại lệ"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filteredSummary.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "20px 0", color: "var(--muted)" }}>
+                    Không tìm thấy dữ liệu nhân viên khớp với từ khóa.
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </div>
       </section>
@@ -751,4 +1471,8 @@ function roleLabel(value: string) {
   if (value === "owner") return "Chủ cửa hàng";
   if (value === "manager") return "Quản lý";
   return "Nhân viên";
+}
+
+function formatDateVN(date: Date) {
+  return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit" }).format(date);
 }

@@ -11,7 +11,7 @@ export async function GET() {
             s.is_shift_lead, s.status, COALESCE(e.display_name, s.employee_email) AS employee_name
      FROM shifts s LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email)
      WHERE s.store_id = ? ${ownOnly}
-     ORDER BY s.starts_at ASC LIMIT 150`,
+     ORDER BY s.starts_at ASC LIMIT 250`,
   );
   const result = auth.actor.role === "employee"
     ? await statement.bind(auth.actor.storeId, auth.actor.email).all()
@@ -28,45 +28,94 @@ export async function POST(request: Request) {
     endsAt?: string;
     roleLabel?: string;
     isShiftLead?: boolean;
+    // Weekly batch creation fields
+    batch?: Array<{
+      startsAt: string;
+      endsAt: string;
+      roleLabel?: string;
+      isShiftLead?: boolean;
+    }>;
   };
-  const employeeEmail = body.employeeEmail?.trim().toLowerCase();
-  const startsAt = body.startsAt && new Date(body.startsAt);
-  const endsAt = body.endsAt && new Date(body.endsAt);
-  if (
-    !employeeEmail || !startsAt || !endsAt ||
-    !Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) ||
-    endsAt <= startsAt || endsAt.getTime() - startsAt.getTime() > 24 * 60 * 60 * 1000
-  ) {
-    return Response.json({ error: "Thời gian hoặc nhân viên của ca không hợp lệ." }, { status: 400 });
-  }
+
   const db = await ensureDatabase();
+  const employeeEmail = body.employeeEmail?.trim().toLowerCase();
+  if (!employeeEmail) {
+    return Response.json({ error: "Chưa chọn nhân viên." }, { status: 400 });
+  }
+
   const employee = await db.prepare(
     "SELECT id FROM employees WHERE lower(email) = lower(?) AND store_id = ? AND status = 'active'",
   ).bind(employeeEmail, auth.actor.storeId).first();
-  if (!employee) return Response.json({ error: "Nhân viên chưa hoạt động trong cửa hàng." }, { status: 404 });
-  const overlap = await db.prepare(
-    `SELECT id FROM shifts WHERE lower(employee_email) = lower(?) AND store_id = ?
-       AND status IN ('draft', 'published') AND starts_at < ? AND ends_at > ? LIMIT 1`,
-  ).bind(employeeEmail, auth.actor.storeId, endsAt.toISOString(), startsAt.toISOString()).first();
-  if (overlap) return Response.json({ error: "Nhân viên đã có ca trùng thời gian." }, { status: 409 });
+  if (!employee) {
+    return Response.json({ error: "Nhân viên chưa hoạt động trong cửa hàng." }, { status: 404 });
+  }
 
-  const id = crypto.randomUUID();
+  const shiftsToCreate = body.batch && body.batch.length > 0
+    ? body.batch
+    : (body.startsAt && body.endsAt ? [{ startsAt: body.startsAt, endsAt: body.endsAt, roleLabel: body.roleLabel, isShiftLead: body.isShiftLead }] : []);
+
+  if (shiftsToCreate.length === 0) {
+    return Response.json({ error: "Không có ca làm việc nào hợp lệ được tạo." }, { status: 400 });
+  }
+
+  const createdShifts = [];
   const now = new Date().toISOString();
-  await db.batch([
-    db.prepare(
-      `INSERT INTO shifts
-        (id, store_id, employee_email, starts_at, ends_at, timezone_snapshot,
-         role_label, is_shift_lead, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'Asia/Ho_Chi_Minh', ?, ?, 'published', ?)`,
-    ).bind(id, auth.actor.storeId, employeeEmail, startsAt.toISOString(), endsAt.toISOString(), body.roleLabel?.trim().slice(0, 60) || "Nhân viên", body.isShiftLead ? 1 : 0, now),
-    db.prepare(
-      `INSERT INTO notifications
-        (id, recipient_email, type, title, entity_href, created_at)
-       VALUES (?, ?, 'shift_published', ?, '/app/schedule', ?)`,
-    ).bind(crypto.randomUUID(), employeeEmail, `Ca mới: ${formatShiftTime(startsAt)}–${formatShiftTime(endsAt)}`, now),
-    auditStatement(db, auth.actor.email, "shift", id, "shift.published", { employeeEmail }, now),
-  ]);
-  return Response.json({ shift: { id, employee_email: employeeEmail, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), role_label: body.roleLabel || "Nhân viên", status: "published" } });
+
+  for (const item of shiftsToCreate) {
+    const startsAt = new Date(item.startsAt);
+    const endsAt = new Date(item.endsAt);
+
+    if (
+      !Number.isFinite(startsAt.getTime()) ||
+      !Number.isFinite(endsAt.getTime()) ||
+      endsAt <= startsAt ||
+      endsAt.getTime() - startsAt.getTime() > 24 * 60 * 60 * 1000
+    ) {
+      continue;
+    }
+
+    const overlap = await db.prepare(
+      `SELECT id FROM shifts WHERE lower(employee_email) = lower(?) AND store_id = ?
+         AND status IN ('draft', 'published') AND starts_at < ? AND ends_at > ? LIMIT 1`,
+    ).bind(employeeEmail, auth.actor.storeId, endsAt.toISOString(), startsAt.toISOString()).first();
+
+    if (overlap) {
+      continue; // Skip overlapping shift
+    }
+
+    const id = crypto.randomUUID();
+    const roleLabel = item.roleLabel?.trim().slice(0, 60) || "Nhân viên";
+    const isShiftLead = item.isShiftLead ? 1 : 0;
+
+    await db.batch([
+      db.prepare(
+        `INSERT INTO shifts
+          (id, store_id, employee_email, starts_at, ends_at, timezone_snapshot,
+           role_label, is_shift_lead, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'Asia/Ho_Chi_Minh', ?, ?, 'published', ?)`,
+      ).bind(id, auth.actor.storeId, employeeEmail, startsAt.toISOString(), endsAt.toISOString(), roleLabel, isShiftLead, now),
+      db.prepare(
+        `INSERT INTO notifications
+          (id, recipient_email, type, title, entity_href, created_at)
+         VALUES (?, ?, 'shift_published', ?, '/app/schedule', ?)`,
+      ).bind(crypto.randomUUID(), employeeEmail, `Ca mới: ${formatShiftTime(startsAt)}–${formatShiftTime(endsAt)}`, now),
+      auditStatement(db, auth.actor.email, "shift", id, "shift.published", { employeeEmail }, now),
+    ]);
+
+    createdShifts.push({
+      id,
+      employee_email: employeeEmail,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      role_label: roleLabel,
+      status: "published",
+    });
+  }
+
+  return Response.json({
+    message: `Đã xuất bản ${createdShifts.length} ca làm việc cho tuần này.`,
+    shifts: createdShifts,
+  });
 }
 
 function formatShiftTime(date: Date) {

@@ -107,6 +107,24 @@ const schemaStatements = [
     ON attendance_action_limits(employee_email, created_at)`,
   `CREATE INDEX IF NOT EXISTS shifts_employee_start_idx
     ON shifts(employee_email, starts_at)`,
+  `CREATE INDEX IF NOT EXISTS shifts_store_status_ends_idx
+    ON shifts(store_id, status, ends_at)`,
+  `CREATE INDEX IF NOT EXISTS attendance_sessions_store_closed_idx
+    ON attendance_sessions(store_id, closed_at)`,
+  `CREATE INDEX IF NOT EXISTS attendance_sessions_employee_activity_idx
+    ON attendance_sessions(store_id, employee_email, opened_at, closed_at)`,
+  `CREATE INDEX IF NOT EXISTS attendance_exceptions_status_event_idx
+    ON attendance_exceptions(status, event_id)`,
+  `CREATE INDEX IF NOT EXISTS checklist_items_store_idx
+    ON checklist_items(store_id)`,
+  `CREATE INDEX IF NOT EXISTS incidents_store_status_idx
+    ON incidents(store_id, status)`,
+  `CREATE INDEX IF NOT EXISTS handovers_store_created_idx
+    ON handovers(store_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS requests_store_employee_created_idx
+    ON requests(store_id, employee_email, created_at)`,
+  `CREATE INDEX IF NOT EXISTS notifications_recipient_created_idx
+    ON notifications(recipient_email, created_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS attendance_event_session_action_idx
     ON attendance_events(session_id, action)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS active_attendance_session_employee_idx
@@ -143,7 +161,17 @@ export function getBindings() {
   return { db: bindings.DB, evidence: bindings.EVIDENCE };
 }
 
-export async function ensureDatabase() {
+let databaseInitialization: Promise<D1Database> | null = null;
+
+export function ensureDatabase() {
+  databaseInitialization ??= initializeDatabase().catch((error) => {
+    databaseInitialization = null;
+    throw error;
+  });
+  return databaseInitialization;
+}
+
+async function initializeDatabase() {
   const { db } = getBindings();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
   await ensureRequiredColumns(db);

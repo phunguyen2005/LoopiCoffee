@@ -1,19 +1,6 @@
 import type { Metadata } from "next";
-import { Be_Vietnam_Pro, Nunito } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
-
-const sans = Be_Vietnam_Pro({
-  variable: "--font-sans",
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const display = Nunito({
-  variable: "--font-display",
-  subsets: ["latin", "vietnamese"],
-  weight: ["600", "700", "800"],
-});
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -55,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
-      <body className={`${sans.variable} ${display.variable}`}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

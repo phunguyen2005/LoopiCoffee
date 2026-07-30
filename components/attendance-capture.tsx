@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, CheckCircle2, Clock3, LoaderCircle, MapPin, RefreshCw, ShieldAlert } from "lucide-react";
+import { Camera, CheckCircle2, Clock3, LoaderCircle, MapPin, RefreshCw, ShieldAlert, X, Eye } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type LocationEvidence = {
@@ -39,13 +39,14 @@ export function AttendanceCapture() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [action, setAction] = useState<AttendanceAction>("check_in");
-  const [step, setStep] = useState<"idle" | "preparing" | "ready" | "submitting" | "success" | "error">("idle");
+  const [step, setStep] = useState<"idle" | "preparing" | "ready" | "review_photo" | "submitting" | "success" | "error">("idle");
   const [location, setLocation] = useState<LocationEvidence | null>(null);
   const [session, setSession] = useState<CaptureSession | null>(null);
   const [result, setResult] = useState<AttendanceResult | null>(null);
   const [error, setError] = useState("");
   const [explanation, setExplanation] = useState("");
   const [preview, setPreview] = useState("");
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   useEffect(() => () => stopStream(), []);
 
@@ -118,9 +119,9 @@ export function AttendanceCapture() {
     }
   }
 
-  async function capture() {
-    if (!session || !videoRef.current || !canvasRef.current || !location) return;
-    setStep("submitting");
+  // Snap photo to preview step
+  function snapPhoto() {
+    if (!videoRef.current || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const video = videoRef.current;
     const width = Math.min(video.videoWidth || 960, 1280);
@@ -135,6 +136,14 @@ export function AttendanceCapture() {
     }
     context.drawImage(video, 0, 0, width, height);
     const rawPhoto = canvas.toDataURL("image/jpeg", 0.84);
+    setPreview(rawPhoto);
+    setStep("review_photo");
+  }
+
+  // Submit confirmed photo
+  async function confirmSubmit() {
+    if (!session || !preview || !location) return;
+    setStep("submitting");
 
     try {
       const actionResponse = await fetch("/api/attendance/actions", {
@@ -146,13 +155,12 @@ export function AttendanceCapture() {
           idempotencyKey: crypto.randomUUID(),
           action,
           location,
-          photo: rawPhoto,
+          photo: preview,
         }),
       });
       const payload = (await actionResponse.json()) as AttendanceResult & { error?: string };
       if (!actionResponse.ok) throw new Error(payload.error || "Không thể ghi nhận chấm công.");
 
-      setPreview(rawPhoto);
       setResult(payload);
       stopStream();
       setStep("success");
@@ -212,42 +220,57 @@ export function AttendanceCapture() {
   return (
     <section className="card capture-card">
       <div className="capture-stage">
-        {preview ? (
+        {preview && (step === "review_photo" || step === "submitting" || step === "success") ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="Ảnh chấm công có thời gian và vị trí" className="capture-preview" />
+          <img src={preview} alt="Ảnh chụp chấm công trực tiếp" className="capture-preview" />
         ) : (
           <video
             ref={videoRef}
             className="capture-video"
             playsInline
             muted
-            style={{ display: step === "ready" || step === "submitting" ? "block" : "none" }}
+            style={{ display: step === "ready" ? "block" : "none" }}
           />
         )}
+
         {(step === "idle" || step === "preparing" || step === "error") && !preview && (
           <div className="capture-placeholder">
-            {step === "preparing" ? <LoaderCircle size={42} className="spin" /> : step === "error" ? <ShieldAlert size={42} /> : <Camera size={42} />}
-            <h3>{step === "preparing" ? "Đang chuẩn bị camera & vị trí…" : step === "error" ? "Chưa lấy được bằng chứng" : action === "check_in" ? "Chấm vào ca bằng ảnh trực tiếp" : "Chấm ra ca bằng ảnh trực tiếp"}</h3>
-            <p>{step === "error" ? error : "Camera và vị trí chỉ bắt đầu sau khi bạn bấm nút bên dưới. LoopiCafe không theo dõi vị trí nền."}</p>
+            {step === "preparing" ? (
+              <LoaderCircle size={42} className="spin text-[#d96d83]" />
+            ) : step === "error" ? (
+              <ShieldAlert size={42} className="text-[#c75865]" />
+            ) : (
+              <Camera size={42} className="text-[#6f2939]" />
+            )}
+            <h3>
+              {step === "preparing"
+                ? "Đang kết nối camera & kiểm tra vị trí…"
+                : step === "error"
+                ? "Chưa xác minh tự động"
+                : action === "check_in"
+                ? "Chấm vào ca bằng ảnh trực tiếp"
+                : "Chấm ra ca bằng ảnh trực tiếp"}
+            </h3>
+            <p>
+              {step === "error"
+                ? error
+                : "Camera chỉ mở sau khi bạn bấm bắt đầu. LoopiCafe không theo dõi nền và không lưu định vị liên tục."}
+            </p>
           </div>
         )}
-        {step === "success" && result && !preview && (
+
+        {step === "ready" && (
+          <div className="capture-framing-overlay">
+            <div className="framing-guide" />
+            <span className="framing-hint">Giữ khuôn mặt trong khung hình</span>
+          </div>
+        )}
+
+        {step === "success" && result && (
           <div className="capture-placeholder">
-            <CheckCircle2 size={46} />
-            <h3>{action === "check_in" ? "Đã ghi nhận vào ca" : "Đã ghi nhận ra ca"}</h3>
-            <p>Giờ máy chủ: {result.localTime}. Ảnh hoặc vị trí chưa đầy đủ nên phiên này không được tự động xác nhận.</p>
-          </div>
-        )}
-        {step === "ready" && location && (
-          <div className="capture-overlay">
-            <strong>Vị trí vừa ghi nhận</strong><br />
-            {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)} · ±{Math.round(location.accuracy)} m · cách quán {Math.round(location.distance)} m
-          </div>
-        )}
-        {step === "success" && result && preview && (
-          <div className="capture-overlay">
-            <strong>{result.evidenceStored ? "Máy chủ đã đóng dấu & lưu riêng tư" : "Đã ghi nhận ngoại lệ để xem xét"}</strong><br />
-            {result.localTime} · {result.reviewRequired ? "Cần quản lý duyệt" : "Bằng chứng đầy đủ"}
+            <CheckCircle2 size={48} className="text-[#4c9779]" />
+            <h3>{action === "check_in" ? "Đã xác nhận vào ca" : "Đã xác nhận ra ca"}</h3>
+            <p>Giờ máy chủ: {result.localTime}. Bằng chứng đã được lưu an toàn.</p>
           </div>
         )}
       </div>
@@ -273,43 +296,137 @@ export function AttendanceCapture() {
             Ra ca
           </button>
         </div>
-        {action === "check_out" && step === "idle" && (
-          <p className="checkout-warning">
-            Việc mở/đóng ca chưa hoàn tất vẫn không chặn ra ca. Bạn sẽ được yêu cầu giải thích và quản lý sẽ xem lại.
-          </p>
-        )}
+
+        {/* Dynamic Step Progress Indicator */}
+        <div className="step-tracker" style={{ display: "flex", justifyContent: "center", gap: 16, margin: "10px 0 14px", fontSize: 12, color: "#7b6f70" }}>
+          <span style={{ fontWeight: step === "idle" || step === "preparing" ? 700 : 400, color: step === "idle" || step === "preparing" ? "#6f2939" : undefined }}>1. Bắt đầu</span>
+          <span>➔</span>
+          <span style={{ fontWeight: step === "ready" ? 700 : 400, color: step === "ready" ? "#6f2939" : undefined }}>2. Chụp ảnh</span>
+          <span>➔</span>
+          <span style={{ fontWeight: step === "review_photo" ? 700 : 400, color: step === "review_photo" ? "#6f2939" : undefined }}>3. Xem lại</span>
+          <span>➔</span>
+          <span style={{ fontWeight: step === "success" ? 700 : 400, color: step === "success" ? "#4c9779" : undefined }}>4. Hoàn tất</span>
+        </div>
+
         {step === "error" && (
-          <div className="field exception-field">
-            <label htmlFor="attendance-explanation">Giải thích cho quản lý</label>
+          <div className="field exception-field" style={{ marginTop: 10 }}>
+            <label htmlFor="attendance-explanation" style={{ fontWeight: 600, fontSize: 13, color: "#6f2939" }}>
+              Gửi giải thích để Quản lý duyệt thủ công
+            </label>
             <textarea
               id="attendance-explanation"
               value={explanation}
               onChange={(event) => setExplanation(event.target.value)}
-              placeholder="Ví dụ: Camera điện thoại đang bị lỗi, tôi đã báo trực tiếp cho trưởng ca."
+              placeholder="Ví dụ: Camera điện thoại bị hỏng, tôi đã xin phép quản lý vào ca đúng giờ."
+              rows={3}
             />
           </div>
         )}
+
+        {/* Verification Evidence Summary Chips */}
         <div className="capture-evidence">
           <Evidence label="Thời gian" value={result ? result.localTime : "Máy chủ xác nhận"} icon={Clock3} />
-          <Evidence label="Vị trí" value={location ? `±${Math.round(location.accuracy)} m` : "Chờ quyền truy cập"} icon={MapPin} />
-          <Evidence label="Khoảng cách" value={location ? `${Math.round(location.distance)} m` : "Chỉ để tham khảo"} icon={ShieldAlert} />
+          <Evidence label="Tín hiệu vị trí" value={location ? `Đã lấy (±${Math.round(location.accuracy)} m)` : "Chờ quyền"} icon={MapPin} />
+          <Evidence label="Mạng cửa hàng" value={location ? `Tham khảo (${Math.round(location.distance)} m)` : "Chưa xác minh"} icon={ShieldAlert} />
         </div>
+
+        {/* Action Controls */}
         <div className="capture-actions">
-          {step === "idle" && <button className="button button-large" onClick={beginCapture}><Camera size={18} /> {action === "check_in" ? "Bắt đầu vào ca" : "Bắt đầu ra ca"}</button>}
-          {step === "ready" && <button className="button button-large" onClick={capture}><Camera size={18} /> Chụp & ghi nhận {action === "check_in" ? "vào ca" : "ra ca"}</button>}
-          {step === "preparing" || step === "submitting" ? <button className="button button-large" disabled><LoaderCircle size={18} className="spin" /> Đang xử lý…</button> : null}
-          {step === "error" && (
-            <>
-              <button className="button-secondary button-compact" onClick={reset}><RefreshCw size={15} /> Thử lại</button>
-              <button className="button button-compact" onClick={submitException} disabled={explanation.trim().length < 5}>Gửi để duyệt thủ công</button>
-            </>
+          {step === "idle" && (
+            <button className="button button-large" onClick={beginCapture}>
+              <Camera size={18} /> {action === "check_in" ? "Bước 1: Bắt đầu vào ca" : "Bước 1: Bắt đầu ra ca"}
+            </button>
           )}
-          {step === "success" && <button className="button-secondary button-compact" onClick={reset}>Hoàn tất</button>}
+
+          {step === "ready" && (
+            <button className="button button-large" onClick={snapPhoto}>
+              <Camera size={18} /> Chụp ảnh chấm công
+            </button>
+          )}
+
+          {step === "review_photo" && (
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button className="button-secondary button-compact" onClick={() => setStep("ready")}>
+                <RefreshCw size={15} /> Chụp lại
+              </button>
+              <button className="button button-large" style={{ flex: 1 }} onClick={confirmSubmit}>
+                <CheckCircle2 size={18} /> Xác nhận {action === "check_in" ? "vào ca" : "ra ca"}
+              </button>
+            </div>
+          )}
+
+          {(step === "preparing" || step === "submitting") && (
+            <button className="button button-large" disabled>
+              <LoaderCircle size={18} className="spin" /> Đang xử lý…
+            </button>
+          )}
+
+          {step === "error" && (
+            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 8 }}>
+              <button className="button-secondary button-compact" onClick={reset}>
+                <RefreshCw size={15} /> Thử lại
+              </button>
+              <button
+                className="button button-compact"
+                onClick={submitException}
+                disabled={explanation.trim().length < 5}
+              >
+                Gửi yêu cầu duyệt
+              </button>
+            </div>
+          )}
+
+          {step === "success" && (
+            <button className="button-secondary button-compact" onClick={reset}>
+              Hoàn tất & Đóng
+            </button>
+          )}
         </div>
-        <p className="capture-note">
-          Vị trí và khoảng cách là bằng chứng tham khảo, không phải kết luận bạn đang có mặt tại quán.
-        </p>
+
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "between", alignItems: "center" }}>
+          <p className="capture-note" style={{ margin: 0, flex: 1 }}>
+            Vị trí thiết bị là bằng chứng tham khảo hỗ trợ xác minh, không phải kết luận duy nhất.
+          </p>
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => setShowPrivacyModal(true)}
+            style={{ fontSize: 12, textDecoration: "underline", marginLeft: 8 }}
+          >
+            <Eye size={12} style={{ display: "inline", marginRight: 3 }} /> Quyền riêng tư
+          </button>
+        </div>
       </div>
+
+      {/* Privacy Drawer / Modal */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-[#eee3df]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#eee3df]">
+              <h3 className="font-bold text-[#6f2939] text-base flex items-center gap-2">
+                <ShieldAlert size={18} className="text-[#d96d83]" /> Nguyên tắc bảo vệ dữ liệu
+              </h3>
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="p-1 rounded-full hover:bg-[#fff2f4] text-[#7b6f70]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="py-4 space-y-3 text-xs text-[#332a2b] leading-relaxed">
+              <p>• <strong>Không theo dõi nền:</strong> LoopiCafe chỉ lấy tọa độ duy nhất tại thời điểm bạn bấm nút chấm công.</p>
+              <p>• <strong>Ảnh máy chủ đóng dấu:</strong> Ảnh chỉ hiển thị cho Quản lý cửa hàng & Owner xem xét tính hợp lệ.</p>
+              <p>• <strong>Tự động lưu trữ riêng tư:</strong> Dữ liệu chấm công tự động được xử lý an toàn và hủy theo chính sách cửa hàng.</p>
+            </div>
+            <button
+              onClick={() => setShowPrivacyModal(false)}
+              className="w-full py-2.5 bg-[#fff2f4] hover:bg-[#ffe1e7] text-[#6f2939] font-bold rounded-2xl text-xs"
+            >
+              Tôi đã hiểu
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -350,11 +467,11 @@ function distanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number
 
 function permissionMessage(caught: unknown) {
   if (caught instanceof DOMException && caught.name === "NotAllowedError") {
-    return "Bạn chưa cho phép camera hoặc vị trí. Có thể thử lại sau khi bật quyền trong trình duyệt.";
+    return "Bạn chưa bật quyền camera hoặc vị trí trên trình duyệt. Vui lòng cho phép để tiếp tục.";
   }
   if (typeof caught === "object" && caught !== null && "code" in caught) {
     return (caught as { code?: number }).code === 3
-      ? "Không lấy được vị trí trong 10 giây."
+      ? "Không thể phản hồi vị trí trong 10 giây."
       : "Thiết bị chưa cung cấp được vị trí hiện tại.";
   }
   return caught instanceof Error ? caught.message : "Thiết bị chưa sẵn sàng.";

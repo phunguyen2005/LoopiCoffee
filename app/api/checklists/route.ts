@@ -12,6 +12,36 @@ export async function GET() {
   return Response.json({ items: result.results });
 }
 
+export async function POST(request: Request) {
+  const auth = await requireApiUser(["owner", "manager"]);
+  if (!auth.actor) return auth.response;
+  const body = (await request.json().catch(() => ({}))) as {
+    label?: string;
+    assignee?: string;
+    required?: boolean;
+  };
+  if (!body.label?.trim()) {
+    return Response.json({ error: "Vui lòng nhập tên công việc checklist." }, { status: 400 });
+  }
+
+  const db = await ensureDatabase();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const label = body.label.trim();
+  const assignee = body.assignee?.trim() || "Ca làm";
+  const required = body.required !== false ? 1 : 0;
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO checklist_items (id, store_id, label, assignee, required, completed, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`
+    ).bind(id, auth.actor.storeId, label, assignee, required, now),
+    auditStatement(db, auth.actor.email, "checklist_item", id, "checklist.created", { label }, now),
+  ]);
+
+  return Response.json({ item: { id, label, assignee, required, completed: 0 } });
+}
+
 export async function PATCH(request: Request) {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;

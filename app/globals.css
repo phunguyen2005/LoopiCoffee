@@ -1,7 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
   --cream: #fffaf4;
+  --paper: #ffffff;
   --paper: #ffffff;
   --pink-50: #fff2f4;
   --pink-100: #ffe1e7;
@@ -11,7 +14,7 @@
   --burgundy-dark: #4c1d29;
   --coffee: #6b4b3e;
   --ink: #332a2b;
-  --muted: #7b6f70;
+  --muted: #635657;
   --line: #eee3df;
   --mint: #dff3ea;
   --mint-strong: #4c9779;
@@ -141,7 +144,7 @@ p {
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgba(217, 109, 131, 0.32);
+  outline: 3px solid rgba(217, 109, 131, 0.7);
   outline-offset: 2px;
 }
 
@@ -562,7 +565,7 @@ select:focus-visible {
 .loopy-sticker {
   aspect-ratio: 1.12;
   display: inline-block;
-  background-image: url("/loopy-stickers.png");
+  background-image: url("/loopy-stickers.webp");
   background-repeat: no-repeat;
   background-size: 400% 700%;
   filter: drop-shadow(0 14px 18px rgba(82, 43, 48, 0.13));
@@ -930,34 +933,39 @@ select:focus-visible {
 
 .badge {
   width: fit-content;
-  padding: 5px 9px;
+  padding: 6px 11px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .badge.success {
   background: var(--mint);
-  color: #2f765d;
+  color: #2e7d32;
 }
 
 .badge.warning {
-  background: #fff1d7;
-  color: #97611c;
+  background: #fff3e0;
+  color: #e65100;
 }
 
 .badge.danger {
-  background: #ffe5e8;
-  color: #a53d4a;
+  background: #ffebee;
+  color: #c62828;
 }
 
 .badge.neutral {
-  background: #f1ece9;
-  color: #796b69;
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.badge.info {
+  background: #e3f2fd;
+  color: #1565c0;
 }
 
 .list {
@@ -994,18 +1002,18 @@ select:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--ink);
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
 .person-copy small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .progress {
-  height: 6px;
+  height: 8px;
   overflow: hidden;
   border-radius: 999px;
   background: #f1e8e5;
@@ -1032,13 +1040,13 @@ select:focus-visible {
 .attention-card h4 {
   margin-bottom: 6px;
   color: var(--burgundy-dark);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .attention-card p {
   margin-bottom: 12px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -1049,7 +1057,7 @@ select:focus-visible {
 .week-grid {
   min-width: 760px;
   display: grid;
-  grid-template-columns: 92px repeat(7, 1fr);
+  grid-template-columns: 110px repeat(7, 1fr);
   border: 1px solid var(--line);
   border-radius: 20px;
   overflow: hidden;
@@ -1068,7 +1076,7 @@ select:focus-visible {
 .week-head {
   min-height: 54px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -1076,11 +1084,11 @@ select:focus-visible {
   display: block;
   margin-top: 3px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .week-person {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1089,7 +1097,7 @@ select:focus-visible {
   border-radius: 9px;
   background: var(--pink-50);
   color: var(--burgundy);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.45;
 }

@@ -11,7 +11,7 @@ test("renders the LoopiCafe Vietnamese landing page", async () => {
 
   assert.match(page, /LoopiCafe/);
   assert.match(page, /Quán vẫn chạy trơn tru/);
-  assert.match(page, /Không theo dõi nền/);
+  assert.match(page, /Không theo dõi vị trí nền/);
   assert.match(layout, /lang="vi"/);
   assert.match(mascot, /loopy-sticker/);
   assert.doesNotMatch(`${page}${layout}`, /Your site is taking shape|Building your site|vinext-starter/i);
@@ -99,4 +99,27 @@ test("keeps upgrade migrations compatible with Cloudflare D1", async () => {
   );
   assert.match(migration, /UPDATE `checklist_items` SET `updated_at` = CURRENT_TIMESTAMP/);
   assert.match(migration, /UPDATE `stores` SET `updated_at` = CURRENT_TIMESTAMP/);
+});
+
+test("keeps startup work and landing assets lightweight", async () => {
+  const [runtime, dashboard, today, auth, globalStyles, proxy, mascot] =
+    await Promise.all([
+      readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/api/dashboard/route.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/api/today/route.ts", import.meta.url), "utf8"),
+      readFile(new URL("../server/auth.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+      readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+      readFile(new URL("../public/loopy-stickers.webp", import.meta.url)),
+    ]);
+
+  assert.match(runtime, /databaseInitialization \?\?=/);
+  assert.match(dashboard, /db\.batch\(/);
+  assert.match(today, /db\.batch\(/);
+  assert.match(auth, /validatedIdentityCache/);
+  assert.match(proxy, /auth\.getSession\(\)/);
+  assert.doesNotMatch(proxy, /auth\.getUser\(\)/);
+  assert.match(globalStyles, /loopy-stickers\.webp/);
+  assert.doesNotMatch(globalStyles, /fonts\.googleapis/);
+  assert.ok(mascot.byteLength < 400_000);
 });

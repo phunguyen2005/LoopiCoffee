@@ -1,5 +1,6 @@
 import { getChatGPTUser, requireChatGPTUser } from "./chatgpt-auth";
 import { getApiUser } from "@/server/auth";
+import { cache } from "react";
 
 export type LoopiUser = {
   email: string;
@@ -7,12 +8,10 @@ export type LoopiUser = {
   role: "owner" | "manager" | "employee";
 };
 
+const getRequestActor = cache(getApiUser);
+
 export async function getLoopiUser(returnTo: string): Promise<LoopiUser> {
-  let authenticated = await getChatGPTUser();
-  if (!authenticated && process.env.NODE_ENV === "production") {
-    authenticated = await requireChatGPTUser(returnTo);
-  }
-  const actor = await getApiUser();
+  const actor = await getRequestActor();
   if (actor) {
     return {
       email: actor.email,
@@ -20,6 +19,7 @@ export async function getLoopiUser(returnTo: string): Promise<LoopiUser> {
       role: actor.role,
     };
   }
+  let authenticated = await getChatGPTUser();
   if (!authenticated && process.env.NODE_ENV !== "production") {
     return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh", role: "owner" };
   }

@@ -16,18 +16,18 @@ import "./landing-video.css";
 const benefits = [
   {
     icon: Clock3,
-    title: "Biết ai đang trong ca",
+    title: "Nắm tình hình ca làm",
     text: "Lịch làm, đi trễ và giờ công được gom lại trong một luồng rõ ràng.",
   },
   {
     icon: ClipboardCheck,
-    title: "Không bỏ sót việc trong ca",
+    title: "Chuẩn hóa việc mở và đóng quán",
     text: "Checklist mở ca, đóng ca và bàn giao luôn gắn với đúng người, đúng ca.",
   },
   {
     icon: Camera,
-    title: "Bằng chứng minh bạch",
-    text: "Ảnh chụp trực tiếp kèm thời gian máy chủ và vị trí do thiết bị cung cấp.",
+    title: "Xử lý vấn đề trước khi bị quên",
+    text: "Báo cáo sự cố, hỏng hóc thiết bị và thiếu nguyên liệu ngay khi phát sinh.",
   },
 ];
 
@@ -43,8 +43,8 @@ export default function Home() {
           <Link href="/camera-location-notice" className="nav-link">
             Quyền riêng tư
           </Link>
-          <Link href="/app" className="button button-compact">
-            Vào cửa hàng <ArrowRight size={16} />
+          <Link href="/auth/login" className="button button-compact">
+            Đăng nhập <ArrowRight size={16} />
           </Link>
         </nav>
       </header>
@@ -56,20 +56,22 @@ export default function Home() {
           </div>
           <h1>Quán vẫn chạy trơn tru, ngay cả khi bạn không có mặt.</h1>
           <p className="hero-lead">
-            LoopiCafe giúp chủ quán theo dõi ca làm, chấm công, checklist và sự
-            cố trong một nơi thân thiện, rõ ràng.
+            Theo dõi ai đang làm, việc gì chưa hoàn tất và sự cố nào cần xử lý — tất cả trong một nơi.
           </p>
           <div className="hero-actions">
-            <Link href="/app" className="button button-large">
-              Mở bảng điều hành <ArrowRight size={18} />
+            <Link href="/auth/login" className="button button-large">
+              Đăng nhập <ArrowRight size={18} />
             </Link>
-            <Link href="/camera-location-notice" className="button-secondary button-large">
-              Cách chúng tôi dùng vị trí
-            </Link>
+            <a href="#video-demo" className="button-secondary button-large">
+              Xem cách hoạt động
+            </a>
           </div>
           <div className="trust-row">
-            <span><CheckCircle2 size={16} /> Không theo dõi nền</span>
-            <span><ShieldCheck size={16} /> Ảnh được giữ riêng tư</span>
+            <span><CheckCircle2 size={16} /> Không theo dõi vị trí nền</span>
+            <span><ShieldCheck size={16} /> Ảnh được bảo vệ riêng tư</span>
+            <Link href="/camera-location-notice" className="nav-link" style={{ fontSize: 13, textDecoration: "underline" }}>
+              Cách chúng tôi bảo vệ dữ liệu
+            </Link>
           </div>
         </div>
 
@@ -81,7 +83,7 @@ export default function Home() {
           </div>
           <div className="floating-card floating-card-top">
             <span className="mini-icon mint"><MapPin size={16} /></span>
-            <span><strong>Vị trí đã ghi nhận</strong><small>Độ chính xác ±18 m</small></span>
+            <span><strong>Vị trí ghi nhận</strong><small>Hỗ trợ xác minh chấm công</small></span>
           </div>
           <div className="floating-card floating-card-bottom">
             <span className="mini-icon pink"><ClipboardCheck size={16} /></span>
@@ -90,13 +92,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="landing-video-section" aria-labelledby="landing-video-title">
+      <section id="video-demo" className="landing-video-section" aria-labelledby="landing-video-title">
         <div className="landing-video-heading">
           <span>10 giây cùng LoopiCafe</span>
           <h2 id="landing-video-title">LoopiCafe trong 10 giây</h2>
           <p>
-            Một góc nhìn vui vẻ về cách LoopiCafe giúp mọi việc trong quán luôn
-            đúng nhịp.
+            Một góc nhìn trực quan về cách LoopiCafe giúp mọi ca làm trong quán luôn đúng nhịp.
           </p>
         </div>
         <figure className="landing-video-card">
@@ -113,6 +114,21 @@ export default function Home() {
             <a href="/loopicafe-introduce-vid.mp4">Mở video giới thiệu LoopiCafe</a>.
           </video>
         </figure>
+
+        <div className="landing-video-bullets" style={{ maxWidth: 860, margin: "24px auto 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+          <div style={{ background: "rgba(255, 255, 255, 0.8)", padding: "14px 18px", borderRadius: 16, border: "1px solid #eee3df", fontSize: 13, color: "#6f2939" }}>
+            <strong>• Xem ca & Chấm công</strong>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#7b6f70" }}>Nhân viên xem ca hôm nay và chấm công bằng ảnh trực tiếp trên điện thoại.</p>
+          </div>
+          <div style={{ background: "rgba(255, 255, 255, 0.8)", padding: "14px 18px", borderRadius: 16, border: "1px solid #eee3df", fontSize: 13, color: "#6f2939" }}>
+            <strong>• Chuẩn hóa Mở & Đóng ca</strong>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#7b6f70" }}>Đảm bảo đầy đủ quy trình mở quán, vệ sinh và bàn giao ca làm.</p>
+          </div>
+          <div style={{ background: "rgba(255, 255, 255, 0.8)", padding: "14px 18px", borderRadius: 16, border: "1px solid #eee3df", fontSize: 13, color: "#6f2939" }}>
+            <strong>• Cảnh báo sớm cho Owner</strong>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#7b6f70" }}>Nhận thông báo ngay khi có sự cố thiết bị hoặc ngoại lệ chấm công.</p>
+          </div>
+        </div>
       </section>
 
       <section className="benefit-section" aria-labelledby="benefit-title">

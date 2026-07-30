@@ -1,5 +1,6 @@
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { CONSENT_VERSION, ensureDatabase, STORE_ID } from "@/db/runtime";
+import { cookies } from "next/headers";
 
 export type ActorRole = "owner" | "manager" | "employee";
 
@@ -13,21 +14,35 @@ export type ApiActor = {
   hasAttendanceConsent: boolean;
 };
 
+type Identity = {
+  email: string;
+  displayName: string;
+};
+
+const AUTH_CACHE_TTL_MS = 10_000;
+const AUTH_CACHE_LIMIT = 100;
+const validatedIdentityCache = new Map<string, { identity: Identity; expiresAt: number }>();
+
 export async function getApiUser(): Promise<ApiActor | null> {
   const identity = await getIdentity();
   if (!identity) return null;
 
   const db = await ensureDatabase();
   let employee = await db.prepare(
-    `SELECT id, email, display_name, role, status, store_id
-     FROM employees WHERE lower(email) = lower(?)`,
-  ).bind(identity.email).first<{
+    `SELECT e.id, e.email, e.display_name, e.role, e.status, e.store_id,
+            EXISTS(
+              SELECT 1 FROM employee_consents c
+              WHERE lower(c.employee_email) = lower(e.email) AND c.notice_version = ?
+            ) AS has_consent
+     FROM employees e WHERE lower(e.email) = lower(?)`,
+  ).bind(CONSENT_VERSION, identity.email).first<{
     id: string;
     email: string;
     display_name: string;
     role: ActorRole;
     status: "invited" | "active" | "inactive";
     store_id: string;
+    has_consent: number;
   }>();
 
   if (!employee) {
@@ -57,6 +72,7 @@ export async function getApiUser(): Promise<ApiActor | null> {
       role: "owner",
       status: "active",
       store_id: STORE_ID,
+      has_consent: 1,
     };
   } else if (employee.status === "invited") {
     const now = new Date().toISOString();
@@ -68,9 +84,6 @@ export async function getApiUser(): Promise<ApiActor | null> {
   }
 
   if (employee.status !== "active") return null;
-  const consent = await db.prepare(
-    "SELECT id FROM employee_consents WHERE lower(employee_email) = lower(?) AND notice_version = ?",
-  ).bind(employee.email, CONSENT_VERSION).first<{ id: string }>();
 
   return {
     id: employee.id,
@@ -79,7 +92,7 @@ export async function getApiUser(): Promise<ApiActor | null> {
     role: employee.role,
     status: "active",
     storeId: employee.store_id,
-    hasAttendanceConsent: Boolean(consent),
+    hasAttendanceConsent: Boolean(employee.has_consent),
   };
 }
 
@@ -119,10 +132,60 @@ export function auditStatement(
 }
 
 async function getIdentity() {
+  const supabaseIdentity = await getValidatedSupabaseIdentity();
+  if (supabaseIdentity) return supabaseIdentity;
+
   const user = await getChatGPTUser();
   if (user) return { email: user.email, displayName: user.fullName ?? user.displayName };
   if (process.env.NODE_ENV !== "production") {
     return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh" };
   }
   return null;
+}
+
+async function getValidatedSupabaseIdentity(): Promise<Identity | null> {
+  try {
+    const cookieStore = await cookies();
+    const hasSupabaseSession = cookieStore.getAll().some(({ name }) =>
+      name.startsWith("sb-") && name.includes("-auth-token")
+    );
+    if (!hasSupabaseSession) return null;
+
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return null;
+
+    const fingerprint = await tokenFingerprint(session.access_token);
+    const cached = validatedIdentityCache.get(fingerprint);
+    if (cached && cached.expiresAt > Date.now()) return cached.identity;
+    if (cached) validatedIdentityCache.delete(fingerprint);
+
+    const { data: { user }, error } = await supabase.auth.getUser(session.access_token);
+    if (error) return null;
+
+    if (user && user.email) {
+      const identity = {
+        email: user.email,
+        displayName: user.user_metadata?.full_name || user.user_metadata?.display_name || user.email.split("@")[0],
+      };
+      if (validatedIdentityCache.size >= AUTH_CACHE_LIMIT) {
+        const oldestKey = validatedIdentityCache.keys().next().value;
+        if (oldestKey) validatedIdentityCache.delete(oldestKey);
+      }
+      validatedIdentityCache.set(fingerprint, {
+        identity,
+        expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+      });
+      return identity;
+    }
+  } catch {
+    // Supabase auth fallback
+  }
+  return null;
+}
+
+async function tokenFingerprint(token: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
