@@ -254,7 +254,7 @@ export function AttendanceCapture() {
             <p>
               {step === "error"
                 ? error
-                : "Camera chỉ mở sau khi bạn bấm bắt đầu. LoopiCafe không theo dõi nền và không lưu định vị liên tục."}
+                : "Camera chỉ mở sau khi bạn bấm bắt đầu. LoopiCafe không theo dõi vị trí liên tục."}
             </p>
           </div>
         )}
@@ -385,7 +385,7 @@ export function AttendanceCapture() {
 
         <div style={{ marginTop: 12, display: "flex", justifyContent: "between", alignItems: "center" }}>
           <p className="capture-note" style={{ margin: 0, flex: 1 }}>
-            Vị trí thiết bị là bằng chứng tham khảo hỗ trợ xác minh, không phải kết luận duy nhất.
+            Vị trí được ghi nhận tại thời điểm bấm nút để hỗ trợ xác minh chấm công.
           </p>
           <button
             type="button"
@@ -414,9 +414,9 @@ export function AttendanceCapture() {
               </button>
             </div>
             <div className="py-4 space-y-3 text-xs text-[#332a2b] leading-relaxed">
-              <p>• <strong>Không theo dõi nền:</strong> LoopiCafe chỉ lấy tọa độ duy nhất tại thời điểm bạn bấm nút chấm công.</p>
-              <p>• <strong>Ảnh máy chủ đóng dấu:</strong> Ảnh chỉ hiển thị cho Quản lý cửa hàng & Owner xem xét tính hợp lệ.</p>
-              <p>• <strong>Tự động lưu trữ riêng tư:</strong> Dữ liệu chấm công tự động được xử lý an toàn và hủy theo chính sách cửa hàng.</p>
+              <p>• <strong>Không theo dõi liên tục:</strong> LoopiCafe chỉ lấy tọa độ duy nhất 1 lần tại thời điểm bạn bấm nút chấm công.</p>
+              <p>• <strong>Ảnh bảo mật riêng tư:</strong> Ảnh chỉ hiển thị cho Quản lý cửa hàng & Owner xem xét tính hợp lệ.</p>
+              <p>• <strong>Bảo vệ dữ liệu:</strong> Dữ liệu chấm công tự động được lưu trữ an toàn và xử lý theo chính sách cửa hàng.</p>
             </div>
             <button
               onClick={() => setShowPrivacyModal(false)}

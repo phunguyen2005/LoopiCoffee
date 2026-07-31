@@ -5,7 +5,7 @@ import { cache } from "react";
 export type LoopiUser = {
   email: string;
   displayName: string;
-  role: "owner" | "manager" | "employee";
+  role: "owner" | "manager" | "team_lead" | "employee";
 };
 
 const getRequestActor = cache(getApiUser);

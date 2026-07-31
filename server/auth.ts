@@ -2,7 +2,7 @@ import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { CONSENT_VERSION, ensureDatabase, STORE_ID } from "@/db/runtime";
 import { cookies } from "next/headers";
 
-export type ActorRole = "owner" | "manager" | "employee";
+export type ActorRole = "owner" | "manager" | "team_lead" | "employee";
 
 export type ApiActor = {
   id: string;
@@ -183,6 +183,23 @@ async function getValidatedSupabaseIdentity(): Promise<Identity | null> {
     // Supabase auth fallback
   }
   return null;
+}
+
+export async function requiresSupabasePasswordChange() {
+  try {
+    const cookieStore = await cookies();
+    const hasSupabaseSession = cookieStore.getAll().some(({ name }) =>
+      name.startsWith("sb-") && name.includes("-auth-token")
+    );
+    if (!hasSupabaseSession) return false;
+
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.user_metadata?.must_change_password === true;
+  } catch {
+    return false;
+  }
 }
 
 async function tokenFingerprint(token: string) {

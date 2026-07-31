@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const body = (await request.json().catch(() => ({}))) as {
     label?: string;

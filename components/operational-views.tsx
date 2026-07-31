@@ -11,7 +11,6 @@ import {
   PackageOpen,
   Plus,
   ShieldCheck,
-  UserPlus,
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -49,14 +48,14 @@ export function OperationsDashboardView() {
         <div className="hero-status-copy">
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
             <span className={`badge ${isStoreOpen ? "success" : "neutral"}`} style={{ fontSize: 11, padding: "6px 12px" }}>
-              {isStoreOpen ? "🟢 CỬA HÀNG ĐANG MỞ" : "⚪ CỬA HÀNG CHƯA VÀO CA"}
+              {isStoreOpen ? "🟢 CỬA HÀNG ĐANG VÀO CA" : "⚪ CHƯA CÓ CA LÀM"}
             </span>
             <span className="status-label"><CheckCircle2 size={14} /> Dữ liệu trực tiếp</span>
           </div>
           <h2>{metrics.pendingExceptions ? `${metrics.pendingExceptions} ngoại lệ cần duyệt ngay` : "Mọi việc tại cửa hàng đang đúng nhịp"}</h2>
-          <p>Tóm tắt vận hành trong 30 giây cho Chủ quán & Quản lý.</p>
+          <p>Tóm tắt vận hành hôm nay cho Chủ quán & Quản lý.</p>
           <div className="status-metrics">
-            <span><strong>{metrics.activeStaff}</strong><small>đang trong ca</small></span>
+            <span><strong>{metrics.activeStaff}</strong><small>đang có mặt</small></span>
             <span><strong>{metrics.checklistDone}/{metrics.checklistTotal}</strong><small>mở ca xong</small></span>
             <span><strong>{metrics.pendingExceptions}</strong><small>ngoại lệ chờ</small></span>
           </div>
@@ -65,16 +64,16 @@ export function OperationsDashboardView() {
       </section>
       <section className="metric-grid">
         <Link href="/app/schedule" style={{ textDecoration: "none" }}>
-          <MetricCard icon={UsersRound} tone="mint" value={String(metrics.activeStaff)} label="Đang trong ca" />
+          <MetricCard icon={UsersRound} tone="mint" value={String(metrics.activeStaff)} label="Đang có mặt tại quán" />
         </Link>
         <Link href="/app/attendance/review" style={{ textDecoration: "none" }}>
           <MetricCard icon={AlertCircle} tone="pink" value={String(metrics.pendingExceptions)} label="Ngoại lệ chờ duyệt" />
         </Link>
         <Link href="/app/checklists" style={{ textDecoration: "none" }}>
-          <MetricCard icon={CheckCircle2} tone="amber" value={`${metrics.checklistDone}/${metrics.checklistTotal}`} label="Việc Mở ca xong" />
+          <MetricCard icon={CheckCircle2} tone="amber" value={`${metrics.checklistDone}/${metrics.checklistTotal}`} label="Mở ca hoàn tất" />
         </Link>
         <Link href="/app/issues" style={{ textDecoration: "none" }}>
-          <MetricCard icon={PackageOpen} tone="burgundy" value={String(metrics.openIncidents)} label="Sự cố đang mở" />
+          <MetricCard icon={PackageOpen} tone="burgundy" value={String(metrics.openIncidents)} label="Sự cố đang xử lý" />
         </Link>
       </section>
       <div className="page-grid">
@@ -657,48 +656,17 @@ export function PersistentTeamView() {
   const [employees, setEmployees] = useState<Array<{
     id: string; email: string; display_name: string; role: string; status: string;
   }>>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState("employee");
-  const [message, setMessage] = useState("");
 
   useEffect(() => { void refresh(); }, []);
   async function refresh() {
     const payload = await readJson(await fetch("/api/team", { cache: "no-store" }));
     setEmployees(payload.employees ?? []);
   }
-  async function invite(event: React.FormEvent) {
-    event.preventDefault();
-    const response = await fetch("/api/team", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, displayName, role }),
-    });
-    const payload = await readJson(response);
-    if (response.ok) {
-      setMessage("Đã tạo lời mời. Hãy cấp quyền truy cập trang riêng tư cho email này trước khi họ đăng nhập.");
-      setShowForm(false); setEmail(""); setDisplayName(""); await refresh();
-    } else {
-      setMessage(payload.error ?? "Không thể tạo lời mời.");
-    }
-  }
-
   return (
     <section className="card">
       <div className="section-row" style={{ marginBottom: 18 }}>
         <ViewHeader title="Đội ngũ LoopiCafe" subtitle={`${(employees ?? []).filter((employee) => employee.status === "active").length} tài khoản đang hoạt động`} />
-        <button className="button button-compact" onClick={() => setShowForm((value) => !value)}><UserPlus size={15} /> Mời nhân viên</button>
       </div>
-      {showForm && (
-        <form className="attention-card operation-form" onSubmit={invite}>
-          <div className="field"><label htmlFor="invite-name">Họ tên</label><input id="invite-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></div>
-          <div className="field"><label htmlFor="invite-email">Email</label><input id="invite-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div>
-          <div className="field"><label htmlFor="invite-role">Vai trò</label><select id="invite-role" value={role} onChange={(event) => setRole(event.target.value)}><option value="employee">Nhân viên</option><option value="manager">Quản lý</option><option value="owner">Chủ cửa hàng</option></select></div>
-          <div className="form-actions"><button className="button button-compact" type="submit">Tạo lời mời</button></div>
-        </form>
-      )}
-      {message && <p className="operation-message">{message}</p>}
       <div className="list">
         {employees.map((employee) => (
           <div className="list-row" key={employee.id}>
@@ -1470,6 +1438,7 @@ function statusLabel(value: string) {
 function roleLabel(value: string) {
   if (value === "owner") return "Chủ cửa hàng";
   if (value === "manager") return "Quản lý";
+  if (value === "team_lead") return "Trưởng nhóm";
   return "Nhân viên";
 }
 

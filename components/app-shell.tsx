@@ -16,6 +16,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  ShieldPlus,
   Store,
   TriangleAlert,
   UserRound,
@@ -28,24 +29,25 @@ import type { LoopiUser } from "@/app/loopi-user";
 // Navigation structure grouped logically for Owner/Manager vs Staff
 const overviewNav = [
   { href: "/app", label: "Tổng quan", icon: LayoutDashboard, roles: ["owner", "manager"] },
-  { href: "/app/today", label: "Hôm nay", icon: Coffee, roles: ["owner", "manager", "employee"] },
+  { href: "/app/today", label: "Hôm nay", icon: Coffee, roles: ["owner", "manager", "team_lead", "employee"] },
 ];
 
 const operationsNav = [
-  { href: "/app/schedule", label: "Lịch làm", icon: CalendarDays, roles: ["owner", "manager", "employee"] },
-  { href: "/app/attendance", label: "Chấm công", icon: Clock3, roles: ["owner", "manager", "employee"] },
-  { href: "/app/checklists", label: "Checklist", icon: CheckSquare2, roles: ["owner", "manager", "employee"] },
-  { href: "/app/issues", label: "Sự cố", icon: TriangleAlert, roles: ["owner", "manager", "employee"] },
-  { href: "/app/handovers", label: "Bàn giao", icon: HandHelping, roles: ["owner", "manager", "employee"] },
+  { href: "/app/schedule", label: "Lịch làm", icon: CalendarDays, roles: ["owner", "manager", "team_lead", "employee"] },
+  { href: "/app/attendance", label: "Chấm công", icon: Clock3, roles: ["owner", "manager", "team_lead", "employee"] },
+  { href: "/app/checklists", label: "Checklist", icon: CheckSquare2, roles: ["owner", "manager", "team_lead", "employee"] },
+  { href: "/app/issues", label: "Sự cố", icon: TriangleAlert, roles: ["owner", "manager", "team_lead", "employee"] },
+  { href: "/app/handovers", label: "Bàn giao", icon: HandHelping, roles: ["owner", "manager", "team_lead", "employee"] },
 ];
 
 const teamNav = [
   { href: "/app/team", label: "Nhân viên", icon: UsersRound, roles: ["owner", "manager"] },
-  { href: "/app/requests", label: "Yêu cầu", icon: UserRound, roles: ["owner", "manager", "employee"] },
-  { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["owner", "manager"] },
+  { href: "/app/requests", label: "Yêu cầu", icon: UserRound, roles: ["owner", "manager", "team_lead", "employee"] },
+  { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["owner", "manager", "team_lead"] },
 ];
 
 const adminNav = [
+  { href: "/app/admin/accounts", label: "Tài khoản", icon: ShieldPlus, roles: ["owner"] },
   { href: "/app/reports/attendance", label: "Báo cáo", icon: FileBarChart, roles: ["owner", "manager"] },
   { href: "/app/settings/store", label: "Thiết lập", icon: Settings, roles: ["owner"] },
   { href: "/app/audit", label: "Nhật ký", icon: FileBarChart, roles: ["owner"] },
@@ -204,7 +206,7 @@ export function AppShell({
         <header className="app-header">
           <div className="app-header-copy">
             <h1 className="app-title">{titleForPath(pathname)}</h1>
-            <p>LoopiCafe - Main Store · Asia/Ho_Chi_Minh</p>
+            <p>LoopiCafe · Cửa hàng chính</p>
           </div>
           <div className="header-actions">
             <span className="date-pill"><CalendarDays size={14} /> {dateLabel}</span>
@@ -302,6 +304,7 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/app/handovers")) return "Bàn giao ca";
   if (pathname.startsWith("/app/requests")) return "Yêu cầu của nhân viên";
   if (pathname.startsWith("/app/team")) return "Nhân sự";
+  if (pathname.startsWith("/app/admin/accounts")) return "Quản trị tài khoản";
   if (pathname.startsWith("/app/reports")) return "Báo cáo chấm công";
   if (pathname.startsWith("/app/settings")) return "Thiết lập cửa hàng";
   if (pathname.startsWith("/app/notifications")) return "Thông báo";
@@ -312,5 +315,6 @@ function titleForPath(pathname: string) {
 function roleLabel(role: LoopiUser["role"]) {
   if (role === "owner") return "Chủ cửa hàng";
   if (role === "manager") return "Quản lý";
+  if (role === "team_lead") return "Trưởng nhóm";
   return "Nhân viên";
 }

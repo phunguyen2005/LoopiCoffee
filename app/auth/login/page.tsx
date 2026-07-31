@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -9,6 +9,7 @@ import { Coffee, Mail, Lock, Sparkles, ArrowRight, ShieldCheck, ArrowLeft } from
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -16,11 +17,30 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedEmail = localStorage.getItem('loopicafe_remembered_email');
+      if (savedEmail) {
+        setEmail(savedEmail);
+        setRememberMe(true);
+      }
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    // Save/clear remembered email safely without storing passwords
+    if (typeof window !== 'undefined') {
+      if (rememberMe) {
+        localStorage.setItem('loopicafe_remembered_email', email);
+      } else {
+        localStorage.removeItem('loopicafe_remembered_email');
+      }
+    }
 
     try {
       if (isMagicLink) {
@@ -33,12 +53,12 @@ export default function LoginPage() {
         if (error) throw error;
         setSuccessMsg('Đã gửi liên kết đăng nhập! Vui lòng kiểm tra hộp thư email của bạn.');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        router.push('/app/today');
+        router.push(data.user.user_metadata?.must_change_password ? '/auth/change-password' : '/app/today');
         router.refresh();
       }
     } catch (err: unknown) {
@@ -80,7 +100,7 @@ export default function LoginPage() {
           <h1 className="text-xl font-bold text-[#6f2939] flex items-center justify-center gap-1.5">
             LoopiCafe <Sparkles className="w-4 h-4 text-[#f4b85f]" />
           </h1>
-          <p className="text-xs text-[#7b6f70] mt-0.5">Cổng quản lý vận hành và nhân sự</p>
+          <p className="text-xs text-[#7b6f70] mt-0.5">Đăng nhập để xem ca làm, checklist và tình hình cửa hàng.</p>
         </div>
 
         {/* Feedback Alerts */}
@@ -158,7 +178,7 @@ export default function LoginPage() {
                   href="/auth/forgot-password"
                   onClick={(e) => {
                     e.preventDefault();
-                    alert("Tính năng đặt lại mật khẩu đã gửi yêu cầu tới Quản lý cửa hàng hoặc Quản trị viên.");
+                    alert("Bạn cần hỗ trợ đổi mật khẩu? Vui lòng nhắn Trưởng ca hoặc Chủ quán để được cấp lại nhé.");
                   }}
                   className="text-[11px] text-[#d96d83] hover:underline font-semibold"
                 >
@@ -179,6 +199,22 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* Remember Me & Persistent Login Session Checkbox */}
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center gap-2 text-xs font-semibold text-[#6b4b3e] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] accent-[#6f2939] cursor-pointer"
+              />
+              <span>Ghi nhớ tài khoản</span>
+            </label>
+            <span className="text-[11px] text-[#7b6f70]" title="Tự động điền email và duy trì phiên đăng nhập">
+              Duy trì phiên đăng nhập
+            </span>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -196,13 +232,13 @@ export default function LoginPage() {
             onClick={() => setIsMagicLink(!isMagicLink)}
             className="text-xs text-[#7b6f70] hover:text-[#6f2939] hover:underline font-medium"
           >
-            {isMagicLink ? 'Đăng nhập bằng Email & Mật khẩu' : 'Đăng nhập bằng liên kết gửi qua email'}
+            {isMagicLink ? 'Đăng nhập bằng Email & Mật khẩu' : 'Gửi liên kết đăng nhập qua email'}
           </button>
         </div>
 
         {/* Security Note */}
         <div className="mt-4 text-center text-[11px] text-[#7b6f70]">
-          🔒 Bảo mật bởi Supabase Auth & Phân quyền cửa hàng
+          🔒 Dữ liệu cửa hàng được bảo mật riêng tư
         </div>
       </div>
     </div>

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const body = (await request.json().catch(() => ({}))) as {
     id?: string;

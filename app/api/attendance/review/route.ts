@@ -2,7 +2,7 @@ import { ensureDatabase } from "@/db/runtime";
 import { auditStatement, requireApiUser } from "@/server/auth";
 
 export async function GET() {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const result = await db.prepare(
@@ -61,7 +61,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const body = (await request.json().catch(() => ({}))) as {
     eventId?: string;

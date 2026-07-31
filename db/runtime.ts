@@ -17,7 +17,7 @@ const schemaStatements = [
   )`,
   `CREATE TABLE IF NOT EXISTS employees (
     id TEXT PRIMARY KEY, store_id TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL,
+    display_name TEXT NOT NULL, auth_user_id TEXT, role TEXT NOT NULL, status TEXT NOT NULL,
     invited_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS employee_consents (
@@ -138,6 +138,7 @@ const requiredColumns: Record<string, Array<[string, string]>> = {
   ],
   employees: [
     ["store_id", `TEXT NOT NULL DEFAULT '${STORE_ID}'`],
+    ["auth_user_id", "TEXT"],
     ["invited_by", "TEXT"],
     ["updated_at", "TEXT"],
   ],

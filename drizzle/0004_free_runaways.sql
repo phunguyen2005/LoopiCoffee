@@ -1,0 +1,1 @@
+ALTER TABLE `employees` ADD `auth_user_id` text;

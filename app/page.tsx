@@ -13,6 +13,8 @@ import { LoopyMark } from "@/components/loopy-mark";
 import { LoopySticker } from "@/components/loopy-sticker";
 import "./landing-video.css";
 
+import { HeroAnimated } from "@/components/hero-animated";
+
 const benefits = [
   {
     icon: Clock3,
@@ -49,48 +51,7 @@ export default function Home() {
         </nav>
       </header>
 
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <Sparkles size={15} /> Vận hành quán nhẹ nhàng hơn
-          </div>
-          <h1>Quán vẫn chạy trơn tru, ngay cả khi bạn không có mặt.</h1>
-          <p className="hero-lead">
-            Theo dõi ai đang làm, việc gì chưa hoàn tất và sự cố nào cần xử lý — tất cả trong một nơi.
-          </p>
-          <div className="hero-actions">
-            <Link href="/auth/login" className="button button-large">
-              Đăng nhập <ArrowRight size={18} />
-            </Link>
-            <a href="#video-demo" className="button-secondary button-large">
-              Xem cách hoạt động
-            </a>
-          </div>
-          <div className="trust-row">
-            <span><CheckCircle2 size={16} /> Không theo dõi vị trí nền</span>
-            <span><ShieldCheck size={16} /> Ảnh được bảo vệ riêng tư</span>
-            <Link href="/camera-location-notice" className="nav-link" style={{ fontSize: 13, textDecoration: "underline" }}>
-              Cách chúng tôi bảo vệ dữ liệu
-            </Link>
-          </div>
-        </div>
-
-        <div className="hero-visual" aria-label="Minh họa trạng thái vận hành LoopiCafe">
-          <div className="hero-glow" />
-          <div className="hero-mascot">
-            <LoopySticker mood="celebrate" size={250} />
-            <div className="speech-bubble">Mọi thứ ổn rồi nè! ♡</div>
-          </div>
-          <div className="floating-card floating-card-top">
-            <span className="mini-icon mint"><MapPin size={16} /></span>
-            <span><strong>Vị trí ghi nhận</strong><small>Hỗ trợ xác minh chấm công</small></span>
-          </div>
-          <div className="floating-card floating-card-bottom">
-            <span className="mini-icon pink"><ClipboardCheck size={16} /></span>
-            <span><strong>Mở ca hoàn tất</strong><small>6/6 công việc</small></span>
-          </div>
-        </div>
-      </section>
+      <HeroAnimated />
 
       <section id="video-demo" className="landing-video-section" aria-labelledby="landing-video-title">
         <div className="landing-video-heading">
@@ -103,9 +64,12 @@ export default function Home() {
         <figure className="landing-video-card">
           <video
             className="landing-intro-video"
+            autoPlay
+            muted
+            loop
             controls
             playsInline
-            preload="metadata"
+            preload="auto"
             poster="/loopicafe-introduce-poster.jpg"
             aria-label="Video giới thiệu thương hiệu LoopiCafe trong 10 giây"
           >

@@ -13,47 +13,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiUser(["owner"]);
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as {
-    email?: string;
-    displayName?: string;
-    role?: ActorRole;
-  };
-  const email = body.email?.trim().toLowerCase();
-  const displayName = body.displayName?.trim();
-  const requestedRole = body.role;
-  if (
-    !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-    !displayName || displayName.length < 2 ||
-    !requestedRole || !["owner", "manager", "employee"].includes(requestedRole)
-  ) {
-    return Response.json({ error: "Thông tin lời mời không hợp lệ." }, { status: 400 });
-  }
-  const role: ActorRole = auth.actor.role === "manager" ? "employee" : requestedRole;
-  const db = await ensureDatabase();
-  const existing = await db.prepare("SELECT id FROM employees WHERE lower(email) = lower(?)")
-    .bind(email).first();
-  if (existing) return Response.json({ error: "Email này đã thuộc đội ngũ." }, { status: 409 });
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await db.batch([
-    db.prepare(
-      `INSERT INTO employees
-        (id, store_id, email, display_name, role, status, invited_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'invited', ?, ?, ?)`,
-    ).bind(id, auth.actor.storeId, email, displayName.slice(0, 100), role, auth.actor.email, now, now),
-    auditStatement(
-      db,
-      auth.actor.email,
-      "employee",
-      id,
-      "employee.invited",
-      { role },
-      now,
-    ),
-  ]);
-  return Response.json({ employee: { id, email, display_name: displayName, role, status: "invited" } });
+  void request;
+  return Response.json({ error: "Hãy tạo tài khoản tại trang Quản trị tài khoản." }, { status: 410 });
 }
 
 export async function PATCH(request: Request) {
@@ -66,7 +29,7 @@ export async function PATCH(request: Request) {
   };
   if (
     !body.id ||
-    (body.role && !["owner", "manager", "employee"].includes(body.role)) ||
+    (body.role && !["owner", "manager", "team_lead", "employee"].includes(body.role)) ||
     (body.status && !["active", "inactive"].includes(body.status))
   ) {
     return Response.json({ error: "Thay đổi nhân sự không hợp lệ." }, { status: 400 });

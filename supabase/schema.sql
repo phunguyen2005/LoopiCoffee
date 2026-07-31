@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
   store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'employee')),
+  role TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'team_lead', 'employee')),
   status TEXT NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'active', 'inactive')),
   invited_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -1,5 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { getLoopiUser } from "../loopi-user";
+import { requiresSupabasePasswordChange } from "@/server/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,7 @@ export default async function AuthenticatedLayout({
 }: {
   children: React.ReactNode;
 }) {
+  if (await requiresSupabasePasswordChange()) redirect("/auth/change-password");
   const user = await getLoopiUser("/app");
   const dateLabel = new Intl.DateTimeFormat("vi-VN", {
     weekday: "short",
