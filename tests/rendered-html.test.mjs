@@ -101,8 +101,19 @@ test("keeps upgrade migrations compatible with Cloudflare D1", async () => {
   assert.match(migration, /UPDATE `stores` SET `updated_at` = CURRENT_TIMESTAMP/);
 });
 
-test("keeps startup work and landing assets lightweight", async () => {
-  const [runtime, dashboard, today, auth, globalStyles, proxy, mascot] =
+test("keeps startup work and high-resolution mascot assets bounded", async () => {
+  const mascotPaths = [
+    "loopy-hello.png",
+    "loopy-cheer.png",
+    "loopy-celebrate.png",
+    "loopy-worries.png",
+    "loopy-shy.png",
+    "loopy-checkin.png",
+    "loopy-checklist.png",
+    "loopy-working.png",
+    "loopy-success.png",
+  ];
+  const [runtime, dashboard, today, auth, globalStyles, proxy, mascotComponent, ...mascots] =
     await Promise.all([
       readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
       readFile(new URL("../app/api/dashboard/route.ts", import.meta.url), "utf8"),
@@ -110,7 +121,8 @@ test("keeps startup work and landing assets lightweight", async () => {
       readFile(new URL("../server/auth.ts", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
       readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
-      readFile(new URL("../public/loopy-stickers.webp", import.meta.url)),
+      readFile(new URL("../components/loopy-sticker.tsx", import.meta.url), "utf8"),
+      ...mascotPaths.map((name) => readFile(new URL(`../public/mascots/${name}`, import.meta.url))),
     ]);
 
   assert.match(runtime, /databaseInitialization \?\?=/);
@@ -119,7 +131,9 @@ test("keeps startup work and landing assets lightweight", async () => {
   assert.match(auth, /validatedIdentityCache/);
   assert.match(proxy, /auth\.getSession\(\)/);
   assert.doesNotMatch(proxy, /auth\.getUser\(\)/);
-  assert.match(globalStyles, /loopy-stickers\.webp/);
+  assert.match(mascotComponent, /\/mascots\/loopy-hello\.png/);
+  assert.match(globalStyles, /object-fit:\s*contain/);
   assert.doesNotMatch(globalStyles, /fonts\.googleapis/);
-  assert.ok(mascot.byteLength < 400_000);
+  assert.equal(mascots.length, mascotPaths.length);
+  assert.ok(mascots.every((mascot) => mascot.byteLength < 1_200_000));
 });

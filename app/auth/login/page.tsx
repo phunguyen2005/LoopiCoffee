@@ -4,11 +4,13 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Coffee, Mail, Lock, Sparkles, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { LoopySticker } from '@/components/loopy-sticker';
+import { Mail, Lock, Sparkles, ArrowRight, ShieldCheck, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -94,8 +96,8 @@ export default function LoginPage() {
 
         {/* Mascot & Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 bg-[#fff2f4] rounded-2xl flex items-center justify-center mx-auto mb-2 text-[#d96d83] shadow-sm border border-[#ffe1e7]">
-            <Coffee size={28} />
+          <div className="flex items-center justify-center mx-auto mb-2">
+            <LoopySticker mood="checkin" size={92} />
           </div>
           <h1 className="text-xl font-bold text-[#6f2939] flex items-center justify-center gap-1.5">
             LoopiCafe <Sparkles className="w-4 h-4 text-[#f4b85f]" />
@@ -188,13 +190,22 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70]" size={16} />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-3 bg-[#fffaf4] border border-[#eee3df] rounded-2xl focus:outline-none focus:border-[#d96d83] transition text-[#332a2b] text-xs sm:text-sm"
+                  className="w-full pl-10 pr-10 py-3 bg-[#fffaf4] border border-[#eee3df] rounded-2xl focus:outline-none focus:border-[#d96d83] transition text-[#332a2b] text-xs sm:text-sm"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70] hover:text-[#6f2939] p-1 transition cursor-pointer"
+                  title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
           )}

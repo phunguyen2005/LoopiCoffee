@@ -10,10 +10,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { LoopyMark } from "@/components/loopy-mark";
-import { LoopySticker } from "@/components/loopy-sticker";
 import "./landing-video.css";
 
 import { HeroAnimated } from "@/components/hero-animated";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const benefits = [
   {
@@ -58,18 +60,15 @@ export default function Home() {
           <span>10 giây cùng LoopiCafe</span>
           <h2 id="landing-video-title">LoopiCafe trong 10 giây</h2>
           <p>
-            Một góc nhìn trực quan về cách LoopiCafe giúp mọi ca làm trong quán luôn đúng nhịp.
+            Một góc nhìn trực quan về cách LoopiCafe giúp mọi ca làm trong quán luôn đúng nhịp. Quán vẫn chạy trơn tru mà Không theo dõi vị trí nền.
           </p>
         </div>
         <figure className="landing-video-card">
           <video
             className="landing-intro-video"
-            autoPlay
-            muted
-            loop
             controls
             playsInline
-            preload="auto"
+            preload="metadata"
             poster="/loopicafe-introduce-poster.jpg"
             aria-label="Video giới thiệu thương hiệu LoopiCafe trong 10 giây"
           >

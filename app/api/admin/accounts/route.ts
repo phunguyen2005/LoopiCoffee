@@ -2,65 +2,128 @@ import { ensureDatabase } from "@/db/runtime";
 import { createAdmin } from "@/lib/supabase/server";
 import { auditStatement, requireApiUser, type ActorRole } from "@/server/auth";
 
-const creatableRoles: ActorRole[] = ["manager", "team_lead", "employee"];
+const creatableRoles: ActorRole[] = ["owner", "manager", "employee"];
 
-export async function GET() {
-  const auth = await requireApiUser(["owner"]);
+export async function GET(request: Request) {
+  const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
+  const url = new URL(request.url);
+  const auditForId = url.searchParams.get("auditFor");
+
   const db = await ensureDatabase();
+
+  if (auditForId) {
+    const logs = await db.prepare(
+      `SELECT id, actor_email, action, metadata, created_at
+       FROM audit_events
+       WHERE entity_type = 'employee' AND entity_id = ?
+       ORDER BY created_at DESC LIMIT 20`
+    ).bind(auditForId).all();
+    return Response.json({ auditLogs: logs.results });
+  }
+
   const result = await db.prepare(
-    `SELECT id, email, display_name, role, status, auth_user_id, created_at
+    `SELECT id, email, display_name, COALESCE(job_title, 'Barista') AS job_title, phone, start_date, last_login_at,
+            role, status, auth_user_id, invited_by, created_at, updated_at
      FROM employees WHERE store_id = ? ORDER BY status, display_name`,
   ).bind(auth.actor.storeId).all();
-  return Response.json({ accounts: result.results });
+
+  // Also include store info
+  const store = await db.prepare("SELECT name FROM stores WHERE id = ?").bind(auth.actor.storeId).first<{ name: string }>();
+
+  return Response.json({
+    accounts: result.results,
+    storeName: store?.name ?? "LoopiCafe Nguyễn Trãi",
+    currentUserEmail: auth.actor.email,
+    currentUserId: auth.actor.id,
+    currentUserRole: auth.actor.role,
+  });
 }
 
 export async function POST(request: Request) {
-  const auth = await requireApiUser(["owner"]);
+  const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
   const body = (await request.json().catch(() => ({}))) as {
     email?: string;
     displayName?: string;
+    jobTitle?: string;
+    phone?: string;
+    startDate?: string;
     role?: ActorRole;
+    activationMethod?: "invite" | "temporary_password";
+    mustChangePassword?: boolean;
   };
+
   const email = body.email?.trim().toLowerCase();
   const displayName = body.displayName?.trim();
-  const role = body.role;
+  const jobTitle = body.jobTitle?.trim() || "Barista";
+  const phone = body.phone?.trim() || "";
+  const startDate = body.startDate || new Date().toISOString().split("T")[0];
+  const role = body.role || "employee";
+  const activationMethod = body.activationMethod || "temporary_password";
+  const mustChangePassword = body.mustChangePassword !== false;
+
+  // Manager cannot assign Owner role
+  if (auth.actor.role === "manager" && role === "owner") {
+    return Response.json({ error: "Quản lý không có quyền cấp vai trò Admin / Chủ quán." }, { status: 403 });
+  }
+
   if (
     !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
     !displayName || displayName.length < 2 ||
     !role || !creatableRoles.includes(role)
   ) {
-    return Response.json({ error: "Thông tin tài khoản không hợp lệ." }, { status: 400 });
+    return Response.json({ error: "Thông tin tài khoản không hợp lệ. Vui lòng kiểm tra lại." }, { status: 400 });
   }
 
   const db = await ensureDatabase();
   const existing = await db.prepare("SELECT id FROM employees WHERE lower(email) = lower(?)")
     .bind(email).first();
-  if (existing) return Response.json({ error: "Email này đã thuộc đội ngũ." }, { status: 409 });
+  if (existing) return Response.json({ error: "Email này đã tồn tại trong đội ngũ nhân sự." }, { status: 409 });
 
-  const temporaryPassword = generateTemporaryPassword();
+  const temporaryPassword = activationMethod === "temporary_password" ? generateTemporaryPassword() : undefined;
+  const status = activationMethod === "invite" ? "invited" : "active";
+
   const supabase = createAdmin();
-  const { data, error } = await supabase.auth.admin.createUser({
-    email,
-    password: temporaryPassword,
-    email_confirm: true,
-    user_metadata: {
-      display_name: displayName.slice(0, 100),
-      must_change_password: true,
-    },
-    app_metadata: {
-      role,
-      store_id: auth.actor.storeId,
-    },
-  });
-  if (error || !data.user) {
-    return Response.json(
-      { error: error?.message ?? "Không thể tạo tài khoản đăng nhập." },
-      { status: 400 },
-    );
+  let authUserId: string | null = null;
+
+  if (activationMethod === "temporary_password") {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password: temporaryPassword,
+      email_confirm: true,
+      user_metadata: {
+        display_name: displayName.slice(0, 100),
+        job_title: jobTitle,
+        must_change_password: mustChangePassword,
+      },
+      app_metadata: {
+        role,
+        store_id: auth.actor.storeId,
+      },
+    });
+
+    if (error || !data.user) {
+      return Response.json(
+        { error: error?.message ?? "Không thể tạo tài khoản trên Supabase Auth." },
+        { status: 400 },
+      );
+    }
+    authUserId = data.user.id;
+  } else {
+    // Send invitation email via Supabase
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+      data: {
+        display_name: displayName.slice(0, 100),
+        job_title: jobTitle,
+      },
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login`,
+    });
+    if (!error && data.user) {
+      authUserId = data.user.id;
+    }
   }
 
   const id = crypto.randomUUID();
@@ -69,91 +132,221 @@ export async function POST(request: Request) {
     await db.batch([
       db.prepare(
         `INSERT INTO employees
-          (id, store_id, email, display_name, auth_user_id, role, status, invited_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          (id, store_id, email, display_name, job_title, phone, start_date, auth_user_id, role, status, invited_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         id,
         auth.actor.storeId,
         email,
         displayName.slice(0, 100),
-        data.user.id,
+        jobTitle,
+        phone,
+        startDate,
+        authUserId,
         role,
+        status,
         auth.actor.email,
         now,
         now,
       ),
-      auditStatement(db, auth.actor.email, "employee", id, "account.created", { role }, now),
+      auditStatement(db, auth.actor.email, "employee", id, "account.created", { role, jobTitle, activationMethod }, now),
     ]);
   } catch (dbError) {
-    await supabase.auth.admin.deleteUser(data.user.id).catch(() => undefined);
+    if (authUserId) {
+      await supabase.auth.admin.deleteUser(authUserId).catch(() => undefined);
+    }
     throw dbError;
   }
 
   return Response.json({
-    account: { id, email, display_name: displayName, role, status: "active" },
+    account: {
+      id,
+      email,
+      display_name: displayName,
+      job_title: jobTitle,
+      phone,
+      start_date: startDate,
+      role,
+      status,
+      created_at: now,
+    },
     temporaryPassword,
   });
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireApiUser(["owner"]);
+  const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
   const body = (await request.json().catch(() => ({}))) as {
     id?: string;
+    action?: "update_info" | "change_role" | "update_status" | "reset_password" | "resend_invite";
+    displayName?: string;
+    jobTitle?: string;
+    phone?: string;
+    startDate?: string;
     role?: ActorRole;
-    status?: "active" | "inactive";
-    resetPassword?: boolean;
+    status?: "active" | "suspended" | "offboarded" | "invited";
   };
-  if (
-    !body.id ||
-    (body.role && !creatableRoles.includes(body.role)) ||
-    (body.status && !["active", "inactive"].includes(body.status))
-  ) {
-    return Response.json({ error: "Thay đổi tài khoản không hợp lệ." }, { status: 400 });
-  }
-  if (body.id === auth.actor.id) {
-    return Response.json({ error: "Không thể thay đổi tài khoản admin đang sử dụng tại đây." }, { status: 409 });
+
+  if (!body.id) {
+    return Response.json({ error: "Thiếu ID tài khoản cần cập nhật." }, { status: 400 });
   }
 
   const db = await ensureDatabase();
   const account = await db.prepare(
-    "SELECT id, auth_user_id, role, status FROM employees WHERE id = ? AND store_id = ?",
-  ).bind(body.id, auth.actor.storeId).first<{
-    id: string; auth_user_id: string | null; role: ActorRole; status: string;
+    "SELECT id, email, display_name, store_id, auth_user_id, role, status, job_title FROM employees WHERE id = ?",
+  ).bind(body.id).first<{
+    id: string; email: string; display_name: string; store_id: string; auth_user_id: string | null; role: ActorRole; status: string; job_title: string;
   }>();
-  if (!account) return Response.json({ error: "Không tìm thấy tài khoản." }, { status: 404 });
-  if (!account.auth_user_id) {
-    return Response.json({ error: "Tài khoản cũ chưa được liên kết với Supabase." }, { status: 409 });
+
+  if (!account) return Response.json({ error: "Không tìm thấy tài khoản nhân sự." }, { status: 404 });
+
+  // Manager cannot modify Owner account
+  if (auth.actor.role === "manager" && account.role === "owner") {
+    return Response.json({ error: "Quản lý không có quyền chỉnh sửa tài khoản Chủ quán." }, { status: 403 });
   }
 
-  const supabase = createAdmin();
-  const temporaryPassword = body.resetPassword ? generateTemporaryPassword() : undefined;
-  const nextRole = body.role ?? account.role;
-  const nextStatus = body.status ?? account.status;
-  const { error } = await supabase.auth.admin.updateUserById(account.auth_user_id, {
-    ...(temporaryPassword ? { password: temporaryPassword, user_metadata: { must_change_password: true } } : {}),
-    app_metadata: { role: nextRole, store_id: auth.actor.storeId },
-    ban_duration: nextStatus === "inactive" ? "876000h" : "none",
-  });
-  if (error) return Response.json({ error: error.message }, { status: 400 });
-
   const now = new Date().toISOString();
-  await db.batch([
-    db.prepare(
-      `UPDATE employees SET role = ?, status = ?, updated_at = ? WHERE id = ?`,
-    ).bind(nextRole, nextStatus, now, body.id),
-    auditStatement(
-      db,
-      auth.actor.email,
-      "employee",
-      body.id,
-      temporaryPassword ? "account.password_reset" : "account.access_updated",
-      { role: nextRole, status: nextStatus },
-      now,
-    ),
-  ]);
-  return Response.json({ updated: true, temporaryPassword });
+  const supabase = createAdmin();
+
+  // Action 1: Update Basic Info (Họ tên, Chức danh, SĐT, Ngày làm)
+  if (body.action === "update_info") {
+    const nextName = body.displayName?.trim() || account.display_name;
+    const nextJobTitle = body.jobTitle?.trim() || account.job_title;
+    const nextPhone = body.phone?.trim() || "";
+    const nextStartDate = body.startDate || "";
+
+    await db.batch([
+      db.prepare(
+        `UPDATE employees SET display_name = ?, job_title = ?, phone = ?, start_date = ?, updated_at = ? WHERE id = ?`
+      ).bind(nextName, nextJobTitle, nextPhone, nextStartDate, now, body.id),
+      auditStatement(db, auth.actor.email, "employee", body.id, "account.info_updated", {
+        displayName: nextName, jobTitle: nextJobTitle, phone: nextPhone
+      }, now),
+    ]);
+
+    if (account.auth_user_id) {
+      await supabase.auth.admin.updateUserById(account.auth_user_id, {
+        user_metadata: { display_name: nextName, job_title: nextJobTitle },
+      }).catch(() => undefined);
+    }
+
+    return Response.json({ updated: true, message: "Đã cập nhật thông tin nhân viên thành công." });
+  }
+
+  // Action 2: Change Role (Đổi vai trò hệ thống)
+  if (body.action === "change_role") {
+    const newRole = body.role;
+    if (!newRole || !creatableRoles.includes(newRole)) {
+      return Response.json({ error: "Vai trò phân quyền không hợp lệ." }, { status: 400 });
+    }
+
+    // Manager cannot assign Owner
+    if (auth.actor.role === "manager" && newRole === "owner") {
+      return Response.json({ error: "Quản lý không có quyền thăng cấp thành Chủ quán." }, { status: 403 });
+    }
+
+    // Safeguard: Check if demoting the last Owner
+    if (account.role === "owner" && newRole !== "owner") {
+      const ownerCount = await db.prepare(
+        "SELECT COUNT(*) AS count FROM employees WHERE role = 'owner' AND status = 'active'"
+      ).first<{ count: number }>();
+      if ((ownerCount?.count ?? 0) <= 1) {
+        return Response.json({ error: "Không thể hạ quyền Chủ quán cuối cùng trong hệ thống!" }, { status: 400 });
+      }
+    }
+
+    await db.batch([
+      db.prepare("UPDATE employees SET role = ?, updated_at = ? WHERE id = ?").bind(newRole, now, body.id),
+      auditStatement(db, auth.actor.email, "employee", body.id, "account.role_changed", {
+        previousRole: account.role, newRole
+      }, now),
+    ]);
+
+    if (account.auth_user_id) {
+      await supabase.auth.admin.updateUserById(account.auth_user_id, {
+        app_metadata: { role: newRole, store_id: account.store_id },
+      }).catch(() => undefined);
+    }
+
+    return Response.json({ updated: true, message: `Đã đổi vai trò hệ thống thành ${newRole === "owner" ? "Chủ quán" : newRole === "manager" ? "Quản lý" : "Nhân viên"}.` });
+  }
+
+  // Action 3: Update Status (Tạm khóa / Mở khóa / Chấm dứt làm việc / Đã nghỉ)
+  if (body.action === "update_status") {
+    const newStatus = body.status;
+    if (!newStatus || !["active", "suspended", "offboarded", "invited"].includes(newStatus)) {
+      return Response.json({ error: "Trạng thái tài khoản không hợp lệ." }, { status: 400 });
+    }
+
+    // Safeguard: Cannot suspend or offboard self
+    if (body.id === auth.actor.id) {
+      return Response.json({ error: "Bạn không thể tự khóa hoặc chấm dứt tài khoản của chính mình!" }, { status: 400 });
+    }
+
+    // Safeguard: Cannot lock last Owner
+    if (account.role === "owner" && (newStatus === "suspended" || newStatus === "offboarded")) {
+      const ownerCount = await db.prepare(
+        "SELECT COUNT(*) AS count FROM employees WHERE role = 'owner' AND status = 'active'"
+      ).first<{ count: number }>();
+      if ((ownerCount?.count ?? 0) <= 1) {
+        return Response.json({ error: "Không thể khóa tài khoản Chủ quán duy nhất của hệ thống!" }, { status: 400 });
+      }
+    }
+
+    await db.batch([
+      db.prepare("UPDATE employees SET status = ?, updated_at = ? WHERE id = ?").bind(newStatus, now, body.id),
+      auditStatement(db, auth.actor.email, "employee", body.id, `account.status_${newStatus}`, {
+        previousStatus: account.status, newStatus
+      }, now),
+    ]);
+
+    if (account.auth_user_id) {
+      await supabase.auth.admin.updateUserById(account.auth_user_id, {
+        ban_duration: newStatus === "suspended" || newStatus === "offboarded" ? "876000h" : "none",
+      }).catch(() => undefined);
+    }
+
+    const statusLabelMap: Record<string, string> = {
+      active: "Đang hoạt động",
+      suspended: "Tạm khóa",
+      offboarded: "Đã nghỉ việc",
+      invited: "Chờ kích hoạt",
+    };
+
+    return Response.json({ updated: true, message: `Đã chuyển trạng thái tài khoản sang ${statusLabelMap[newStatus]}.` });
+  }
+
+  // Action 4: Reset Password (Cấp lại mật khẩu tạm)
+  if (body.action === "reset_password") {
+    const temporaryPassword = generateTemporaryPassword();
+
+    if (account.auth_user_id) {
+      const { error } = await supabase.auth.admin.updateUserById(account.auth_user_id, {
+        password: temporaryPassword,
+        user_metadata: { must_change_password: true },
+      });
+      if (error) return Response.json({ error: error.message }, { status: 400 });
+    }
+
+    await auditStatement(db, auth.actor.email, "employee", body.id, "account.password_reset", {}, now).run();
+
+    return Response.json({ updated: true, temporaryPassword, message: "Đã tạo mật khẩu tạm thời mới." });
+  }
+
+  // Action 5: Resend Invitation (Gửi lại lời mời)
+  if (body.action === "resend_invite") {
+    if (account.auth_user_id) {
+      await supabase.auth.admin.inviteUserByEmail(account.email).catch(() => undefined);
+    }
+
+    await auditStatement(db, auth.actor.email, "employee", body.id, "account.invite_resent", {}, now).run();
+
+    return Response.json({ updated: true, message: `Đã gửi lại email lời mời kích hoạt tới ${account.email}.` });
+  }
+
+  return Response.json({ error: "Hành động không hợp lệ." }, { status: 400 });
 }
 
 function generateTemporaryPassword() {

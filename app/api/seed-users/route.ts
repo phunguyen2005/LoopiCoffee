@@ -1,8 +1,6 @@
 import { createAdmin } from '@/lib/supabase/server';
-import { ensureDatabase } from '@/db/runtime';
+import { ensureDatabase, STORE_ID } from '@/db/runtime';
 import { NextResponse } from 'next/server';
-
-const STORE_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
 const TEST_ACCOUNTS = [
   {

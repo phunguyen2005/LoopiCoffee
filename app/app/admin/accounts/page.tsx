@@ -1,4 +1,4 @@
-import { AdminAccountsView } from "@/components/admin-accounts-view";
+import { AdminAccountsView } from "@/components/operational-views";
 import { getLoopiUser } from "@/app/loopi-user";
 import { redirect } from "next/navigation";
 

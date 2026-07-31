@@ -7,7 +7,8 @@ export async function GET() {
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const store = await db.prepare(
-    `SELECT id, name, address, timezone, latitude, longitude, attendance_enabled
+    `SELECT id, name, address, timezone, latitude, longitude,
+            COALESCE(geofence_radius_meters, 100) AS geofence_radius_meters, attendance_enabled
      FROM stores WHERE id = ?`,
   ).bind(auth.actor.storeId).first();
   const rules = await db.prepare(
@@ -27,7 +28,8 @@ export async function PATCH(request: Request) {
   const address = cleanString(body.address, 180);
   const latitude = numberValue(body.latitude);
   const longitude = numberValue(body.longitude);
-  const timezone = body.timezone === "Asia/Ho_Chi_Minh" ? body.timezone : null;
+  const geofenceRadius = integerValue(body.geofenceRadiusMeters, 10, 1000) ?? 100;
+  const timezone = body.timezone === "Asia/Ho_Chi_Minh" ? body.timezone : "Asia/Ho_Chi_Minh";
   const earlyCheckin = integerValue(body.earlyCheckinMinutes, 0, 180);
   const late = integerValue(body.lateMinutes, 0, 180);
   const earlyDeparture = integerValue(body.earlyDepartureMinutes, 0, 240);
@@ -52,8 +54,8 @@ export async function PATCH(request: Request) {
   await db.batch([
     db.prepare(
       `UPDATE stores SET name = ?, address = ?, timezone = ?, latitude = ?,
-        longitude = ?, attendance_enabled = 1, updated_at = ? WHERE id = ?`,
-    ).bind(name, address, timezone, latitude, longitude, now, auth.actor.storeId),
+        longitude = ?, geofence_radius_meters = ?, attendance_enabled = 1, updated_at = ? WHERE id = ?`,
+    ).bind(name, address, timezone, latitude, longitude, geofenceRadius, now, auth.actor.storeId),
     db.prepare("UPDATE attendance_rules SET active = 0 WHERE store_id = ?")
       .bind(auth.actor.storeId),
     db.prepare(

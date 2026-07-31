@@ -26,7 +26,7 @@ export async function GET() {
       `SELECT s.id, s.starts_at, s.ends_at, s.role_label,
               COALESCE(e.display_name, s.employee_email) AS employee_name
        FROM shifts s LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email)
-       WHERE s.store_id = ? AND s.status = 'published' AND s.ends_at >= ?
+       WHERE s.store_id = ? AND s.status IN ('published', 'completed') AND s.ends_at >= ?
        ORDER BY s.starts_at LIMIT 5`,
     ).bind(auth.actor.storeId, new Date().toISOString()),
     db.prepare(
