@@ -1,5 +1,5 @@
-import { PersistedReportsView } from "@/components/operational-views";
+import { PayrollReportsView } from "@/components/payroll-reports-view";
 
 export default function AttendanceReportPage() {
-  return <PersistedReportsView />;
+  return <PayrollReportsView />;
 }

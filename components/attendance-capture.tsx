@@ -1,7 +1,10 @@
 "use client";
 
-import { Camera, CheckCircle2, Clock3, LoaderCircle, MapPin, RefreshCw, ShieldAlert, X, Eye } from "lucide-react";
+import { Camera, Check, CheckCircle2, LoaderCircle, MapPin, RefreshCw, ShieldAlert, Smartphone, Wifi, X, Eye } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { useLoopyToast } from "./loopy-toast";
+import { CelebrationConfetti } from "./confetti-sparkles";
 
 type LocationEvidence = {
   latitude: number;
@@ -35,6 +38,7 @@ type AttendanceResult = {
 };
 
 export function AttendanceCapture() {
+  const { showLoopyToast } = useLoopyToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -47,6 +51,7 @@ export function AttendanceCapture() {
   const [explanation, setExplanation] = useState("");
   const [preview, setPreview] = useState("");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => () => stopStream(), []);
 
@@ -164,6 +169,15 @@ export function AttendanceCapture() {
       setResult(payload);
       stopStream();
       setStep("success");
+      setShowCelebration(true);
+      showLoopyToast(
+        action === "check_in" ? "Check-in thành công! ☕" : "Check-out thành công! 👋",
+        {
+          message: "Loopy đã ghi nhận thời gian và vị trí của bạn thành công!",
+          mood: "success",
+          type: "success",
+        }
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể hoàn tất chấm công.");
       setStep("error");
@@ -217,9 +231,22 @@ export function AttendanceCapture() {
     setStep("idle");
   }
 
+  const activeStep = step === "success"
+    ? 4
+    : step === "review_photo" || step === "submitting"
+    ? 3
+    : step === "ready"
+    ? 2
+    : 1;
+
   return (
-    <section className="card capture-card">
-      <div className="capture-stage">
+    <section className="card capture-card relative">
+      <CelebrationConfetti active={showCelebration} />
+      <div className="capture-stage relative overflow-hidden">
+        <span className={`capture-stage-state ${step === "ready" ? "ready" : step === "review_photo" ? "review" : step === "success" ? "success" : ""}`}>
+          {step === "ready" ? "Sẵn sàng chụp" : step === "review_photo" ? "Ảnh đã chụp" : step === "success" ? "Đã hoàn tất" : "Chưa bắt đầu"}
+        </span>
+        {step === "ready" && <div className="radar-scan-line" />}
         {preview && (step === "review_photo" || step === "submitting" || step === "success") ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="Ảnh chụp chấm công trực tiếp" className="capture-preview" />
@@ -297,16 +324,19 @@ export function AttendanceCapture() {
           </button>
         </div>
 
-        {/* Dynamic Step Progress Indicator */}
-        <div className="step-tracker" style={{ display: "flex", justifyContent: "center", gap: 16, margin: "10px 0 14px", fontSize: 12, color: "#7b6f70" }}>
-          <span style={{ fontWeight: step === "idle" || step === "preparing" ? 700 : 400, color: step === "idle" || step === "preparing" ? "#6f2939" : undefined }}>1. Bắt đầu</span>
-          <span>➔</span>
-          <span style={{ fontWeight: step === "ready" ? 700 : 400, color: step === "ready" ? "#6f2939" : undefined }}>2. Chụp ảnh</span>
-          <span>➔</span>
-          <span style={{ fontWeight: step === "review_photo" ? 700 : 400, color: step === "review_photo" ? "#6f2939" : undefined }}>3. Xem lại</span>
-          <span>➔</span>
-          <span style={{ fontWeight: step === "success" ? 700 : 400, color: step === "success" ? "#4c9779" : undefined }}>4. Hoàn tất</span>
-        </div>
+        <ol className="attendance-stepper" aria-label={`Bước ${activeStep} trên 4`}>
+          {["Bắt đầu", "Chụp ảnh", "Xác nhận", "Hoàn tất"].map((label, index) => {
+            const number = index + 1;
+            const isComplete = activeStep > number || step === "success";
+            const isActive = activeStep === number && step !== "success";
+            return (
+              <li key={label} className={`${isComplete ? "complete" : ""} ${isActive ? "active" : ""}`}>
+                <span>{isComplete ? <Check size={14} /> : number}</span>
+                <small>{label}</small>
+              </li>
+            );
+          })}
+        </ol>
 
         {step === "error" && (
           <div className="field exception-field" style={{ marginTop: 10 }}>
@@ -323,18 +353,28 @@ export function AttendanceCapture() {
           </div>
         )}
 
-        {/* Verification Evidence Summary Chips */}
-        <div className="capture-evidence">
-          <Evidence label="Thời gian" value={result ? result.localTime : "Máy chủ xác nhận"} icon={Clock3} />
-          <Evidence label="Tín hiệu vị trí" value={location ? `Đã lấy (±${Math.round(location.accuracy)} m)` : "Chờ quyền"} icon={MapPin} />
-          <Evidence label="Mạng cửa hàng" value={location ? `Tham khảo (${Math.round(location.distance)} m)` : "Chưa xác minh"} icon={ShieldAlert} />
-        </div>
+        <section className={`attendance-readiness ${step === "error" ? "has-error" : ""}`}>
+          <div className="attendance-readiness-heading">
+            <div>
+              <span className="mini-icon mint"><CheckCircle2 size={17} /></span>
+              <span><small>Kiểm tra nhanh</small><strong>{step === "error" ? "Cần cấp thêm quyền" : "Sẵn sàng chấm công"}</strong></span>
+            </div>
+            <span className={`badge ${step === "error" ? "danger" : location ? "success" : "neutral"}`}>
+              {step === "error" ? "Cần xử lý" : location ? "Đã xác minh" : "Tự động"}
+            </span>
+          </div>
+          <div className="attendance-readiness-list">
+            <div><Smartphone size={16} /><span><small>Thiết bị</small><strong>{step === "error" ? "Chưa xác minh" : "Camera sẵn sàng"}</strong></span><em className={step === "error" ? "error" : "ok"}>{step === "error" ? "!" : "✓"}</em></div>
+            <div><MapPin size={16} /><span><small>Vị trí</small><strong>{location ? `Hợp lệ · cách quán ${Math.round(location.distance)} m` : "Sẽ kiểm tra khi bắt đầu"}</strong></span><em className={location ? "ok" : "pending"}>{location ? "✓" : "•"}</em></div>
+            <div><Wifi size={16} /><span><small>Kết nối</small><strong>{result ? `Đã ghi lúc ${result.localTime}` : "Kết nối ổn định"}</strong></span><em className="ok">✓</em></div>
+          </div>
+        </section>
 
         {/* Action Controls */}
-        <div className="capture-actions">
+        <div className="capture-actions mobile-attendance-cta">
           {step === "idle" && (
             <button className="button button-large" onClick={beginCapture}>
-              <Camera size={18} /> {action === "check_in" ? "Bước 1: Bắt đầu vào ca" : "Bước 1: Bắt đầu ra ca"}
+              <Camera size={18} /> {action === "check_in" ? "Bắt đầu chấm công" : "Chấm công ra ca"}
             </button>
           )}
 
@@ -428,15 +468,6 @@ export function AttendanceCapture() {
         </div>
       )}
     </section>
-  );
-}
-
-function Evidence({ label, value, icon: Icon }: { label: string; value: string; icon: React.ComponentType<{ size?: number }> }) {
-  return (
-    <div className="evidence-chip">
-      <small><Icon size={11} style={{ display: "inline", marginRight: 4 }} />{label}</small>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

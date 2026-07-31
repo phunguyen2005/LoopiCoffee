@@ -1,35 +1,37 @@
 import { ensureDatabase } from "@/db/runtime";
+import { loadPayrollReport } from "@/lib/payroll-report";
 import { requireApiUser } from "@/server/auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
+
+  const url = new URL(request.url);
   const db = await ensureDatabase();
-  const ownOnly = auth.actor.role === "employee" ? "AND s.employee_email = ?" : "";
-  const statement = db.prepare(
-    `SELECT COALESCE(e.display_name, s.employee_email) AS display_name,
-            COUNT(DISTINCT s.id) AS shift_count,
-            COALESCE(SUM(s.worked_minutes), 0) AS worked_minutes,
-            COALESCE(SUM(CASE WHEN a.review_required = 1 THEN 1 ELSE 0 END), 0) AS exception_count
-     FROM attendance_sessions s
-     LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email)
-     LEFT JOIN attendance_events a ON a.session_id = s.id
-     WHERE s.store_id = ? ${ownOnly}
-     GROUP BY s.employee_email, e.display_name ORDER BY display_name`,
-  );
-  const result = auth.actor.role === "employee"
-    ? await statement.bind(auth.actor.storeId, auth.actor.email).all<{
-        display_name: string; shift_count: number; worked_minutes: number; exception_count: number;
-      }>()
-    : await statement.bind(auth.actor.storeId).all<{
-        display_name: string; shift_count: number; worked_minutes: number; exception_count: number;
-      }>();
+  const report = await loadPayrollReport(db, {
+    storeId: auth.actor.storeId,
+    actorEmail: auth.actor.email,
+    actorRole: auth.actor.role,
+    periodKey: url.searchParams.get("period"),
+  });
+  const canViewPayroll = ["owner", "manager", "system_admin"].includes(auth.actor.role);
+
   return Response.json({
-    rows: result.results.map((row) => ({
-      displayName: row.display_name,
-      shiftCount: row.shift_count,
-      workedMinutes: row.worked_minutes,
-      exceptionCount: row.exception_count,
-    })),
+    ...report,
+    canViewPayroll,
+    canManagePayroll: canViewPayroll,
+    rows: canViewPayroll
+      ? report.rows
+      : report.rows.map((row) => ({
+          ...row,
+          hourlyRate: 0,
+          monthlySalary: 0,
+          allowanceAmount: 0,
+          bonusAmount: 0,
+          deductionAmount: 0,
+          baseSalary: 0,
+          overtimePay: 0,
+          totalSalary: 0,
+        })),
   });
 }

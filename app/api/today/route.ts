@@ -12,7 +12,7 @@ export async function GET() {
     db.prepare(
       `SELECT id, starts_at, ends_at, role_label, is_shift_lead
        FROM shifts WHERE store_id = ? AND lower(employee_email) = lower(?)
-         AND status = 'published' AND starts_at BETWEEN ? AND ?
+         AND status IN ('published', 'completed') AND starts_at BETWEEN ? AND ?
        ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1`,
     ).bind(auth.actor.storeId, auth.actor.email, before, after, now.toISOString()),
     db.prepare(

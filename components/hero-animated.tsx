@@ -11,11 +11,56 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { LoopySticker } from "@/components/loopy-sticker";
+
+const landingExpressions = [
+  {
+    mood: "hello",
+    src: "/mascots/loopy-hello.png",
+    bubble: "Hôm nay quán ổn nè! ♡",
+    subtitle: "Bấm vào Loopy để xem biểu cảm ✨",
+  },
+  {
+    mood: "investigating",
+    src: "/mascots/loopy-investigating.png",
+    bubble: "Đang soi kỹ dữ liệu vận hành... 🔍",
+    subtitle: "Kiểm tra vị trí chính xác!",
+  },
+  {
+    mood: "thinking",
+    src: "/mascots/loopy-thinking.png",
+    bubble: "Hừm, tối ưu lịch làm tuần này thế nào nhỉ? 🤔",
+    subtitle: "Phân ca tự động!",
+  },
+  {
+    mood: "cheer",
+    src: "/mascots/loopy-cheer.png",
+    bubble: "Cố lên! Một ngày bán đắt hàng nhé! 🎉",
+    subtitle: "Tạo động lực cho nhân sự!",
+  },
+  {
+    mood: "sleeping",
+    src: "/mascots/loopy-sleeping.png",
+    bubble: "Zzz... Đóng cửa an toàn, an tâm ngủ ngon 😴",
+    subtitle: "Theo dõi từ xa 24/7!",
+  },
+  {
+    mood: "celebrate",
+    src: "/mascots/loopy-celebrate.png",
+    bubble: "Tuyệt vời! Quản lý nhẹ nhàng, quán phát triển! ✨",
+    subtitle: "Trải nghiệm mượt mà!",
+  },
+];
 
 export function HeroAnimated() {
   const shouldReduceMotion = useReducedMotion();
   const [hasLanded, setHasLanded] = useState(false);
+  const [expressionIndex, setExpressionIndex] = useState(0);
+
+  const currentExpr = landingExpressions[expressionIndex];
+
+  const handleMascotClick = () => {
+    setExpressionIndex((prev) => (prev + 1) % landingExpressions.length);
+  };
 
   // Left copy container staggered variants
   const copyContainerVariants = {
@@ -39,7 +84,7 @@ export function HeroAnimated() {
       x: 0,
       transition: {
         duration: 0.55,
-        ease: [0.25, 1, 0.5, 1],
+        ease: [0.25, 1, 0.5, 1] as const,
       },
     },
   };
@@ -57,7 +102,7 @@ export function HeroAnimated() {
         ? { duration: 0.3 }
         : {
             delay: 0.35,
-            type: "spring",
+            type: "spring" as const,
             stiffness: 180,
             damping: 15,
           },
@@ -79,7 +124,7 @@ export function HeroAnimated() {
         ? { duration: 0.3 }
         : {
             delay: 0.35,
-            type: "spring",
+            type: "spring" as const,
             stiffness: 190,
             damping: 14,
             bounce: 0.55,
@@ -104,7 +149,7 @@ export function HeroAnimated() {
         ? { duration: 0.2, delay: 0.2 }
         : {
             delay: 0.95,
-            type: "spring",
+            type: "spring" as const,
             stiffness: 240,
             damping: 17,
           },
@@ -128,7 +173,7 @@ export function HeroAnimated() {
         ? { duration: 0.2, delay: 0.3 }
         : {
             delay: 1.15,
-            type: "spring",
+            type: "spring" as const,
             stiffness: 240,
             damping: 17,
           },
@@ -152,7 +197,7 @@ export function HeroAnimated() {
         ? { duration: 0.2, delay: 0.4 }
         : {
             delay: 1.35,
-            type: "spring",
+            type: "spring" as const,
             stiffness: 260,
             damping: 16,
           },
@@ -225,40 +270,48 @@ export function HeroAnimated() {
           variants={mascotVariants}
           initial="hidden"
           animate="visible"
+          onClick={handleMascotClick}
           onAnimationComplete={() => setHasLanded(true)}
           whileHover={
             shouldReduceMotion
               ? undefined
               : {
                   scale: 1.07,
-                  rotate: [0, -8, 8, -5, 5, -2, 0],
+                  rotate: [0, -6, 6, -3, 3, 0],
                   transition: {
-                    duration: 0.45,
+                    duration: 0.35,
                     ease: "easeInOut",
                   },
                 }
           }
+          whileTap={{ scale: 0.95 }}
           style={{ cursor: "pointer" }}
+          title="Bấm để đổi biểu cảm Loopy!"
         >
           {/* Subtle idle breathing/floating animation after landing */}
           <motion.div
-            animate={
-              hasLanded && !shouldReduceMotion
-                ? {
-                    y: [0, -8, 0],
-                    rotate: [0, 1.2, -1.2, 0],
-                  }
-                : {}
-            }
+            key={currentExpr.mood}
+            initial={{ scale: 0.85, opacity: 0.5, rotate: -8 }}
+            animate={{
+              scale: 1,
+              opacity: 1,
+              rotate: 0,
+              y: hasLanded && !shouldReduceMotion ? [0, -8, 0] : 0,
+            }}
             transition={{
-              duration: 3.6,
-              repeat: Infinity,
-              ease: "easeInOut",
+              type: "spring",
+              stiffness: 300,
+              damping: 20,
+              y: {
+                duration: 3.6,
+                repeat: Infinity,
+                ease: "easeInOut",
+              },
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/loopy-hero-hd.png"
+              src={currentExpr.src}
               alt="Linh vật LoopiCafe HD"
               width={260}
               height={220}
@@ -271,6 +324,7 @@ export function HeroAnimated() {
 
           {/* Card 2: Mascot Speech Bubble Status (Top Right) */}
           <motion.div
+            key={`bubble-${currentExpr.mood}`}
             className="speech-bubble"
             variants={card3Variants}
             initial="hidden"
@@ -294,7 +348,7 @@ export function HeroAnimated() {
               >
                 <Sparkles size={14} className="text-[#f4b85f]" />
               </motion.span>
-              <span>Hôm nay quán ổn nè! ♡</span>
+              <span>{currentExpr.bubble}</span>
             </div>
           </motion.div>
         </motion.div>

@@ -255,9 +255,9 @@ export function ScheduleView() {
 
 export function AttendanceView() {
   return (
-    <div className="page-grid">
+    <div className="page-grid attendance-page-grid">
       <AttendanceCapture />
-      <aside className="stack">
+      <aside className="stack attendance-support">
         <section className="card">
           <CardHeader title="Quyền riêng tư" subtitle="Ảnh và vị trí chỉ được lấy khi bạn bấm chấm công" />
           <div className="list">
@@ -379,7 +379,7 @@ export function IssuesView() {
       </section>
       <aside className="stack">
         <section className="card" style={{ textAlign: "center" }}>
-          <LoopySticker mood="alert" size={138} />
+          <LoopySticker mood="worries" size={138} />
           <h3 className="card-title">Báo sớm, xử lý gọn</h3>
           <p style={{ margin: "8px 0 0", color: "var(--muted)", fontSize: 10, lineHeight: 1.6 }}>Ảnh và mô tả giúp quản lý hiểu tình hình trước khi liên hệ lại.</p>
         </section>

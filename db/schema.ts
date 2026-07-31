@@ -7,6 +7,7 @@ export const stores = sqliteTable("stores", {
   timezone: text("timezone").notNull().default("Asia/Ho_Chi_Minh"),
   latitude: real("latitude").notNull(),
   longitude: real("longitude").notNull(),
+  geofenceRadiusMeters: integer("geofence_radius_meters").notNull().default(100),
   attendanceEnabled: integer("attendance_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -17,9 +18,18 @@ export const employees = sqliteTable("employees", {
   storeId: text("store_id").notNull().references(() => stores.id),
   email: text("email").notNull(),
   displayName: text("display_name").notNull(),
+  jobTitle: text("job_title").default("Barista"),
+  phone: text("phone"),
+  startDate: text("start_date"),
+  lastLoginAt: text("last_login_at"),
   authUserId: text("auth_user_id"),
   role: text("role", { enum: ["owner", "manager", "team_lead", "employee"] }).notNull(),
   status: text("status", { enum: ["invited", "active", "inactive"] }).notNull().default("invited"),
+  participatesAttendance: integer("participates_attendance", { mode: "boolean" }),
+  payrollEligible: integer("payroll_eligible", { mode: "boolean" }),
+  compensationType: text("compensation_type", { enum: ["hourly", "monthly", "shift", "none"] }),
+  hourlyRate: integer("hourly_rate"),
+  monthlySalary: integer("monthly_salary"),
   invitedBy: text("invited_by"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -151,6 +161,39 @@ export const attendanceExceptions = sqliteTable("attendance_exceptions", {
 }, (table) => [
   uniqueIndex("attendance_exceptions_event_idx").on(table.eventId),
   index("attendance_exceptions_status_event_idx").on(table.status, table.eventId),
+]);
+
+export const payrollPeriods = sqliteTable("payroll_periods", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  status: text("status", { enum: ["reviewing", "finalized", "paid"] }).notNull().default("reviewing"),
+  finalizedBy: text("finalized_by"),
+  finalizedAt: text("finalized_at"),
+  reopenedBy: text("reopened_by"),
+  reopenedAt: text("reopened_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("payroll_periods_store_range_idx").on(table.storeId, table.periodStart, table.periodEnd),
+]);
+
+export const payrollEntries = sqliteTable("payroll_entries", {
+  id: text("id").primaryKey(),
+  payrollPeriodId: text("payroll_period_id").notNull().references(() => payrollPeriods.id),
+  employeeEmail: text("employee_email").notNull(),
+  approvedMinutes: integer("approved_minutes").notNull(),
+  overtimeMinutes: integer("overtime_minutes").notNull().default(0),
+  allowanceAmount: integer("allowance_amount").notNull().default(0),
+  bonusAmount: integer("bonus_amount").notNull().default(0),
+  deductionAmount: integer("deduction_amount").notNull().default(0),
+  totalAmount: integer("total_amount").notNull(),
+  status: text("status", { enum: ["payroll_finalized", "paid"] }).notNull().default("payroll_finalized"),
+  lockedAt: text("locked_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("payroll_entries_period_employee_idx").on(table.payrollPeriodId, table.employeeEmail),
 ]);
 
 export const attendanceActionLimits = sqliteTable("attendance_action_limits", {

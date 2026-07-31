@@ -24,16 +24,16 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       title: "LoopiCafe — Vận hành quán trong một nhịp",
-      description: "Quán vẫn chạy trơn tru, ngay cả khi bạn không có mặt.",
+      description: "Ca làm gọn hơn. Một chạm là xong.",
       locale: "vi_VN",
       type: "website",
-      images: [{ url: "/og.png", width: 1752, height: 919, alt: "LoopiCafe — Quán vẫn chạy trơn tru" }],
+      images: [{ url: "/og-mobile.png", width: 1733, height: 907, alt: "LoopiCafe — Ca làm gọn hơn. Một chạm là xong." }],
     },
     twitter: {
       card: "summary_large_image",
       title: "LoopiCafe — Vận hành quán trong một nhịp",
-      description: "Quán vẫn chạy trơn tru, ngay cả khi bạn không có mặt.",
-      images: ["/og.png"],
+      description: "Ca làm gọn hơn. Một chạm là xong.",
+      images: ["/og-mobile.png"],
     },
     manifest: "/manifest.webmanifest",
   };
