@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   CalendarDays,
@@ -23,7 +23,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { LoopyMark } from "./loopy-mark";
 import { LoopyToastProvider } from "./loopy-toast";
 import type { LoopiUser } from "@/app/loopi-user";
@@ -78,33 +78,91 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const shouldReduceMotion = useReducedMotion();
   const [showProfile, setShowProfile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [todaySnapshot, setTodaySnapshot] = useState<TodaySnapshot | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileDrawerRef = useRef<HTMLElement>(null);
+  const mobileDrawerCloseButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/today", { cache: "no-store", signal: controller.signal })
+    void fetch("/api/today", { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => payload && setTodaySnapshot(payload as TodaySnapshot))
       .catch(() => {});
+
+    void fetch("/api/notifications", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const notifications = (payload as { notifications?: Array<{ read_at: string | null }> } | null)?.notifications;
+        setUnreadNotificationCount(
+          Array.isArray(notifications)
+            ? notifications.filter((notification) => notification.read_at === null).length
+            : 0,
+        );
+      })
+      .catch(() => {});
+
     return () => controller.abort();
   }, [pathname]);
 
   useEffect(() => {
-    setMobileNavOpen(false);
+    const closeFrame = window.requestAnimationFrame(() => setMobileNavOpen(false));
+    return () => window.cancelAnimationFrame(closeFrame);
   }, [pathname]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNavOpen(false);
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : mobileMenuButtonRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      mobileDrawerCloseButtonRef.current?.focus();
+    });
+    const handleDrawerKeyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileNavOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const drawer = mobileDrawerRef.current;
+      if (!drawer) return;
+      const focusableElements = Array.from(
+        drawer.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements.at(-1);
+      if (!firstFocusable || !lastFocusable) {
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+
+      if (!drawer.contains(document.activeElement)) {
+        event.preventDefault();
+        firstFocusable.focus();
+      } else if (event.shiftKey && document.activeElement === firstFocusable) {
+        event.preventDefault();
+        lastFocusable.focus();
+      } else if (!event.shiftKey && document.activeElement === lastFocusable) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
     };
-    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", handleDrawerKeyboard);
     document.body.classList.add("mobile-drawer-open");
     return () => {
-      document.removeEventListener("keydown", closeOnEscape);
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleDrawerKeyboard);
       document.body.classList.remove("mobile-drawer-open");
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
   }, [mobileNavOpen]);
 
@@ -126,8 +184,8 @@ export function AppShell({
   const visibleMobile = user.role === "employee"
     ? [
         { href: "/app/today", label: "Hôm nay", icon: Coffee },
-        { href: "/app/schedule", label: "Lịch", icon: CalendarDays },
         { href: "/app/attendance", label: "Chấm công", icon: Clock3 },
+        { href: "/app/schedule", label: "Lịch", icon: CalendarDays },
         { href: "/app/checklists", label: "Công việc", icon: CheckSquare2 },
         { href: "/app/issues", label: "Sự cố", icon: TriangleAlert },
       ]
@@ -138,6 +196,10 @@ export function AppShell({
         { href: "/app/schedule", label: "Lịch", icon: CalendarDays },
         { href: "/app/issues", label: "Sự cố", icon: TriangleAlert },
       ];
+
+  const notificationLabel = unreadNotificationCount > 0
+    ? `Thông báo, ${unreadNotificationCount} chưa đọc`
+    : "Thông báo";
 
   const handleSignOut = () => {
     router.push("/auth/signout");
@@ -165,6 +227,7 @@ export function AppShell({
                   key={href}
                   href={href}
                   className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                  aria-current={isActive(pathname, href) ? "page" : undefined}
                 >
                   <Icon size={17} /> {label}
                 </Link>
@@ -180,6 +243,7 @@ export function AppShell({
                   key={href}
                   href={href}
                   className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                  aria-current={isActive(pathname, href) ? "page" : undefined}
                 >
                   <Icon size={17} /> {label}
                 </Link>
@@ -195,6 +259,7 @@ export function AppShell({
                   key={href}
                   href={href}
                   className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                  aria-current={isActive(pathname, href) ? "page" : undefined}
                 >
                   <Icon size={17} /> {label}
                 </Link>
@@ -210,17 +275,17 @@ export function AppShell({
                   key={href}
                   href={href}
                   className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                  aria-current={isActive(pathname, href) ? "page" : undefined}
                 >
                   <Icon size={17} /> {label}
                 </Link>
               ))}
             </nav>
           )}
-          <div
-            className="sidebar-bottom cursor-pointer hover:bg-[#fff2f4] transition p-2 rounded-xl"
+          <button
+            type="button"
+            className="sidebar-bottom w-full cursor-pointer text-left hover:bg-[#fff2f4] transition p-2 rounded-xl"
             onClick={() => setShowProfile(true)}
-            role="button"
-            tabIndex={0}
             title="Xem thông tin tài khoản"
           >
             <span className="avatar">{initials}</span>
@@ -228,40 +293,52 @@ export function AppShell({
               <strong className="block truncate">{user.displayName}</strong>
               <small className="text-xs text-[#7b6f70]">{roleLabel(user.role)}</small>
             </span>
-          </div>
+          </button>
         </aside>
 
         <main className="app-main">
           <div className="mobile-topbar">
-            <Link href="/app/today" className="brand" title="Về trang Hôm nay">
-              <LoopyMark size="small" /><span>LoopiCafe</span>
-            </Link>
-            <div className="mobile-topbar-actions">
-              <Link href="/app/notifications" className="icon-button mobile-notification-button" aria-label="Thông báo">
-                <Bell size={18} /><span aria-hidden="true" />
+            <div className="mobile-topbar-primary">
+              <Link href="/app/today" className="brand" title="Về trang Hôm nay">
+                <LoopyMark size="small" /><span>LoopiCafe</span>
               </Link>
-              <button onClick={() => setShowProfile(true)} className="avatar-button" aria-label="Mở hồ sơ cá nhân">
-                <span className="avatar">{initials}</span>
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => setMobileNavOpen(true)}
-                aria-label="Mở bảng điều khiển nhanh"
-                aria-expanded={mobileNavOpen}
-                aria-controls="mobile-dashboard-drawer"
-              >
-                <Menu size={19} />
-              </button>
+              <div className="mobile-topbar-actions">
+                <Link href="/app/notifications" className="icon-button mobile-notification-button" aria-label={notificationLabel}>
+                  <Bell size={18} />
+                  {unreadNotificationCount > 0 && <span aria-hidden="true" />}
+                </Link>
+                <button onClick={() => setShowProfile(true)} className="avatar-button" aria-label="Mở hồ sơ cá nhân">
+                  <span className="avatar">{initials}</span>
+                </button>
+                <button
+                  ref={mobileMenuButtonRef}
+                  className="icon-button mobile-menu-btn"
+                  onClick={() => setMobileNavOpen(true)}
+                  aria-label="Mở bảng điều khiển nhanh"
+                  aria-expanded={mobileNavOpen}
+                  aria-controls="mobile-dashboard-drawer"
+                >
+                  <Menu size={19} />
+                </button>
+              </div>
+            </div>
+            <div className="mobile-topbar-context">
+              <h1 className="mobile-page-title">{titleForPath(pathname)}</h1>
+              <p className="mobile-page-subtitle">{subtitleForPath(pathname, todaySnapshot)}</p>
             </div>
           </div>
-          <header className="app-header">
+
+          <header className="app-header desktop-only-header">
             <div className="app-header-copy">
               <h1 className="app-title">{titleForPath(pathname)}</h1>
               <p>{subtitleForPath(pathname, todaySnapshot)}</p>
             </div>
             <div className="header-actions">
               <span className="date-pill"><CalendarDays size={14} /> {dateLabel}</span>
-              <Link href="/app/notifications" className="icon-button" aria-label="Thông báo"><Bell size={17} /></Link>
+              <Link href="/app/notifications" className="icon-button mobile-notification-button" aria-label={notificationLabel}>
+                <Bell size={17} />
+                {unreadNotificationCount > 0 && <span aria-hidden="true" />}
+              </Link>
               <button
                 onClick={() => setShowProfile(true)}
                 className="avatar-button focus:outline-none"
@@ -271,6 +348,7 @@ export function AppShell({
               </button>
             </div>
           </header>
+
           <section className="mobile-quick-panel" aria-label="Tóm tắt ca làm hôm nay">
             <Link href="/app/schedule" className="mobile-quick-stat">
               <span>Ca hôm nay</span>
@@ -278,7 +356,9 @@ export function AppShell({
             </Link>
             <Link href="/app/attendance" className="mobile-quick-stat">
               <span>Trạng thái</span>
-              <strong>{todaySnapshot?.attendance?.closed_at ? "Đã ra ca" : todaySnapshot?.attendance?.opened_at ? "Đang trong ca" : "Chưa vào ca"}</strong>
+              <strong className={todaySnapshot?.attendance?.opened_at && !todaySnapshot?.attendance?.closed_at ? "text-[#2e7d32]" : ""}>
+                {todaySnapshot?.attendance?.closed_at ? "Đã ra ca" : todaySnapshot?.attendance?.opened_at ? "Đang trong ca" : "Chưa vào ca"}
+              </strong>
             </Link>
             <Link href="/app/checklists" className="mobile-quick-stat">
               <span>Checklist</span>
@@ -288,10 +368,10 @@ export function AppShell({
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
+              transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
             >
               {children}
             </motion.div>
@@ -306,28 +386,31 @@ export function AppShell({
               className="mobile-drawer-backdrop"
               aria-label="Đóng bảng điều khiển nhanh"
               onClick={() => setMobileNavOpen(false)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={shouldReduceMotion ? false : { opacity: 0 }}
+              animate={shouldReduceMotion ? undefined : { opacity: 1 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+              transition={shouldReduceMotion ? { duration: 0 } : undefined}
             />
             <motion.aside
+              ref={mobileDrawerRef}
               id="mobile-dashboard-drawer"
               className="mobile-dashboard-drawer"
               role="dialog"
               aria-modal="true"
               aria-label="Bảng điều khiển nhanh"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", stiffness: 360, damping: 34 }}
+              tabIndex={-1}
+              initial={shouldReduceMotion ? false : { x: "100%" }}
+              animate={shouldReduceMotion ? undefined : { x: 0 }}
+              exit={shouldReduceMotion ? undefined : { x: "100%" }}
+              transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 34 }}
             >
               <div className="mobile-drawer-header">
                 <div>
-                  <span className="drawer-eyebrow">Quick dashboard</span>
+                  <span className="drawer-eyebrow">Dashboard & Điều hướng</span>
                   <h2>Xin chào, {user.displayName.split(" ").slice(-1)[0]}!</h2>
                   <p>Cửa hàng chính · {roleLabel(user.role)}</p>
                 </div>
-                <button className="icon-button" onClick={() => setMobileNavOpen(false)} aria-label="Đóng bảng điều khiển">
+                <button ref={mobileDrawerCloseButtonRef} className="icon-button" onClick={() => setMobileNavOpen(false)} aria-label="Đóng bảng điều khiển">
                   <X size={19} />
                 </button>
               </div>
@@ -342,34 +425,73 @@ export function AppShell({
               </div>
 
               <div className="drawer-quick-actions">
-                <Link href="/app/attendance"><Clock3 size={18} /><span>Chấm công</span></Link>
-                <Link href="/app/schedule"><CalendarDays size={18} /><span>Xem lịch</span></Link>
-                <Link href="/app/issues"><TriangleAlert size={18} /><span>Báo sự cố</span></Link>
+                <Link href="/app/attendance" onClick={() => setMobileNavOpen(false)}><Clock3 size={18} /><span>Chấm công</span></Link>
+                <Link href="/app/schedule" onClick={() => setMobileNavOpen(false)}><CalendarDays size={18} /><span>Xem lịch</span></Link>
+                <Link href="/app/issues" onClick={() => setMobileNavOpen(false)}><TriangleAlert size={18} /><span>Báo sự cố</span></Link>
               </div>
 
               <div className="drawer-nav-groups">
-                {[
-                  { label: "Công việc", items: [...visibleOverview, ...visibleOperations] },
-                  { label: "Nhân sự & quản trị", items: [...visibleTeam, ...visibleAdmin] },
-                ].map((section) => section.items.length > 0 && (
-                  <section key={section.label}>
-                    <h3>{section.label}</h3>
-                    <nav aria-label={section.label}>
-                      {section.items.map(({ href, label, icon: Icon }) => (
-                        <Link key={href} href={href} className={isActive(pathname, href) ? "active" : ""}>
+                {visibleOverview.length > 0 && (
+                  <section>
+                    <h3>Tổng quan</h3>
+                    <nav aria-label="Tổng quan">
+                      {visibleOverview.map(({ href, label, icon: Icon }) => (
+                        <Link
+                          key={href}
+                          href={href}
+                          className={isActive(pathname, href) ? "active" : ""}
+                          aria-current={isActive(pathname, href) ? "page" : undefined}
+                          onClick={() => setMobileNavOpen(false)}
+                        >
                           <Icon size={17} /><span>{label}</span>
                         </Link>
                       ))}
                     </nav>
                   </section>
-                ))}
+                )}
+
+                <section>
+                  <h3>Công việc & Vận hành</h3>
+                  <nav aria-label="Công việc">
+                    {visibleOperations.map(({ href, label, icon: Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={isActive(pathname, href) ? "active" : ""}
+                        aria-current={isActive(pathname, href) ? "page" : undefined}
+                        onClick={() => setMobileNavOpen(false)}
+                      >
+                        <Icon size={17} /><span>{label}</span>
+                      </Link>
+                    ))}
+                  </nav>
+                </section>
+
+                {(visibleTeam.length > 0 || visibleAdmin.length > 0) && (
+                  <section>
+                    <h3>Quản trị & Hỗ trợ</h3>
+                    <nav aria-label="Quản trị">
+                      {[...visibleTeam, ...visibleAdmin].map(({ href, label, icon: Icon }) => (
+                        <Link
+                          key={href}
+                          href={href}
+                          className={isActive(pathname, href) ? "active" : ""}
+                          aria-current={isActive(pathname, href) ? "page" : undefined}
+                          onClick={() => setMobileNavOpen(false)}
+                        >
+                          <Icon size={17} /><span>{label}</span>
+                        </Link>
+                      ))}
+                    </nav>
+                  </section>
+                )}
               </div>
 
               <div className="drawer-account-actions">
                 <button onClick={() => { setMobileNavOpen(false); setShowProfile(true); }}>
-                  <UserRound size={17} /> Hồ sơ & cài đặt
+                  <UserRound size={17} /> Hồ sơ cá nhân & cài đặt
                 </button>
-                <button onClick={handleSignOut} className="danger-text"><LogOut size={17} /> Đăng xuất</button>
+                <button onClick={handleSignOut} className="danger-text"><LogOut size={17} /> Đăng xuất tài khoản</button>
               </div>
             </motion.aside>
           </>
@@ -379,14 +501,15 @@ export function AppShell({
       {/* Profile & Sign Out Modal / Drawer */}
       {showProfile && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-[#eee3df] animate-in fade-in zoom-in duration-200">
+          <div role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title" className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-[#eee3df] animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-4 border-b border-[#eee3df]">
-              <h3 className="font-bold text-[#6f2939] text-lg flex items-center gap-2">
+              <h3 id="profile-dialog-title" className="font-bold text-[#6f2939] text-lg flex items-center gap-2">
                 <UserRound size={20} className="text-[#d96d83]" /> Thông tin tài khoản
               </h3>
               <button
                 onClick={() => setShowProfile(false)}
-                className="p-1 rounded-full hover:bg-[#fff2f4] text-[#7b6f70] transition"
+                aria-label="Đóng thông tin tài khoản"
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#fff2f4] text-[#7b6f70] transition"
               >
                 <X size={20} />
               </button>
@@ -444,7 +567,8 @@ export function AppShell({
           <Link
             key={href}
             href={href}
-            className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+            className={`nav-item ${href === "/app/attendance" ? "highlight-item" : ""} ${isActive(pathname, href) ? "active" : ""}`}
+            aria-current={isActive(pathname, href) ? "page" : undefined}
           >
             <Icon size={17} /> {label}
           </Link>
@@ -460,6 +584,7 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/app/profile")) return "Hồ sơ cá nhân";
   if (pathname.startsWith("/app/today")) return "Ca làm hôm nay";
   if (pathname.startsWith("/app/schedule")) return "Lịch làm việc";
+  if (pathname.startsWith("/app/attendance/review")) return "Duyệt chấm công";
   if (pathname.startsWith("/app/attendance")) return "Chấm công";
   if (pathname.startsWith("/app/checklists")) return "Checklist vận hành";
   if (pathname.startsWith("/app/issues")) return "Sự cố & thiếu hàng";
@@ -481,6 +606,7 @@ function subtitleForPath(pathname: string, today: TodaySnapshot | null) {
       : "Mọi việc quan trọng trong ngày, ở một nơi";
   }
   if (pathname.startsWith("/app/schedule")) return "Xem nhanh ca của bạn theo danh sách hoặc tuần";
+  if (pathname.startsWith("/app/attendance/review")) return "Xem xét và xử lý các phiên chấm công cần duyệt";
   if (pathname === "/app/attendance") {
     return today?.attendance?.opened_at ? "Bạn đang trong ca làm việc" : "Bạn chưa bắt đầu ca hôm nay";
   }

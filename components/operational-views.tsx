@@ -16,7 +16,7 @@ import {
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LoopySticker, MotionLoopySticker, type StickerMood } from "./loopy-sticker";
 import { useLoopyToast } from "./loopy-toast";
@@ -25,6 +25,15 @@ export { AdminAccountsView } from "./admin-accounts-view";
 
 type ApiState = "loading" | "ready" | "error";
 type ShiftPreset = "morning" | "evening" | "full" | "custom";
+type ScheduleShift = {
+  id: string;
+  employee_name: string;
+  employee_email: string;
+  starts_at: string;
+  ends_at: string;
+  role_label: string;
+  is_shift_lead: number;
+};
 
 const DAY_CHIP_LABELS = [
   { key: 0, label: "T2" },
@@ -162,35 +171,77 @@ export function EmployeeTodayView() {
     shift: { starts_at: string; ends_at: string; role_label: string; is_shift_lead: number } | null;
     attendance: { opened_at: string | null; closed_at: string | null; status: string } | null;
     checklist: { total: number; done: number };
+    handover: { id: string; created_at: string } | null;
   } | null>(null);
+  const [state, setState] = useState<ApiState>("loading");
 
-  const loadToday = () => {
+  const loadToday = (showLoading = true) => {
+    if (showLoading) setState("loading");
     fetch("/api/today", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
-      .then(readJson)
-      .then(setData)
-      .catch(() => {});
+      .then(async (response) => {
+        const payload = await readJson(response);
+        if (!response.ok) throw new Error(payload.error ?? "Không thể tải thông tin ca hôm nay.");
+        setData(payload);
+        setState("ready");
+      })
+      .catch(() => setState("error"));
   };
 
   useEffect(() => {
-    loadToday();
-    window.addEventListener("focus", loadToday);
-    return () => window.removeEventListener("focus", loadToday);
+    const initialLoad = window.setTimeout(() => loadToday(false), 0);
+    const refreshOnFocus = () => loadToday(false);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, []);
 
-  const hasShift = Boolean(data?.shift);
-  const checklistCount = data?.checklist?.total ?? 0;
-  const checklistDone = data?.checklist?.done ?? 0;
-  const hasCheckedIn = Boolean(data?.attendance?.opened_at);
-  const hasCheckedOut = Boolean(data?.attendance?.closed_at);
-  const checklistComplete = checklistCount > 0 && checklistDone >= checklistCount;
+  if (state === "loading") {
+    return (
+      <div className="stack employee-today-view">
+        <section className="card" role="status" aria-live="polite">
+          <ViewHeader title="Đang tải ca hôm nay…" subtitle="LoopiCafe đang cập nhật lịch, chấm công và công việc của bạn" />
+        </section>
+      </div>
+    );
+  }
+
+  if (state === "error" || !data) {
+    return (
+      <div className="stack employee-today-view">
+        <section className="card" role="alert">
+          <ViewHeader title="Chưa tải được ca hôm nay" subtitle="Kết nối có thể đang gián đoạn. Dữ liệu cũ sẽ không được dùng thay thế." />
+          <button type="button" className="button button-compact" style={{ marginTop: 16 }} onClick={() => loadToday()}>
+            Thử tải lại
+          </button>
+        </section>
+      </div>
+    );
+  }
+
+  const hasShift = Boolean(data.shift);
+  const checklistCount = data.checklist?.total ?? 0;
+  const checklistDone = data.checklist?.done ?? 0;
+  const hasCheckedIn = Boolean(data.attendance?.opened_at);
+  const hasCheckedOut = Boolean(data.attendance?.closed_at);
+  const hasHandover = Boolean(data.handover?.id);
+  const checklistNotApplicable = checklistCount === 0;
+  const checklistComplete = checklistNotApplicable || checklistDone >= checklistCount;
+  const checklistStepComplete = hasCheckedIn && checklistComplete;
   const checklistProgress = checklistCount > 0 ? Math.min(100, (checklistDone / checklistCount) * 100) : 0;
+  const completedSteps = [hasCheckedIn, checklistStepComplete, hasHandover, hasCheckedOut].filter(Boolean).length;
   const primaryAction = !hasShift
     ? { href: "/app/schedule", label: "Xem lịch của tôi", icon: CalendarDays }
+    : hasCheckedOut
+    ? { href: "/app/schedule", label: "Xem lịch ca tiếp theo", icon: CalendarDays }
     : !hasCheckedIn
     ? { href: "/app/attendance", label: "Chấm công vào ca", icon: Clock3 }
     : !checklistComplete
     ? { href: "/app/checklists", label: "Tiếp tục checklist", icon: Check }
-    : { href: "/app/handovers", label: "Chuẩn bị bàn giao ca", icon: UserRound };
+    : !hasHandover
+    ? { href: "/app/handovers", label: "Chuẩn bị bàn giao ca", icon: UserRound }
+    : { href: "/app/attendance", label: "Chấm công ra ca", icon: Clock3 };
   const PrimaryIcon = primaryAction.icon;
 
   return (
@@ -205,13 +256,13 @@ export function EmployeeTodayView() {
             <span className="today-store-label">Cửa hàng chính</span>
           </div>
           <span className="today-kicker">Ca hôm nay</span>
-          <h2>{hasShift ? `${formatTime(data!.shift!.starts_at)} — ${formatTime(data!.shift!.ends_at)}` : "Một ngày thật nhẹ nhàng"}</h2>
-          <p>{hasShift ? `${data!.shift!.role_label}${data!.shift!.is_shift_lead ? " · Trưởng ca" : ""}` : "Bạn chưa có ca được phân công. Hãy xem lịch để chuẩn bị cho ca tiếp theo."}</p>
+          <h2>{hasShift ? `${formatTime(data.shift!.starts_at)} — ${formatTime(data.shift!.ends_at)}` : "Một ngày thật nhẹ nhàng"}</h2>
+          <p>{hasShift ? `${data.shift!.role_label}${data.shift!.is_shift_lead ? " · Trưởng ca" : ""}` : "Bạn chưa có ca được phân công. Hãy xem lịch để chuẩn bị cho ca tiếp theo."}</p>
 
           <div className="today-summary-metrics">
-            <div><span>Vào ca</span><strong>{hasCheckedIn ? formatTime(data!.attendance!.opened_at!) : "Chưa chấm"}</strong></div>
-            <div><span>Checklist</span><strong>{checklistDone}/{checklistCount} việc</strong></div>
-            <div><span>Bàn giao</span><strong>{hasCheckedOut ? "Đã xong" : "Chưa hoàn tất"}</strong></div>
+            <div><span>Vào ca</span><strong>{hasCheckedIn ? formatTime(data.attendance!.opened_at!) : "Chưa chấm"}</strong></div>
+            <div><span>Checklist</span><strong>{checklistNotApplicable ? "Không áp dụng" : `${checklistDone}/${checklistCount} việc`}</strong></div>
+            <div><span>Bàn giao</span><strong>{hasHandover ? "Đã xong" : "Chưa hoàn tất"}</strong></div>
           </div>
 
           <Link href={primaryAction.href} className="button today-primary-action">
@@ -226,28 +277,53 @@ export function EmployeeTodayView() {
       {hasShift ? (
         <section className="card today-flow-card">
           <div className="section-row today-flow-heading">
-            <ViewHeader title="Tiến trình ca làm" subtitle="Chạm vào từng bước để tiếp tục" />
-            <span className="badge info">{hasCheckedOut ? "4/4" : checklistComplete ? "2/4" : hasCheckedIn ? "1/4" : "0/4"}</span>
+            <ViewHeader title="Tiến trình ca làm" subtitle="Chạm vào từng bước để chuyển nhanh tới việc cần làm" />
+            <span className="badge info">{completedSteps === 4 ? "4/4 Hoàn tất" : `${completedSteps}/4 ${completedSteps === 0 ? "Chưa vào ca" : "Đang làm"}`}</span>
           </div>
           <div className="today-task-flow">
             <Link href="/app/attendance" className={`today-task-step ${hasCheckedIn ? "complete" : "current"}`}>
               <span className="today-step-marker">{hasCheckedIn ? <Check size={16} /> : "1"}</span>
-              <span><small>Chấm vào ca</small><strong>{hasCheckedIn ? formatTime(data!.attendance!.opened_at!) : "Chờ chụp ảnh"}</strong><em>{hasCheckedIn ? "Hoàn thành" : "Cần làm tiếp"}</em></span>
+              <span>
+                <small>1. Chấm vào ca</small>
+                <strong>{hasCheckedIn ? formatTime(data.attendance!.opened_at!) : "Chưa chấm vào ca"}</strong>
+                <em className={`step-badge ${hasCheckedIn ? "success" : "warning"}`}>{hasCheckedIn ? "✅ Hoàn thành" : "🟡 Bắt đầu ngay"}</em>
+              </span>
               <span className="today-step-arrow">›</span>
             </Link>
-            <Link href="/app/checklists" className={`today-task-step ${checklistComplete ? "complete" : hasCheckedIn ? "current" : "locked"}`}>
-              <span className="today-step-marker">{checklistComplete ? <Check size={16} /> : "2"}</span>
-              <span><small>Checklist mở ca</small><strong>{checklistDone}/{checklistCount} công việc</strong><em>{checklistComplete ? "Hoàn thành" : hasCheckedIn ? "Đang thực hiện" : "Chưa đến bước"}</em></span>
+
+            <Link href="/app/checklists" className={`today-task-step ${checklistStepComplete ? "complete" : hasCheckedIn ? "current" : "locked"}`}>
+              <span className="today-step-marker">{checklistStepComplete ? <Check size={16} /> : "2"}</span>
+              <span>
+                <small>2. Checklist mở ca</small>
+                <strong>{checklistNotApplicable ? "Không có việc được giao" : `${checklistDone}/${checklistCount} công việc đã xong`}</strong>
+                <em className={`step-badge ${checklistStepComplete ? "success" : hasCheckedIn ? "warning" : "neutral"}`}>
+                  {checklistStepComplete ? (checklistNotApplicable ? "✅ Không áp dụng" : "✅ Hoàn thành") : hasCheckedIn ? "🟡 Đang thực hiện" : "🔒 Chưa đến bước"}
+                </em>
+              </span>
               <span className="today-step-arrow">›</span>
             </Link>
-            <Link href="/app/handovers" className={`today-task-step ${checklistComplete ? "current" : "pending"}`}>
-              <span className="today-step-marker">3</span>
-              <span><small>Bàn giao ca</small><strong>Ghi chú cho ca sau</strong><em>{checklistComplete ? "Có thể bắt đầu" : "Chưa bắt đầu"}</em></span>
+
+            <Link href="/app/handovers" className={`today-task-step ${hasHandover ? "complete" : checklistStepComplete ? "current" : "locked"}`}>
+              <span className="today-step-marker">{hasHandover ? <Check size={16} /> : "3"}</span>
+              <span>
+                <small>3. Bàn giao ca</small>
+                <strong>{hasHandover ? `Đã gửi lúc ${formatTime(data.handover!.created_at)}` : "Ghi chú & tài sản ca"}</strong>
+                <em className={`step-badge ${hasHandover ? "success" : checklistStepComplete ? "warning" : "neutral"}`}>
+                  {hasHandover ? "✅ Đã bàn giao" : checklistStepComplete ? "🟡 Sẵn sàng bàn giao" : "⚪ Chưa bắt đầu"}
+                </em>
+              </span>
               <span className="today-step-arrow">›</span>
             </Link>
-            <Link href="/app/attendance" className={`today-task-step ${hasCheckedOut ? "complete" : "locked"}`}>
+
+            <Link href="/app/attendance" className={`today-task-step ${hasCheckedOut ? "complete" : checklistStepComplete && hasHandover ? "current" : "locked"}`}>
               <span className="today-step-marker">{hasCheckedOut ? <Check size={16} /> : "4"}</span>
-              <span><small>Chấm ra ca</small><strong>{hasCheckedOut ? formatTime(data!.attendance!.closed_at!) : formatTime(data!.shift!.ends_at)}</strong><em>{hasCheckedOut ? "Hoàn thành" : "Chưa đến giờ"}</em></span>
+              <span>
+                <small>4. Chấm ra ca</small>
+                <strong>{hasCheckedOut ? formatTime(data.attendance!.closed_at!) : `Dự kiến ${formatTime(data.shift!.ends_at)}`}</strong>
+                <em className={`step-badge ${hasCheckedOut ? "success" : checklistStepComplete && hasHandover ? "warning" : "locked"}`}>
+                  {hasCheckedOut ? "✅ Hoàn thành" : checklistStepComplete && hasHandover ? "🟡 Sẵn sàng ra ca" : hasCheckedIn ? "🔒 Hoàn tất các bước trước" : "🔒 Chưa đến bước"}
+                </em>
+              </span>
               <span className="today-step-arrow">›</span>
             </Link>
           </div>
@@ -1195,10 +1271,9 @@ export function PersistentStoreSettingsView() {
 }
 
 export function ScheduleManagerView({ canManage = false }: { canManage?: boolean }) {
-  const [shifts, setShifts] = useState<Array<{
-    id: string; employee_name: string; employee_email: string; starts_at: string; ends_at: string; role_label: string;
-  }>>([]);
+  const [shifts, setShifts] = useState<ScheduleShift[]>([]);
   const [employees, setEmployees] = useState<Array<{ email: string; display_name: string; status: string }>>([]);
+  const [loadState, setLoadState] = useState<ApiState>("loading");
   const [showForm, setShowForm] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"weekly" | "single">("weekly");
   const [scheduleView, setScheduleView] = useState<"list" | "week">("list");
@@ -1211,13 +1286,7 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   const [endsAt, setEndsAt] = useState("");
 
   // Weekly batch fields
-  const [weekStartDate, setWeekStartDate] = useState(() => {
-    const d = new Date();
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-    const monday = new Date(d.setDate(diff));
-    return monday.toISOString().split("T")[0];
-  });
+  const [weekStartDate, setWeekStartDate] = useState(() => startOfStoreWeek(storeDateKey(new Date())));
 
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri default
   const [shiftPreset, setShiftPreset] = useState<ShiftPreset>("morning");
@@ -1227,25 +1296,30 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  useEffect(() => {
-    void Promise.all([
-      fetch("/api/shifts", { cache: "no-store" }).then(readJson),
-      canManage
-        ? fetch("/api/team", { cache: "no-store" }).then(readJson).catch(() => ({ employees: [] }))
-        : Promise.resolve({ employees: [] }),
-    ]).then(([shiftPayload, teamPayload]) => {
+  const loadSchedule = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadState("loading");
+    try {
+      const shiftResponse = await fetch("/api/shifts", { cache: "no-store" });
+      const shiftPayload = await readJson(shiftResponse);
+      if (!shiftResponse.ok) throw new Error(shiftPayload.error ?? "Không thể tải lịch làm việc.");
+      const teamPayload = canManage
+        ? await fetch("/api/team", { cache: "no-store" }).then(readJson).catch(() => ({ employees: [] }))
+        : { employees: [] };
       setShifts(shiftPayload.shifts ?? []);
       setEmployees((teamPayload.employees ?? []).filter((employee: { status: string }) => employee.status === "active"));
-    });
+      setLoadState("ready");
+    } catch {
+      setLoadState("error");
+    }
   }, [canManage]);
 
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void loadSchedule(false), 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [loadSchedule]);
+
   async function refresh() {
-    const [shiftPayload, teamPayload] = await Promise.all([
-      readJson(await fetch("/api/shifts", { cache: "no-store" })),
-      canManage ? fetch("/api/team", { cache: "no-store" }).then(readJson).catch(() => ({ employees: [] })) : Promise.resolve({ employees: [] }),
-    ]);
-    setShifts(shiftPayload.shifts ?? []);
-    setEmployees((teamPayload.employees ?? []).filter((employee: { status: string }) => employee.status === "active"));
+    await loadSchedule(false);
   }
 
   const toggleDay = (dayIndex: number) => {
@@ -1257,16 +1331,12 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   // Conflict Detection Logic
   const conflicts = useMemo(() => {
     if (!employeeEmail || selectedDays.length === 0) return [];
-    const monday = new Date(weekStartDate);
-
     const foundConflicts: string[] = [];
     selectedDays.forEach((dayOffset) => {
-      const shiftDate = new Date(monday);
-      shiftDate.setDate(monday.getDate() + dayOffset);
-      const dateStr = shiftDate.toISOString().split("T")[0];
+      const dateStr = addStoreDays(weekStartDate, dayOffset);
 
       const existing = shifts.find(
-        (s) => s.employee_email === employeeEmail && s.starts_at.startsWith(dateStr)
+        (s) => s.employee_email === employeeEmail && storeDateKey(s.starts_at) === dateStr
       );
       if (existing) {
         foundConflicts.push(
@@ -1294,10 +1364,15 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
         setError("Vui lòng nhập đầy đủ thời gian bắt đầu và kết thúc.");
         return;
       }
+      const [startDateKey, startTime] = startsAt.split("T");
+      const [endDateKey, endTime] = endsAt.split("T");
+      const startDate = storeDateTime(startDateKey, startTime);
+      const endDate = storeDateTime(endDateKey, endTime);
+      if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
       payloadBody = {
         employeeEmail,
-        startsAt: new Date(startsAt).toISOString(),
-        endsAt: new Date(endsAt).toISOString(),
+        startsAt: startDate.toISOString(),
+        endsAt: endDate.toISOString(),
         roleLabel,
         isShiftLead: isLead,
       };
@@ -1320,19 +1395,11 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
         startTimeStr = customStart; endTimeStr = customEnd;
       }
 
-      const monday = new Date(weekStartDate);
       const batchShifts = selectedDays.map((offset) => {
-        const shiftDate = new Date(monday);
-        shiftDate.setDate(monday.getDate() + offset);
-
-        const [sH, sM] = startTimeStr.split(":").map(Number);
-        const [eH, eM] = endTimeStr.split(":").map(Number);
-
-        const sDate = new Date(shiftDate);
-        sDate.setHours(sH, sM, 0, 0);
-
-        const eDate = new Date(shiftDate);
-        eDate.setHours(eH, eM, 0, 0);
+        const shiftDate = addStoreDays(weekStartDate, offset);
+        const sDate = storeDateTime(shiftDate, startTimeStr);
+        const eDate = storeDateTime(shiftDate, endTimeStr);
+        if (eDate <= sDate) eDate.setUTCDate(eDate.getUTCDate() + 1);
 
         return {
           startsAt: sDate.toISOString(),
@@ -1364,12 +1431,33 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
     }
   }
 
-  // Format week label
-  const mondayDate = new Date(weekStartDate);
-  const sundayDate = new Date(mondayDate);
-  sundayDate.setDate(mondayDate.getDate() + 6);
+  const sundayKey = addStoreDays(weekStartDate, 6);
+  const mondayDate = storeDateTime(weekStartDate, "12:00");
+  const sundayDate = storeDateTime(sundayKey, "12:00");
   const weekLabel = `Tuần ${formatDateVN(mondayDate)} — ${formatDateVN(sundayDate)}`;
   const sortedShifts = [...shifts].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  const selectedWeekCount = shifts.filter((shift) => {
+    const dateKey = storeDateKey(shift.starts_at);
+    return dateKey >= weekStartDate && dateKey <= sundayKey;
+  }).length;
+  const todayKey = storeDateKey(new Date());
+  const tomorrowKey = addStoreDays(todayKey, 1);
+  const currentWeekStart = startOfStoreWeek(todayKey);
+  const currentWeekEnd = addStoreDays(currentWeekStart, 6);
+  const scheduleGroups: Array<{ id: string; label: string; shifts: ScheduleShift[] }> = [
+    { id: "today", label: "Hôm nay", shifts: [] },
+    { id: "tomorrow", label: "Ngày mai", shifts: [] },
+    { id: "week", label: "Tuần này", shifts: [] },
+    { id: "upcoming", label: "Sắp tới", shifts: [] },
+  ];
+  sortedShifts.forEach((shift) => {
+    const dateKey = storeDateKey(shift.starts_at);
+    if (dateKey === todayKey) scheduleGroups[0].shifts.push(shift);
+    else if (dateKey === tomorrowKey) scheduleGroups[1].shifts.push(shift);
+    else if (dateKey >= currentWeekStart && dateKey <= currentWeekEnd) scheduleGroups[2].shifts.push(shift);
+    else if (dateKey > currentWeekEnd) scheduleGroups[3].shifts.push(shift);
+  });
+  const listedShiftCount = scheduleGroups.reduce((total, group) => total + group.shifts.length, 0);
 
   return (
     <div className="stack">
@@ -1377,20 +1465,12 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
         <div className="section-row" style={{ marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
           <div>
             <h2 className="card-title">{weekLabel}</h2>
-            <p className="card-subtitle">{shifts.length} ca đã được phân công trong tuần này</p>
+            <p className="card-subtitle">{loadState === "loading" ? "Đang cập nhật lịch…" : `${selectedWeekCount} ca đã được phân công trong tuần này`}</p>
           </div>
-          {canManage && (
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="button-secondary button-compact" onClick={() => setShowForm((v) => !v)}>
-                <Plus size={15} /> {showForm ? "Đóng form" : "Thêm ca vào lịch (Bước 1)"}
-              </button>
-              <button
-                className="button button-compact"
-                onClick={() => setSuccessMsg("Lịch tuần đã được xác nhận & xuất bản cho toàn bộ nhân viên!")}
-              >
-                <CheckCircle2 size={15} /> Xuất bản lịch tuần (Bước 3)
-              </button>
-            </div>
+          {canManage && loadState === "ready" && (
+            <button type="button" className="button-secondary button-compact" onClick={() => setShowForm((v) => !v)}>
+              <Plus size={15} /> {showForm ? "Đóng form" : "Thêm ca vào lịch"}
+            </button>
           )}
         </div>
 
@@ -1400,7 +1480,7 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
           </div>
         )}
 
-        {showForm && canManage && (
+        {showForm && canManage && loadState === "ready" && (
           <form className="attention-card operation-form" onSubmit={create} style={{ marginBottom: 20 }}>
             <div className="field full">
               <label>Chế độ phân ca</label>
@@ -1585,26 +1665,37 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
 
         {error && <InlineError text={error} />}
 
-        <div className="schedule-view-switch" role="tablist" aria-label="Chế độ xem lịch">
-          <button type="button" role="tab" aria-selected={scheduleView === "list"} className={scheduleView === "list" ? "active" : ""} onClick={() => setScheduleView("list")}>
-            <CalendarDays size={16} /> Danh sách
-          </button>
-          <button type="button" role="tab" aria-selected={scheduleView === "week"} className={scheduleView === "week" ? "active" : ""} onClick={() => setScheduleView("week")}>
-            <Clock3 size={16} /> Lịch tuần
-          </button>
-        </div>
+        {loadState === "loading" ? (
+          <p className="supporting-copy" role="status" aria-live="polite" style={{ padding: "18px 0" }}>Đang tải lịch làm việc…</p>
+        ) : loadState === "error" ? (
+          <div role="alert">
+            <InlineError text="Không tải được lịch làm việc. Vui lòng kiểm tra kết nối và thử lại." />
+            <button type="button" className="button-secondary button-compact" style={{ marginTop: 12 }} onClick={() => loadSchedule()}>
+              Thử tải lại
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="schedule-view-switch" role="tablist" aria-label="Chế độ xem lịch">
+              <button id="schedule-list-tab" type="button" role="tab" aria-selected={scheduleView === "list"} aria-controls="schedule-list-panel" className={scheduleView === "list" ? "active" : ""} onClick={() => setScheduleView("list")}>
+                <CalendarDays size={16} /> Danh sách ca
+              </button>
+              <button id="schedule-week-tab" type="button" role="tab" aria-selected={scheduleView === "week"} aria-controls="schedule-week-panel" className={scheduleView === "week" ? "active" : ""} onClick={() => setScheduleView("week")}>
+                <Clock3 size={16} /> Lịch tuần
+              </button>
+            </div>
 
         {/* 7-Day Weekly Grid View */}
-        {scheduleView === "week" && <div className="week-grid-container" style={{ overflowX: "auto", marginTop: 12 }}>
+        {scheduleView === "week" && <div id="schedule-week-panel" role="tabpanel" aria-labelledby="schedule-week-tab" className="week-grid-container" style={{ overflowX: "auto", marginTop: 12 }}>
           <div className="week-grid" style={{ minWidth: 700 }}>
             <div className="week-head" style={{ fontWeight: 700 }}>Nhân viên</div>
             {DAY_CHIP_LABELS.map((chip, idx) => {
-              const dayDate = new Date(mondayDate);
-              dayDate.setDate(mondayDate.getDate() + idx);
+              const dayKey = addStoreDays(weekStartDate, idx);
+              const [, month, day] = dayKey.split("-");
               return (
                 <div className="week-head" key={chip.key}>
                   {chip.label}
-                  <strong style={{ display: "block", fontSize: 11, color: "#7b6f70" }}>{dayDate.getDate()}/{dayDate.getMonth() + 1}</strong>
+                  <strong style={{ display: "block", fontSize: 11, color: "#7b6f70" }}>{day}/{month}</strong>
                 </div>
               );
             })}
@@ -1617,12 +1708,10 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
                 </div>
 
                 {DAY_CHIP_LABELS.map((chip, idx) => {
-                  const dayDate = new Date(mondayDate);
-                  dayDate.setDate(mondayDate.getDate() + idx);
-                  const dateStr = dayDate.toISOString().split("T")[0];
+                  const dateStr = addStoreDays(weekStartDate, idx);
 
                   const dayShifts = shifts.filter((s) =>
-                    (emp.email === "demo" || s.employee_email === emp.email) && s.starts_at.startsWith(dateStr)
+                    (emp.email === "demo" || s.employee_email === emp.email) && storeDateKey(s.starts_at) === dateStr
                   );
 
                   return (
@@ -1653,38 +1742,55 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
           </div>
         </div>}
 
-        {scheduleView === "list" && <div className="schedule-mobile-list">
+        {scheduleView === "list" && <div id="schedule-list-panel" role="tabpanel" aria-labelledby="schedule-list-tab" className="schedule-mobile-list">
           <div className="schedule-list-heading">
-            <div><span>Ca của tôi</span><strong>{sortedShifts.length} ca trong lịch</strong></div>
+            <div><span>{canManage ? "Lịch cửa hàng" : "Ca của tôi"}</span><strong>{listedShiftCount} ca hiện tại và sắp tới</strong></div>
             <span className="badge neutral">Danh sách</span>
           </div>
-          {sortedShifts.map((shift) => {
-            const status = getShiftStatus(shift.starts_at, shift.ends_at);
-            return (
-              <article className={`schedule-shift-card ${status.tone}`} key={shift.id}>
-                <div className="schedule-shift-date">
-                  <span>{new Intl.DateTimeFormat("vi-VN", { weekday: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(shift.starts_at))}</span>
-                  <strong>{new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(shift.starts_at))}</strong>
-                </div>
-                <div className="schedule-shift-main">
-                  <div className="schedule-shift-topline">
-                    <div><span>{shift.role_label}</span><strong>{shift.employee_name}</strong></div>
-                    <span className={`badge ${status.badge}`}>{status.label}</span>
-                  </div>
-                  <div className="schedule-shift-meta">
-                    <span><Clock3 size={14} /> {formatTime(shift.starts_at)} — {formatTime(shift.ends_at)}</span>
-                    <span><MapPin size={14} /> Cửa hàng chính</span>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-          {shifts.length === 0 && (
+          {scheduleGroups.filter((group) => group.shifts.length > 0).map((group) => (
+            <section className="schedule-list-group" key={group.id} aria-labelledby={`schedule-group-${group.id}`}>
+              <div className="schedule-list-group-heading">
+                <strong id={`schedule-group-${group.id}`}>{group.label}</strong><span>{group.shifts.length} ca</span>
+              </div>
+              {group.shifts.map((shift) => {
+                const status = getShiftStatus(shift.starts_at, shift.ends_at);
+                return (
+                  <article className={`schedule-shift-card ${status.tone}`} key={shift.id}>
+                    <div className="schedule-shift-date">
+                      <span>{new Intl.DateTimeFormat("vi-VN", { weekday: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(shift.starts_at))}</span>
+                      <strong>{new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(shift.starts_at))}</strong>
+                    </div>
+                    <div className="schedule-shift-main">
+                      <div className="schedule-shift-topline">
+                        <div>
+                          <span>{shift.role_label}{shift.is_shift_lead ? " · Trưởng ca" : ""}</span>
+                          <strong>{shift.employee_name}</strong>
+                        </div>
+                        <span className={`badge ${status.badge}`}>{status.label}</span>
+                      </div>
+                      <div className="schedule-shift-meta">
+                        <span><Clock3 size={14} /> {formatTime(shift.starts_at)} — {formatTime(shift.ends_at)}</span>
+                        <span><MapPin size={14} /> Cửa hàng chính</span>
+                      </div>
+                      {!canManage && (
+                        <div className="schedule-shift-actions">
+                          <Link href="/app/requests" className="button-secondary button-compact">Đổi ca / Yêu cầu</Link>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          ))}
+          {listedShiftCount === 0 && (
             <p className="supporting-copy" style={{ textAlign: "center", padding: "16px 0" }}>
-              Chưa có ca làm nào được xuất bản. Bấm “Thêm ca vào lịch (Bước 1)” để xếp ca cho nhân viên.
+              {canManage ? "Chưa có ca hiện tại hoặc sắp tới. Hãy thêm ca để xếp lịch cho nhân viên." : "Bạn chưa có ca hiện tại hoặc sắp tới được phân công."}
             </p>
           )}
         </div>}
+          </>
+        )}
       </section>
     </div>
   );
@@ -1913,6 +2019,36 @@ function formatDateTime(value: string) {
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+const storeDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function storeDateKey(value: string | Date) {
+  const parts = storeDateFormatter.formatToParts(typeof value === "string" ? new Date(value) : value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function addStoreDays(dateKey: string, amount: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + amount));
+  return date.toISOString().slice(0, 10);
+}
+
+function startOfStoreWeek(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const offset = date.getUTCDay() === 0 ? -6 : 1 - date.getUTCDay();
+  return addStoreDays(dateKey, offset);
+}
+
+function storeDateTime(dateKey: string, time: string) {
+  return new Date(`${dateKey}T${time}:00+07:00`);
 }
 
 function formatWorkedMinutes(minutes: number) {

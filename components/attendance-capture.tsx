@@ -1,8 +1,8 @@
 "use client";
 
 import { Camera, Check, CheckCircle2, LoaderCircle, MapPin, RefreshCw, ShieldAlert, Smartphone, Wifi, X, Eye } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useLoopyToast } from "./loopy-toast";
 import { CelebrationConfetti } from "./confetti-sparkles";
 
@@ -25,6 +25,24 @@ type CaptureSession = {
 };
 
 type AttendanceAction = "check_in" | "check_out";
+type EvidenceReadiness = "unchecked" | "checking" | "ready" | "error";
+
+function subscribeToOnlineStatus(onStoreChange: () => void) {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineStatus() {
+  return navigator.onLine;
+}
+
+function getServerOnlineStatus() {
+  return true;
+}
 
 type AttendanceResult = {
   eventId: string;
@@ -39,9 +57,13 @@ type AttendanceResult = {
 
 export function AttendanceCapture() {
   const { showLoopyToast } = useLoopyToast();
+  const shouldReduceMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const idempotencyKeyRef = useRef("");
+  const privacyDialogRef = useRef<HTMLDivElement>(null);
+  const privacyCloseRef = useRef<HTMLButtonElement>(null);
   const [action, setAction] = useState<AttendanceAction>("check_in");
   const [step, setStep] = useState<"idle" | "preparing" | "ready" | "review_photo" | "submitting" | "success" | "error">("idle");
   const [location, setLocation] = useState<LocationEvidence | null>(null);
@@ -52,8 +74,37 @@ export function AttendanceCapture() {
   const [preview, setPreview] = useState("");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [cameraReadiness, setCameraReadiness] = useState<EvidenceReadiness>("unchecked");
+  const [locationReadiness, setLocationReadiness] = useState<EvidenceReadiness>("unchecked");
+  const isOnline = useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineStatus,
+    getServerOnlineStatus,
+  );
 
-  useEffect(() => () => stopStream(), []);
+  useEffect(() => {
+    return () => {
+      stopStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/today", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (payload?.attendance?.opened_at && !payload.attendance.closed_at) setAction("check_out");
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!showPrivacyModal) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    privacyCloseRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, [showPrivacyModal]);
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -65,6 +116,9 @@ export function AttendanceCapture() {
     setError("");
     setPreview("");
     setResult(null);
+    setShowCelebration(false);
+    setCameraReadiness("unchecked");
+    setLocationReadiness("unchecked");
 
     try {
       const sessionResponse = await fetch("/api/attendance/capture-sessions", {
@@ -75,6 +129,9 @@ export function AttendanceCapture() {
       if (!sessionResponse.ok) throw new Error("Không thể bắt đầu phiên chấm công.");
       const captureSession = (await sessionResponse.json()) as CaptureSession;
       setSession(captureSession);
+      idempotencyKeyRef.current = crypto.randomUUID();
+      setCameraReadiness("checking");
+      setLocationReadiness("checking");
 
       const [streamResult, positionResult] = await Promise.allSettled([
         navigator.mediaDevices.getUserMedia({
@@ -83,6 +140,8 @@ export function AttendanceCapture() {
         }),
         getFreshPosition(),
       ]);
+      setCameraReadiness(streamResult.status === "fulfilled" ? "ready" : "error");
+      setLocationReadiness(positionResult.status === "fulfilled" ? "ready" : "error");
       if (positionResult.status === "fulfilled") {
         const position = positionResult.value;
         setLocation({
@@ -157,7 +216,7 @@ export function AttendanceCapture() {
         body: JSON.stringify({
           captureSessionId: session.id,
           captureToken: session.captureToken,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: idempotencyKeyRef.current || (idempotencyKeyRef.current = crypto.randomUUID()),
           action,
           location,
           photo: preview,
@@ -169,16 +228,23 @@ export function AttendanceCapture() {
       setResult(payload);
       stopStream();
       setStep("success");
-      setShowCelebration(true);
+      setShowCelebration(!payload.reviewRequired);
       showLoopyToast(
-        action === "check_in" ? "Check-in thành công! ☕" : "Check-out thành công! 👋",
+        payload.reviewRequired
+          ? "Đã gửi quản lý duyệt"
+          : action === "check_in"
+          ? "Check-in thành công! ☕"
+          : "Check-out thành công! 👋",
         {
-          message: "Loopy đã ghi nhận thời gian và vị trí của bạn thành công!",
-          mood: "success",
-          type: "success",
+          message: payload.reviewRequired
+            ? "Ca sẽ được xác nhận sau khi quản lý đối chiếu bằng chứng."
+            : "Loopy đã ghi nhận thời gian và vị trí của bạn thành công!",
+          mood: payload.reviewRequired ? "worries" : "success",
+          type: payload.reviewRequired ? "info" : "success",
         }
       );
     } catch (caught) {
+      stopStream();
       setError(caught instanceof Error ? caught.message : "Không thể hoàn tất chấm công.");
       setStep("error");
     }
@@ -202,7 +268,7 @@ export function AttendanceCapture() {
         body: JSON.stringify({
           captureSessionId: currentSession.id,
           captureToken: currentSession.captureToken,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: idempotencyKeyRef.current || (idempotencyKeyRef.current = crypto.randomUUID()),
           action,
           cameraError: error || "camera_unavailable",
           locationError: location ? null : "location_unavailable",
@@ -213,6 +279,8 @@ export function AttendanceCapture() {
       if (!actionResponse.ok) throw new Error("Không thể gửi yêu cầu duyệt.");
       const payload = (await actionResponse.json()) as AttendanceResult;
       setResult(payload);
+      stopStream();
+      setShowCelebration(false);
       setStep("success");
     } catch {
       setError("Kết nối chưa ổn định. Vui lòng thử lại hoặc báo trực tiếp cho quản lý.");
@@ -222,13 +290,44 @@ export function AttendanceCapture() {
 
   function reset() {
     stopStream();
+    if (result) setAction(action === "check_in" ? "check_out" : "check_in");
     setSession(null);
     setLocation(null);
     setResult(null);
     setPreview("");
     setError("");
     setExplanation("");
+    idempotencyKeyRef.current = "";
+    setCameraReadiness("unchecked");
+    setLocationReadiness("unchecked");
+    setShowCelebration(false);
     setStep("idle");
+  }
+
+  function selectAction(nextAction: AttendanceAction) {
+    setAction(nextAction);
+    idempotencyKeyRef.current = "";
+  }
+
+  function handlePrivacyKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      setShowPrivacyModal(false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = privacyDialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   const activeStep = step === "success"
@@ -238,16 +337,32 @@ export function AttendanceCapture() {
     : step === "ready"
     ? 2
     : 1;
+  const cameraCopy = cameraReadiness === "ready"
+    ? "Đã cấp quyền camera"
+    : cameraReadiness === "checking"
+    ? "Đang kiểm tra camera…"
+    : cameraReadiness === "error"
+    ? "Camera chưa được cấp quyền"
+    : "Sẽ kiểm tra khi bắt đầu";
+  const locationCopy = location
+    ? `Đã ghi nhận · cách quán ${Math.round(location.distance)} m`
+    : locationReadiness === "checking"
+    ? "Đang lấy vị trí…"
+    : locationReadiness === "error"
+    ? "Không thể lấy vị trí"
+    : "Sẽ kiểm tra khi bắt đầu";
+  const evidenceReady = cameraReadiness === "ready" && locationReadiness === "ready" && isOnline;
+  const evidenceHasError = cameraReadiness === "error" || locationReadiness === "error" || !isOnline || step === "error";
 
   return (
     <section className="card capture-card relative">
-      <CelebrationConfetti active={showCelebration} />
+      <CelebrationConfetti active={showCelebration && !shouldReduceMotion} />
       <div className="capture-stage relative overflow-hidden">
-        <span className={`capture-stage-state ${step === "ready" ? "ready" : step === "review_photo" ? "review" : step === "success" ? "success" : ""}`}>
-          {step === "ready" ? "Sẵn sàng chụp" : step === "review_photo" ? "Ảnh đã chụp" : step === "success" ? "Đã hoàn tất" : "Chưa bắt đầu"}
+        <span className={`capture-stage-state ${step === "ready" ? "ready" : step === "review_photo" ? "review" : step === "success" ? "success" : step === "error" ? "error" : ""}`}>
+          {step === "preparing" ? "Đang kiểm tra" : step === "ready" ? "Sẵn sàng chụp" : step === "review_photo" ? "Ảnh đã chụp" : step === "success" ? "Đã hoàn tất" : step === "error" ? "Cần xử lý" : "Chưa bắt đầu"}
         </span>
         {step === "ready" && <div className="radar-scan-line" />}
-        {preview && (step === "review_photo" || step === "submitting" || step === "success") ? (
+        {preview && (step === "review_photo" || step === "submitting" || step === "success" || step === "error") ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="Ảnh chụp chấm công trực tiếp" className="capture-preview" />
         ) : (
@@ -261,7 +376,7 @@ export function AttendanceCapture() {
         )}
 
         {(step === "idle" || step === "preparing" || step === "error") && !preview && (
-          <div className="capture-placeholder">
+          <div className="capture-placeholder" aria-live="polite">
             {step === "preparing" ? (
               <LoaderCircle size={42} className="spin text-[#d96d83]" />
             ) : step === "error" ? (
@@ -294,10 +409,14 @@ export function AttendanceCapture() {
         )}
 
         {step === "success" && result && (
-          <div className="capture-placeholder">
-            <CheckCircle2 size={48} className="text-[#4c9779]" />
-            <h3>{action === "check_in" ? "Đã xác nhận vào ca" : "Đã xác nhận ra ca"}</h3>
-            <p>Giờ máy chủ: {result.localTime}. Bằng chứng đã được lưu an toàn.</p>
+          <div className="capture-placeholder" aria-live="polite">
+            {result.reviewRequired ? <ShieldAlert size={48} className="text-[#d97706]" /> : <CheckCircle2 size={48} className="text-[#4c9779]" />}
+            <h3>{result.reviewRequired ? "Đã gửi quản lý duyệt" : action === "check_in" ? "Đã xác nhận vào ca" : "Đã xác nhận ra ca"}</h3>
+            <p>
+              {result.reviewRequired
+                ? `Gửi lúc ${result.localTime}. Quản lý sẽ đối chiếu lý do và bằng chứng trước khi xác nhận.`
+                : `Giờ máy chủ: ${result.localTime}. ${result.evidenceStored ? "Bằng chứng đã được lưu an toàn." : "Kết quả đã được ghi nhận."}`}
+            </p>
           </div>
         )}
       </div>
@@ -305,20 +424,22 @@ export function AttendanceCapture() {
       <canvas ref={canvasRef} hidden />
 
       <div className="capture-controls">
-        <div className="action-switch" aria-label="Chọn hành động chấm công">
+        <div className="action-switch" role="group" aria-label="Chọn hành động chấm công">
           <button
             type="button"
             className={action === "check_in" ? "active" : ""}
+            aria-pressed={action === "check_in"}
             disabled={step !== "idle"}
-            onClick={() => setAction("check_in")}
+            onClick={() => selectAction("check_in")}
           >
             Vào ca
           </button>
           <button
             type="button"
             className={action === "check_out" ? "active" : ""}
+            aria-pressed={action === "check_out"}
             disabled={step !== "idle"}
-            onClick={() => setAction("check_out")}
+            onClick={() => selectAction("check_out")}
           >
             Ra ca
           </button>
@@ -330,7 +451,7 @@ export function AttendanceCapture() {
             const isComplete = activeStep > number || step === "success";
             const isActive = activeStep === number && step !== "success";
             return (
-              <li key={label} className={`${isComplete ? "complete" : ""} ${isActive ? "active" : ""}`}>
+              <li key={label} aria-current={isActive ? "step" : undefined} className={`${isComplete ? "complete" : ""} ${isActive ? "active" : ""}`}>
                 <span>{isComplete ? <Check size={14} /> : number}</span>
                 <small>{label}</small>
               </li>
@@ -353,20 +474,20 @@ export function AttendanceCapture() {
           </div>
         )}
 
-        <section className={`attendance-readiness ${step === "error" ? "has-error" : ""}`}>
+        <section className={`attendance-readiness ${evidenceHasError ? "has-error" : ""}`} aria-live="polite">
           <div className="attendance-readiness-heading">
             <div>
-              <span className="mini-icon mint"><CheckCircle2 size={17} /></span>
-              <span><small>Kiểm tra nhanh</small><strong>{step === "error" ? "Cần cấp thêm quyền" : "Sẵn sàng chấm công"}</strong></span>
+              <span className={`mini-icon ${evidenceHasError ? "pink" : "mint"}`}>{evidenceHasError ? <ShieldAlert size={17} /> : <CheckCircle2 size={17} />}</span>
+              <span><small>Kiểm tra nhanh</small><strong>{evidenceHasError ? "Cần xử lý trước khi tiếp tục" : evidenceReady ? "Sẵn sàng chấm công" : "Sẽ kiểm tra khi bắt đầu"}</strong></span>
             </div>
-            <span className={`badge ${step === "error" ? "danger" : location ? "success" : "neutral"}`}>
-              {step === "error" ? "Cần xử lý" : location ? "Đã xác minh" : "Tự động"}
+            <span className={`badge ${evidenceHasError ? "danger" : evidenceReady ? "success" : step === "preparing" ? "info" : "neutral"}`}>
+              {evidenceHasError ? "Cần xử lý" : evidenceReady ? "Đã kiểm tra" : step === "preparing" ? "Đang kiểm tra" : "Tự động"}
             </span>
           </div>
           <div className="attendance-readiness-list">
-            <div><Smartphone size={16} /><span><small>Thiết bị</small><strong>{step === "error" ? "Chưa xác minh" : "Camera sẵn sàng"}</strong></span><em className={step === "error" ? "error" : "ok"}>{step === "error" ? "!" : "✓"}</em></div>
-            <div><MapPin size={16} /><span><small>Vị trí</small><strong>{location ? `Hợp lệ · cách quán ${Math.round(location.distance)} m` : "Sẽ kiểm tra khi bắt đầu"}</strong></span><em className={location ? "ok" : "pending"}>{location ? "✓" : "•"}</em></div>
-            <div><Wifi size={16} /><span><small>Kết nối</small><strong>{result ? `Đã ghi lúc ${result.localTime}` : "Kết nối ổn định"}</strong></span><em className="ok">✓</em></div>
+            <div><Smartphone size={16} /><span><small>Thiết bị</small><strong>{cameraCopy}</strong></span><em className={cameraReadiness === "ready" ? "ok" : cameraReadiness === "error" ? "error" : "pending"}>{cameraReadiness === "ready" ? "✓" : cameraReadiness === "error" ? "!" : "•"}</em></div>
+            <div><MapPin size={16} /><span><small>Vị trí</small><strong>{locationCopy}</strong></span><em className={locationReadiness === "ready" ? "ok" : locationReadiness === "error" ? "error" : "pending"}>{locationReadiness === "ready" ? "✓" : locationReadiness === "error" ? "!" : "•"}</em></div>
+            <div><Wifi size={16} /><span><small>Kết nối</small><strong>{result ? `Đã ghi lúc ${result.localTime}` : isOnline ? "Đang trực tuyến" : "Thiết bị đang ngoại tuyến"}</strong></span><em className={isOnline ? "ok" : "error"}>{isOnline ? "✓" : "!"}</em></div>
           </div>
         </section>
 
@@ -423,7 +544,7 @@ export function AttendanceCapture() {
           )}
         </div>
 
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "between", alignItems: "center" }}>
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <p className="capture-note" style={{ margin: 0, flex: 1 }}>
             Vị trí được ghi nhận tại thời điểm bấm nút để hỗ trợ xác minh chấm công.
           </p>
@@ -440,15 +561,24 @@ export function AttendanceCapture() {
 
       {/* Privacy Drawer / Modal */}
       {showPrivacyModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-[#eee3df]">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" role="presentation">
+          <div
+            ref={privacyDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attendance-privacy-title"
+            onKeyDown={handlePrivacyKeyDown}
+            className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-[#eee3df]"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#eee3df]">
-              <h3 className="font-bold text-[#6f2939] text-base flex items-center gap-2">
+              <h3 id="attendance-privacy-title" className="font-bold text-[#6f2939] text-base flex items-center gap-2">
                 <ShieldAlert size={18} className="text-[#d96d83]" /> Nguyên tắc bảo vệ dữ liệu
               </h3>
               <button
+                ref={privacyCloseRef}
                 onClick={() => setShowPrivacyModal(false)}
-                className="p-1 rounded-full hover:bg-[#fff2f4] text-[#7b6f70]"
+                aria-label="Đóng thông tin quyền riêng tư"
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#fff2f4] text-[#7b6f70]"
               >
                 <X size={18} />
               </button>
@@ -460,7 +590,7 @@ export function AttendanceCapture() {
             </div>
             <button
               onClick={() => setShowPrivacyModal(false)}
-              className="w-full py-2.5 bg-[#fff2f4] hover:bg-[#ffe1e7] text-[#6f2939] font-bold rounded-2xl text-xs"
+              className="w-full min-h-11 py-2.5 bg-[#fff2f4] hover:bg-[#ffe1e7] text-[#6f2939] font-bold rounded-2xl text-xs"
             >
               Tôi đã hiểu
             </button>
