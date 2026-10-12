@@ -1,8 +1,7 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
+import { readJson } from "@/platform/http/client";
 import { KeyRound, ShieldCheck } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function ChangePasswordPage() {
@@ -10,7 +9,6 @@ export default function ChangePasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -18,15 +16,16 @@ export default function ChangePasswordPage() {
     if (password !== confirmPassword) return setMessage("Hai mật khẩu chưa khớp nhau.");
     setLoading(true);
     setMessage("");
-    const supabase = createClient();
-    const { error } = await supabase.auth.updateUser({
-      password,
-      data: { must_change_password: false },
-    });
-    setLoading(false);
-    if (error) return setMessage(error.message);
-    router.replace("/app/today");
-    router.refresh();
+    try {
+      await readJson(await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      }));
+      window.location.replace("/app/today");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không thể đổi mật khẩu. Hãy thử lại.");
+    } finally { setLoading(false); }
   }
 
   return (
@@ -35,7 +34,7 @@ export default function ChangePasswordPage() {
         <span className="auth-password-icon"><KeyRound size={24} /></span>
         <p className="eyebrow">Lần đăng nhập đầu tiên</p>
         <h1>Tạo mật khẩu riêng của bạn</h1>
-        <p className="supporting-copy">Mật khẩu tạm chỉ dùng một lần. Hãy đặt mật khẩu mới trước khi vào hệ thống.</p>
+        <p className="supporting-copy">Hãy đặt mật khẩu riêng trước khi vào hệ thống.</p>
         <form onSubmit={submit} className="form-grid auth-password-form">
           <div className="field full"><label htmlFor="new-password">Mật khẩu mới</label><input id="new-password" type="password" minLength={10} value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="new-password" /></div>
           <div className="field full"><label htmlFor="confirm-password">Nhập lại mật khẩu</label><input id="confirm-password" type="password" minLength={10} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required autoComplete="new-password" /></div>

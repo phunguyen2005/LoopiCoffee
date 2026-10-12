@@ -1,6 +1,8 @@
 import { ensureDatabase } from "@/db/runtime";
 import { isCoordinate } from "@/lib/attendance";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
 export async function GET() {
   const auth = await requireApiUser();
@@ -20,10 +22,10 @@ export async function GET() {
   return Response.json({ store, rules });
 }
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner"]);
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const body = await readObject(request);
   const name = cleanString(body.name, 80);
   const address = cleanString(body.address, 180);
   const latitude = numberValue(body.latitude);
@@ -87,7 +89,7 @@ export async function PATCH(request: Request) {
     ),
   ]);
   return Response.json({ updated: true, ruleVersion: version });
-}
+});
 
 function cleanString(value: unknown, max: number) {
   return typeof value === "string" && value.trim().length >= 2 ? value.trim().slice(0, max) : null;

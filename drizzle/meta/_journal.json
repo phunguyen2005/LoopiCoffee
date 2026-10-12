@@ -43,6 +43,62 @@
       "when": 1785516457351,
       "tag": "0005_faulty_morg",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788590139347,
+      "tag": "0006_repair_application_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788590289922,
+      "tag": "0007_payroll_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789640575572,
+      "tag": "0008_ordering_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789640575583,
+      "tag": "0009_identity_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789640575593,
+      "tag": "0010_order_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789640575611,
+      "tag": "0011_workforce_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789640575621,
+      "tag": "0012_daily_checklists",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789640575630,
+      "tag": "0013_workforce_guardrails",
+      "breakpoints": true
     }
   ]
 }

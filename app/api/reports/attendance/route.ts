@@ -19,6 +19,7 @@ export async function GET(request: Request) {
   return Response.json({
     ...report,
     canViewPayroll,
+    canReviewAttendance: auth.actor.role !== "employee",
     canManagePayroll: canViewPayroll,
     rows: canViewPayroll
       ? report.rows
@@ -32,6 +33,8 @@ export async function GET(request: Request) {
           baseSalary: 0,
           overtimePay: 0,
           totalSalary: 0,
+          adjustments: [],
+          exceptions: row.exceptions.map((exception) => ({ ...exception, canReview: auth.actor.role !== "employee" && exception.canReview })),
         })),
   });
 }

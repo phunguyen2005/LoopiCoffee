@@ -23,12 +23,12 @@ const COLORS = [
 ];
 
 export function TaskSparkleBurst({ active, onComplete }: { active: boolean; onComplete?: () => void }) {
-  const [particles, setParticles] = useState<Particle[]>([]);
+  return active ? <ActiveTaskSparkleBurst onComplete={onComplete} /> : null;
+}
 
-  useEffect(() => {
-    if (!active) return;
-
-    const newParticles: Particle[] = Array.from({ length: 14 }).map((_, i) => {
+function ActiveTaskSparkleBurst({ onComplete }: { onComplete?: () => void }) {
+  const [finished, setFinished] = useState(false);
+  const [particles] = useState<Particle[]>(() => Array.from({ length: 14 }).map((_, i) => {
       const angle = (i / 14) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
       const velocity = 40 + Math.random() * 50;
       return {
@@ -41,19 +41,18 @@ export function TaskSparkleBurst({ active, onComplete }: { active: boolean; onCo
         vx: Math.cos(angle) * velocity,
         vy: Math.sin(angle) * velocity,
       };
-    });
+    }));
 
-    setParticles(newParticles);
-
+  useEffect(() => {
     const timer = setTimeout(() => {
-      setParticles([]);
+      setFinished(true);
       onComplete?.();
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [active, onComplete]);
+  }, [onComplete]);
 
-  if (particles.length === 0) return null;
+  if (finished) return null;
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-20">
@@ -86,26 +85,26 @@ export function TaskSparkleBurst({ active, onComplete }: { active: boolean; onCo
 }
 
 export function CelebrationConfetti({ active }: { active: boolean }) {
-  const [pieces, setPieces] = useState<
-    Array<{ id: number; left: number; color: string; delay: number; size: number }>
-  >([]);
-
-  useEffect(() => {
-    if (!active) return;
-    const items = Array.from({ length: 40 }).map((_, i) => ({
+  return active ? <ActiveCelebrationConfetti /> : null;
+}
+function ActiveCelebrationConfetti() {
+  const [finished, setFinished] = useState(false);
+  const [pieces] = useState(() => Array.from({ length: 40 }).map((_, i) => ({
       id: i,
       left: Math.random() * 100,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       delay: Math.random() * 0.4,
       size: Math.random() * 10 + 6,
-    }));
-    setPieces(items);
+      drift: Math.random() * 10 - 5,
+      duration: 2.5 + Math.random() * 1.5,
+    })));
 
-    const timer = setTimeout(() => setPieces([]), 3500);
+  useEffect(() => {
+    const timer = setTimeout(() => setFinished(true), 4500);
     return () => clearTimeout(timer);
-  }, [active]);
+  }, []);
 
-  if (pieces.length === 0) return null;
+  if (finished) return null;
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
@@ -117,10 +116,10 @@ export function CelebrationConfetti({ active }: { active: boolean }) {
             y: "105vh",
             opacity: [1, 1, 0],
             rotate: 720,
-            x: `${p.left + (Math.random() * 10 - 5)}vw`,
+            x: `${p.left + p.drift}vw`,
           }}
           transition={{
-            duration: 2.5 + Math.random() * 1.5,
+            duration: p.duration,
             delay: p.delay,
             ease: "easeOut",
           }}

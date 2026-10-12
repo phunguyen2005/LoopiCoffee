@@ -1,6 +1,8 @@
 import { ensureDatabase } from "@/db/runtime";
 import { createAdmin } from "@/lib/supabase/server";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
 export async function GET() {
   const auth = await requireApiUser();
@@ -17,13 +19,11 @@ export async function GET() {
   });
 }
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
-    displayName?: string;
-  };
+  const body = await readObject(request, { displayName: "string" }) as { displayName?: string };
 
   const newDisplayName = body.displayName?.trim();
 
@@ -56,14 +56,11 @@ export async function PATCH(request: Request) {
   // 2. Best effort update in Supabase user metadata if available
   try {
     const supabase = createAdmin();
-    const { data: usersData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 100 });
-    const matchUser = usersData?.users?.find(
-      (u) => u.email?.toLowerCase() === auth.actor!.email.toLowerCase()
-    );
-    if (matchUser) {
-      await supabase.auth.admin.updateUserById(matchUser.id, {
+    const account = await db.prepare("SELECT auth_user_id FROM employees WHERE id = ?")
+      .bind(auth.actor.id).first<{ auth_user_id: string | null }>();
+    if (account?.auth_user_id) {
+      await supabase.auth.admin.updateUserById(account.auth_user_id, {
         user_metadata: {
-          ...matchUser.user_metadata,
           full_name: newDisplayName,
           display_name: newDisplayName,
         },
@@ -82,4 +79,4 @@ export async function PATCH(request: Request) {
       role: auth.actor.role,
     },
   });
-}
+});

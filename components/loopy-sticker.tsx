@@ -23,23 +23,23 @@ export type StickerMood =
   | "calm";
 
 const stickers: Record<StickerMood, { src: string; label: string }> = {
-  hello: { src: "/mascots/loopy-hello.png", label: "Loopy chào bạn" },
-  cheer: { src: "/mascots/loopy-cheer.png", label: "Loopy cổ vũ" },
-  celebrate: { src: "/mascots/loopy-celebrate.png", label: "Loopy ăn mừng" },
-  worries: { src: "/mascots/loopy-worries.png", label: "Loopy lo lắng" },
-  shy: { src: "/mascots/loopy-shy.png", label: "Loopy ngại ngùng" },
-  checkin: { src: "/mascots/loopy-checkin.png", label: "Loopy kiểm tra" },
-  checklist: { src: "/mascots/loopy-checklist.png", label: "Loopy với checklist" },
-  working: { src: "/mascots/loopy-working.png", label: "Loopy đang làm việc" },
-  success: { src: "/mascots/loopy-success.png", label: "Loopy xác nhận hoàn tất" },
-  panicked: { src: "/mascots/loopy-panicked.png", label: "Loopy hốt hoảng lo lắng" },
-  investigating: { src: "/mascots/loopy-investigating.png", label: "Loopy soi kính lúp tìm kiếm" },
-  sleeping: { src: "/mascots/loopy-sleeping.png", label: "Loopy ngủ gật Zzz" },
-  thinking: { src: "/mascots/loopy-thinking.png", label: "Loopy đăm chiêu suy nghĩ" },
-  crying: { src: "/mascots/loopy-crying.png", label: "Loopy mếu khóc sự cố" },
-  alert: { src: "/mascots/loopy-panicked.png", label: "Loopy cảnh báo" },
-  confused: { src: "/mascots/loopy-thinking.png", label: "Loopy thắc mắc" },
-  calm: { src: "/mascots/loopy-hello.png", label: "Loopy điềm tĩnh" },
+  hello: { src: "/mascots/loopy-hello.webp", label: "Loopy chào bạn" },
+  cheer: { src: "/mascots/loopy-cheer.webp", label: "Loopy cổ vũ" },
+  celebrate: { src: "/mascots/loopy-celebrate.webp", label: "Loopy ăn mừng" },
+  worries: { src: "/mascots/loopy-worries.webp", label: "Loopy lo lắng" },
+  shy: { src: "/mascots/loopy-shy.webp", label: "Loopy ngại ngùng" },
+  checkin: { src: "/mascots/loopy-checkin.webp", label: "Loopy kiểm tra" },
+  checklist: { src: "/mascots/loopy-checklist.webp", label: "Loopy với checklist" },
+  working: { src: "/mascots/loopy-working.webp", label: "Loopy đang làm việc" },
+  success: { src: "/mascots/loopy-success.webp", label: "Loopy xác nhận hoàn tất" },
+  panicked: { src: "/mascots/loopy-panicked.webp", label: "Loopy hốt hoảng lo lắng" },
+  investigating: { src: "/mascots/loopy-investigating.webp", label: "Loopy soi kính lúp tìm kiếm" },
+  sleeping: { src: "/mascots/loopy-sleeping.webp", label: "Loopy ngủ gật Zzz" },
+  thinking: { src: "/mascots/loopy-thinking.webp", label: "Loopy đăm chiêu suy nghĩ" },
+  crying: { src: "/mascots/loopy-crying.webp", label: "Loopy mếu khóc sự cố" },
+  alert: { src: "/mascots/loopy-panicked.webp", label: "Loopy cảnh báo" },
+  confused: { src: "/mascots/loopy-thinking.webp", label: "Loopy thắc mắc" },
+  calm: { src: "/mascots/loopy-hello.webp", label: "Loopy điềm tĩnh" },
 };
 
 function StickerArtwork({ mood, size }: { mood: StickerMood; size: number }) {
@@ -53,6 +53,8 @@ function StickerArtwork({ mood, size }: { mood: StickerMood; size: number }) {
       width={size}
       height={size}
       sizes={`${size}px`}
+      // These small WebP assets are already compressed. Sticker sizes need not
+      // match the image optimizer's allowed resize widths.
       unoptimized
       draggable={false}
     />

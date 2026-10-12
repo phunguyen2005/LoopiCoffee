@@ -1,4 +1,5 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex, primaryKey, check, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const stores = sqliteTable("stores", {
   id: text("id").primaryKey(),
@@ -9,6 +10,7 @@ export const stores = sqliteTable("stores", {
   longitude: real("longitude").notNull(),
   geofenceRadiusMeters: integer("geofence_radius_meters").notNull().default(100),
   attendanceEnabled: integer("attendance_enabled", { mode: "boolean" }).notNull().default(false),
+  workforceRevision: integer("workforce_revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -23,8 +25,11 @@ export const employees = sqliteTable("employees", {
   startDate: text("start_date"),
   lastLoginAt: text("last_login_at"),
   authUserId: text("auth_user_id"),
-  role: text("role", { enum: ["owner", "manager", "team_lead", "employee"] }).notNull(),
-  status: text("status", { enum: ["invited", "active", "inactive"] }).notNull().default("invited"),
+  mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
+  passwordVersion: integer("password_version").notNull().default(0),
+  passwordResetPending: integer("password_reset_pending", { mode: "boolean" }).notNull().default(false),
+  role: text("role", { enum: ["system_admin", "owner", "manager", "team_lead", "employee"] }).notNull(),
+  status: text("status", { enum: ["invited", "active", "suspended", "offboarded", "inactive"] }).notNull().default("invited"),
   participatesAttendance: integer("participates_attendance", { mode: "boolean" }),
   payrollEligible: integer("payroll_eligible", { mode: "boolean" }),
   compensationType: text("compensation_type", { enum: ["hourly", "monthly", "shift", "none"] }),
@@ -65,6 +70,8 @@ export const attendanceRules = sqliteTable("attendance_rules", {
 
 export const shifts = sqliteTable("shifts", {
   id: text("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+  approvedLeaveRequestId: text("approved_leave_request_id").references((): AnySQLiteColumn => requests.id),
   storeId: text("store_id").notNull().references(() => stores.id),
   employeeEmail: text("employee_email").notNull(),
   startsAt: text("starts_at").notNull(),
@@ -92,6 +99,7 @@ export const attendanceCaptureSessions = sqliteTable("attendance_capture_session
 
 export const attendanceSessions = sqliteTable("attendance_sessions", {
   id: text("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
   employeeEmail: text("employee_email").notNull(),
   storeId: text("store_id").notNull().references(() => stores.id),
   shiftId: text("shift_id").references(() => shifts.id),
@@ -101,6 +109,7 @@ export const attendanceSessions = sqliteTable("attendance_sessions", {
   closedAt: text("closed_at"),
   workedMinutes: integer("worked_minutes"),
 }, (table) => [
+  uniqueIndex("active_attendance_session_employee_idx").on(table.employeeEmail).where(sql`${table.closedAt} IS NULL`),
   index("attendance_sessions_store_closed_idx").on(table.storeId, table.closedAt),
   index("attendance_sessions_employee_activity_idx").on(
     table.storeId,
@@ -112,6 +121,7 @@ export const attendanceSessions = sqliteTable("attendance_sessions", {
 
 export const attendanceEvents = sqliteTable("attendance_events", {
   id: text("id").primaryKey(),
+  captureSessionId: text("capture_session_id").references(() => attendanceCaptureSessions.id, { onDelete: "set null" }),
   sessionId: text("session_id").notNull().references(() => attendanceSessions.id),
   employeeEmail: text("employee_email").notNull(),
   action: text("action", { enum: ["check_in", "check_out"] }).notNull(),
@@ -123,6 +133,7 @@ export const attendanceEvents = sqliteTable("attendance_events", {
   exceptionReason: text("exception_reason"),
 }, (table) => [
   uniqueIndex("attendance_idempotency_idx").on(table.idempotencyKey),
+  uniqueIndex("attendance_events_capture_idx").on(table.captureSessionId).where(sql`${table.captureSessionId} IS NOT NULL`),
   uniqueIndex("attendance_event_session_action_idx").on(table.sessionId, table.action),
 ]);
 
@@ -191,6 +202,8 @@ export const payrollEntries = sqliteTable("payroll_entries", {
   totalAmount: integer("total_amount").notNull(),
   status: text("status", { enum: ["payroll_finalized", "paid"] }).notNull().default("payroll_finalized"),
   lockedAt: text("locked_at").notNull(),
+  rowSnapshot: text("row_snapshot"),
+  snapshotVersion: integer("snapshot_version").notNull().default(0),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
   uniqueIndex("payroll_entries_period_employee_idx").on(table.payrollPeriodId, table.employeeEmail),
@@ -213,6 +226,15 @@ export const checklistItems = sqliteTable("checklist_items", {
   completedAt: text("completed_at"),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [index("checklist_items_store_idx").on(table.storeId)]);
+
+export const checklistExecutions = sqliteTable("checklist_executions", {
+  itemId: text("item_id").notNull().references(() => checklistItems.id),
+  businessDate: text("business_date").notNull(),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  completedAt: text("completed_at"),
+  completedBy: text("completed_by"),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.itemId, table.businessDate] }), index("checklist_executions_date_idx").on(table.businessDate, table.itemId), check("checklist_execution_completed",sql`${table.completed} IN (0,1)`)]);
 
 export const incidents = sqliteTable("incidents", {
   id: text("id").primaryKey(),
@@ -238,6 +260,10 @@ export const handovers = sqliteTable("handovers", {
 
 export const requests = sqliteTable("requests", {
   id: text("id").primaryKey(),
+  clientRequestKey: text("client_request_key"),
+  shiftId: text("shift_id").references(() => shifts.id),
+  startsAt: text("starts_at"),
+  endsAt: text("ends_at"),
   storeId: text("store_id").notNull().references(() => stores.id),
   employeeEmail: text("employee_email").notNull(),
   type: text("type", { enum: ["leave", "swap", "correction"] }).notNull(),
@@ -249,6 +275,7 @@ export const requests = sqliteTable("requests", {
   createdAt: text("created_at").notNull(),
 }, (table) => [
   index("requests_store_employee_created_idx").on(table.storeId, table.employeeEmail, table.createdAt),
+  uniqueIndex("requests_client_key_idx").on(table.employeeEmail, table.clientRequestKey).where(sql`${table.clientRequestKey} IS NOT NULL`),
 ]);
 
 export const notifications = sqliteTable("notifications", {
@@ -265,10 +292,157 @@ export const notifications = sqliteTable("notifications", {
 
 export const auditEvents = sqliteTable("audit_events", {
   id: text("id").primaryKey(),
+  storeId: text("store_id"),
   actorEmail: text("actor_email").notNull(),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id").notNull(),
   action: text("action").notNull(),
   metadata: text("metadata"),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => [index("audit_events_store_created_idx").on(table.storeId, table.createdAt)]);
+
+export const menuCategories = sqliteTable("menu_categories", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  name: text("name").notNull(),
+  englishName: text("english_name"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("menu_categories_store_sort_idx").on(table.storeId, table.sortOrder),
+]);
+
+export const menuItems = sqliteTable("menu_items", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  categoryId: text("category_id").notNull().references(() => menuCategories.id),
+  name: text("name").notNull(),
+  englishName: text("english_name"),
+  description: text("description"),
+  basePrice: integer("base_price").notNull(),
+  imageUrl: text("image_url").notNull(),
+  badge: text("badge"),
+  isAvailable: integer("is_available", { mode: "boolean" }).notNull().default(true),
+  allowsSize: integer("allows_size", { mode: "boolean" }).notNull().default(true),
+  allowsSugar: integer("allows_sugar", { mode: "boolean" }).notNull().default(true),
+  allowsIce: integer("allows_ice", { mode: "boolean" }).notNull().default(true),
+  allowsToppings: integer("allows_toppings", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("menu_items_store_category_idx").on(table.storeId, table.categoryId, table.sortOrder),
+  index("menu_items_store_available_idx").on(table.storeId, table.isAvailable),
+]);
+
+export const menuOptions = sqliteTable("menu_options", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  groupType: text("group_type", { enum: ["size", "sugar", "ice", "topping"] }).notNull(),
+  name: text("name").notNull(),
+  priceModifier: integer("price_modifier").notNull().default(0),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  isAvailable: integer("is_available", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("menu_options_store_group_idx").on(table.storeId, table.groupType, table.sortOrder),
+]);
+
+export const customerOrders = sqliteTable("customer_orders", {
+  id: text("id").primaryKey(),
+  receiptTokenHash: text("receipt_token_hash"),
+  submissionKey: text("submission_key"),
+  submissionHash: text("submission_hash"),
+  orderCode: text("order_code").notNull(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone").notNull(),
+  customerNote: text("customer_note"),
+  totalAmount: integer("total_amount").notNull(),
+  itemCount: integer("item_count").notNull(),
+  status: text("status", { enum: ["pending", "accepted", "preparing", "ready", "completed", "cancelled"] }).notNull().default("pending"),
+  cancelReason: text("cancel_reason"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("customer_orders_order_code_idx").on(table.orderCode),
+  uniqueIndex("customer_orders_store_receipt_idx").on(table.storeId, table.receiptTokenHash),
+  uniqueIndex("customer_orders_store_submission_idx").on(table.storeId, table.submissionKey),
+  index("customer_orders_store_status_idx").on(table.storeId, table.status, table.createdAt),
+  index("customer_orders_customer_phone_idx").on(table.customerPhone),
+]);
+
+export const orderItems = sqliteTable("order_items", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id").notNull().references(() => customerOrders.id),
+  itemId: text("item_id"),
+  itemName: text("item_name").notNull(),
+  unitPrice: integer("unit_price").notNull(),
+  quantity: integer("quantity").notNull(),
+  subtotal: integer("subtotal").notNull(),
+  sizeLabel: text("size_label"),
+  sugarLevel: text("sugar_level"),
+  iceLevel: text("ice_level"),
+  toppingsJson: text("toppings_json"),
+  itemNote: text("item_note"),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("order_items_order_id_idx").on(table.orderId),
+]);
+
+export const orderStatusHistory = sqliteTable("order_status_history", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id").notNull().references(() => customerOrders.id),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  actorType: text("actor_type", { enum: ["customer", "owner", "system"] }).notNull(),
+  actorEmail: text("actor_email"),
+  note: text("note"),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("order_status_history_order_id_idx").on(table.orderId, table.createdAt),
+]);
+
+export const storeOrderingSettings = sqliteTable("store_ordering_settings", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  isOrderingOpen: integer("is_ordering_open", { mode: "boolean" }).notNull().default(true),
+  announcement: text("announcement"),
+  openingHoursNotice: text("opening_hours_notice").default("08:00 - 22:30"),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("store_ordering_settings_store_id_idx").on(table.storeId),
+]);
+
+export const orderRateLimits = sqliteTable("order_rate_limits", {
+  bucketKey: text("bucket_key").primaryKey(),
+  requestCount: integer("request_count").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (table) => [index("order_rate_limits_expiry_idx").on(table.expiresAt)]);
+
+export const attendanceCorrections = sqliteTable("attendance_corrections", {
+  id: text("id").primaryKey().notNull(),
+  sessionId: text("session_id").notNull().references(() => attendanceSessions.id),
+  eventId: text("event_id").references(() => attendanceEvents.id),
+  action: text("action", { enum: ["check_in", "check_out"] }).notNull(),
+  previousTime: text("previous_time"),
+  effectiveTime: text("effective_time").notNull(),
+  reason: text("reason").notNull(),
+  actorEmail: text("actor_email").notNull(),
+  createdAt: text("created_at").notNull(),
+}, table => [index("attendance_corrections_session_idx").on(table.sessionId, table.createdAt), check("attendance_corrections_action",sql`${table.action} IN ('check_in','check_out')`)]);
+
+export const payrollAdjustments = sqliteTable("payroll_adjustments", {
+  id: text("id").primaryKey().notNull(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  periodKey: text("period_key").notNull(),
+  employeeEmail: text("employee_email").notNull(),
+  amount: integer("amount").notNull(),
+  reason: text("reason").notNull(),
+  actorEmail: text("actor_email").notNull(),
+  createdAt: text("created_at").notNull(),
+}, table => [index("payroll_adjustments_period_idx").on(table.storeId, table.periodKey, table.employeeEmail), check("payroll_adjustments_amount",sql`${table.amount} <> 0 AND abs(${table.amount}) <= 100000000`)]);

@@ -264,14 +264,13 @@ export function AttendanceView() {
             <EvidenceLine icon={Camera} title="Ảnh trực tiếp" text="Không cho chọn ảnh có sẵn" />
             <EvidenceLine icon={MapPin} title="Vị trí một lần" text="Không theo dõi nền" />
             <EvidenceLine icon={Clock3} title="Giờ máy chủ" text="Không dùng đồng hồ điện thoại" />
-            <EvidenceLine icon={ShieldCheck} title="Lưu riêng tư" text="Tự xóa sau 90 ngày" />
+            <EvidenceLine icon={ShieldCheck} title="Lưu riêng tư" text="Theo thời hạn lưu trữ đã cấu hình" />
           </div>
           <Link href="/camera-location-notice" className="text-link">Đọc thông báo đầy đủ <ArrowRight size={11} /></Link>
         </section>
         <section className="card">
-          <CardHeader title="Ca hiện tại" subtitle="08:00 — 16:00 · Trưởng ca" />
-          <div className="progress"><span style={{ width: "20%" }} /></div>
-          <p style={{ margin: "11px 0 0", color: "var(--muted)", fontSize: 10 }}>Còn 6 giờ 24 phút</p>
+          <CardHeader title="Lịch làm việc" subtitle="Xem ca được phân công và giờ bắt đầu, kết thúc" />
+          <Link href="/app/schedule" className="text-link">Mở lịch của bạn <ArrowRight size={11} /></Link>
         </section>
       </aside>
     </div>

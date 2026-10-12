@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -17,6 +17,7 @@ import {
   Settings,
   ShieldCheck,
   ShieldPlus,
+  ShoppingBag,
   Store,
   TriangleAlert,
   UserRound,
@@ -26,6 +27,7 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { LoopyMark } from "./loopy-mark";
 import { LoopyToastProvider } from "./loopy-toast";
+import { LoopyPreloader, type LoopyPreloaderVariant } from "./loopy-preloader";
 import type { LoopiUser } from "@/app/loopi-user";
 
 type TodaySnapshot = {
@@ -34,35 +36,57 @@ type TodaySnapshot = {
   checklist: { total: number; done: number };
 };
 
-// Navigation structure grouped logically for Owner/Manager vs Staff
-const overviewNav = [
-  { href: "/app", label: "Tổng quan", icon: LayoutDashboard, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/today", label: "Hôm nay", icon: Coffee, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
-  { href: "/app/profile", label: "Hồ sơ cá nhân", icon: UserRound, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
+type OwnerDashboardSnapshot = {
+  activeStaff: number;
+  pendingExceptions: number;
+  checklistDone: number;
+  checklistTotal: number;
+  openIncidents: number;
+};
+
+// Staff Navigation: Lean, focused on their personal shifts & daily shift tasks
+const staffShiftNav = [
+  { href: "/app/today", label: "Hôm nay", icon: Coffee },
+  { href: "/app/attendance", label: "Chấm công", icon: Clock3 },
+  { href: "/app/schedule", label: "Lịch làm của tôi", icon: CalendarDays },
 ];
 
-const operationsNav = [
-  { href: "/app/schedule", label: "Lịch làm", icon: CalendarDays, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
-  { href: "/app/attendance", label: "Chấm công", icon: Clock3, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
-  { href: "/app/checklists", label: "Checklist", icon: CheckSquare2, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
-  { href: "/app/issues", label: "Sự cố", icon: TriangleAlert, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
-  { href: "/app/handovers", label: "Bàn giao", icon: HandHelping, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
+const staffTaskNav = [
+  { href: "/app/checklists", label: "Checklist ca", icon: CheckSquare2 },
+  { href: "/app/handovers", label: "Bàn giao ca", icon: HandHelping },
+  { href: "/app/issues", label: "Báo sự cố quầy", icon: TriangleAlert },
+  { href: "/app/requests", label: "Yêu cầu cá nhân", icon: UserRound },
 ];
 
-const teamNav = [
-  { href: "/app/team", label: "Nhân viên", icon: UsersRound, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/requests", label: "Yêu cầu", icon: UserRound, roles: ["system_admin", "owner", "manager", "team_lead", "employee"] },
+// Owner & Manager Navigation: 3-Level Progressive Disclosure
+// Level 1: Daily Operations (Core day-to-day)
+const ownerDailyNav = [
+  { href: "/app", label: "Tổng quan quán", icon: LayoutDashboard, roles: ["system_admin", "owner", "manager"] },
+  { href: "/app/team", label: "Đội ngũ nhân sự", icon: UsersRound, roles: ["system_admin", "owner", "manager"] },
   { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["system_admin", "owner", "manager", "team_lead"] },
+  { href: "/app/schedule", label: "Lịch làm việc", icon: CalendarDays, roles: ["system_admin", "owner", "manager", "team_lead"] },
+  { href: "/app/orders", label: "Đơn hàng online", icon: ShoppingBag, roles: ["system_admin", "owner", "manager"] },
 ];
 
-const adminNav = [
-  { href: "/app/admin/accounts", label: "Tài khoản", icon: ShieldPlus, roles: ["system_admin", "owner"] },
-  { href: "/app/reports/attendance", label: "Báo cáo", icon: FileBarChart, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/settings/store", label: "Thiết lập", icon: Settings, roles: ["system_admin", "owner"] },
-  { href: "/app/audit", label: "Nhật ký", icon: FileBarChart, roles: ["system_admin", "owner"] },
+// Level 2: Management & Oversight (Periodic check)
+const ownerManagementNav = [
+  { href: "/app/reports/attendance", label: "Báo cáo & Lương", icon: FileBarChart, roles: ["system_admin", "owner", "manager"] },
+  { href: "/app/requests", label: "Yêu cầu nhân sự", icon: UserRound, roles: ["system_admin", "owner", "manager", "team_lead"] },
+  { href: "/app/checklists", label: "Checklist vận hành", icon: CheckSquare2, roles: ["system_admin", "owner", "manager", "team_lead"] },
+  { href: "/app/issues", label: "Sự cố & Bàn giao", icon: TriangleAlert, roles: ["system_admin", "owner", "manager", "team_lead"] },
 ];
 
-function isActive(pathname: string, href: string) {
+// Level 3: Administration & Settings (Less frequent, safely grouped)
+const ownerAdminNav = [
+  { href: "/app/settings/store", label: "Thiết lập cửa hàng", icon: Settings, roles: ["system_admin", "owner"] },
+  { href: "/app/admin/accounts", label: "Quản trị tài khoản", icon: ShieldPlus, roles: ["system_admin", "owner", "manager"] },
+  { href: "/app/audit", label: "Nhật ký kiểm toán", icon: FileBarChart, roles: ["system_admin", "owner"] },
+];
+
+function isActive(pathname: string, href: string, isStaff: boolean = false) {
+  if (isStaff && href === "/app/today") {
+    return pathname === "/app" || pathname === "/app/today" || pathname.startsWith("/app/today");
+  }
   if (href === "/app/attendance") return pathname === href;
   return href === "/app" ? pathname === href : pathname.startsWith(href);
 }
@@ -77,37 +101,56 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const shouldReduceMotion = useReducedMotion();
   const [showProfile, setShowProfile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [todaySnapshot, setTodaySnapshot] = useState<TodaySnapshot | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [preloaderVariant, setPreloaderVariant] = useState<LoopyPreloaderVariant | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileDrawerRef = useRef<HTMLElement>(null);
   const mobileDrawerCloseButtonRef = useRef<HTMLButtonElement>(null);
 
+  const isStaff = user.role === "employee";
+  const [ownerMetrics, setOwnerMetrics] = useState<OwnerDashboardSnapshot | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/today", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : null)
-      .then((payload) => payload && setTodaySnapshot(payload as TodaySnapshot))
-      .catch(() => {});
+    const loadShellData = () => {
+      void fetch("/api/today", { cache: "no-store", signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) => payload && setTodaySnapshot(payload as TodaySnapshot))
+        .catch(() => {});
 
-    void fetch("/api/notifications", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : null)
-      .then((payload) => {
-        const notifications = (payload as { notifications?: Array<{ read_at: string | null }> } | null)?.notifications;
-        setUnreadNotificationCount(
-          Array.isArray(notifications)
-            ? notifications.filter((notification) => notification.read_at === null).length
-            : 0,
-        );
-      })
-      .catch(() => {});
+      if (!isStaff) {
+        void fetch("/api/dashboard", { cache: "no-store", signal: controller.signal })
+          .then(async (response) => (response.ok ? (await response.json()) as { metrics?: OwnerDashboardSnapshot } : null))
+          .then((payload) => payload?.metrics && setOwnerMetrics(payload.metrics))
+          .catch(() => {});
+      }
 
-    return () => controller.abort();
-  }, [pathname]);
+      void fetch("/api/notifications", { cache: "no-store", signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) => {
+          const notifications = (payload as { notifications?: Array<{ read_at: string | null }> } | null)?.notifications;
+          setUnreadNotificationCount(
+            Array.isArray(notifications)
+              ? notifications.filter((notification) => notification.read_at === null).length
+              : 0,
+          );
+        })
+        .catch(() => {});
+    };
+
+    loadShellData();
+    window.addEventListener("focus", loadShellData);
+
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", loadShellData);
+    };
+  }, [isStaff]);
 
   useEffect(() => {
     const closeFrame = window.requestAnimationFrame(() => setMobileNavOpen(false));
@@ -173,28 +216,27 @@ export function AppShell({
     .join("")
     .toUpperCase();
 
-  const filterNav = (items: typeof overviewNav) =>
-    items.filter((item) => item.roles.includes(user.role));
+  const filterNav = <T extends { roles?: string[] }>(items: T[]) =>
+    items.filter((item) => !item.roles || item.roles.includes(user.role));
 
-  const visibleOverview = filterNav(overviewNav);
-  const visibleOperations = filterNav(operationsNav);
-  const visibleTeam = filterNav(teamNav);
-  const visibleAdmin = filterNav(adminNav);
+  const visibleDaily = filterNav(ownerDailyNav);
+  const visibleManagement = filterNav(ownerManagementNav);
+  const visibleAdmin = filterNav(ownerAdminNav);
 
-  const visibleMobile = user.role === "employee"
+  const visibleMobile = isStaff
     ? [
         { href: "/app/today", label: "Hôm nay", icon: Coffee },
         { href: "/app/attendance", label: "Chấm công", icon: Clock3 },
         { href: "/app/schedule", label: "Lịch", icon: CalendarDays },
-        { href: "/app/checklists", label: "Công việc", icon: CheckSquare2 },
-        { href: "/app/issues", label: "Sự cố", icon: TriangleAlert },
+        { href: "/app/checklists", label: "Checklist", icon: CheckSquare2 },
+        { href: "/app/requests", label: "Yêu cầu", icon: UserRound },
       ]
     : [
         { href: "/app", label: "Tổng quan", icon: LayoutDashboard },
-        { href: "/app/today", label: "Hôm nay", icon: Coffee },
-        { href: "/app/attendance/review", label: "Duyệt ca", icon: ShieldCheck },
+        { href: "/app/team", label: "Nhân sự", icon: UsersRound },
+        { href: "/app/attendance/review", label: "Duyệt công", icon: ShieldCheck },
         { href: "/app/schedule", label: "Lịch", icon: CalendarDays },
-        { href: "/app/issues", label: "Sự cố", icon: TriangleAlert },
+        { href: "/app/reports/attendance", label: "Báo cáo", icon: FileBarChart },
       ];
 
   const notificationLabel = unreadNotificationCount > 0
@@ -202,11 +244,21 @@ export function AppShell({
     : "Thông báo";
 
   const handleSignOut = () => {
-    router.push("/auth/signout");
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    setPreloaderVariant("depart");
+    window.setTimeout(() => {
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/auth/signout";
+      document.body.appendChild(form);
+      form.submit();
+    }, 560);
   };
 
   return (
     <LoopyToastProvider>
+      <LoopyPreloader visible={preloaderVariant !== null} />
       <div className="app-frame">
         <aside className="app-sidebar">
           {/* Brand logo redirects to Landing Page (/) */}
@@ -219,69 +271,86 @@ export function AppShell({
             <span>LoopiCafe</span>
           </Link>
 
-          {visibleOverview.length > 0 && <span className="nav-section-label">Tổng quan</span>}
-          {visibleOverview.length > 0 && (
-            <nav className="app-nav" aria-label="Điều hướng tổng quan">
-              {visibleOverview.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
-                  aria-current={isActive(pathname, href) ? "page" : undefined}
-                >
-                  <Icon size={17} /> {label}
-                </Link>
-              ))}
-            </nav>
+          {isStaff ? (
+            <>
+              <span className="nav-section-label">Ca làm & Chấm công</span>
+              <nav className="app-nav" aria-label="Điều hướng ca làm">
+                {staffShiftNav.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`nav-item ${isActive(pathname, href, true) ? "active" : ""}`}
+                    aria-current={isActive(pathname, href, true) ? "page" : undefined}
+                  >
+                    <Icon size={17} /> {label}
+                  </Link>
+                ))}
+              </nav>
+
+              <span className="nav-section-label" style={{ marginTop: 20 }}>Nhiệm vụ trong ca</span>
+              <nav className="app-nav" aria-label="Điều hướng công việc">
+                {staffTaskNav.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`nav-item ${isActive(pathname, href, true) ? "active" : ""}`}
+                    aria-current={isActive(pathname, href, true) ? "page" : undefined}
+                  >
+                    <Icon size={17} /> {label}
+                  </Link>
+                ))}
+              </nav>
+            </>
+          ) : (
+            <>
+              <span className="nav-section-label">Vận hành hàng ngày</span>
+              <nav className="app-nav" aria-label="Điều hướng vận hành hàng ngày">
+                {visibleDaily.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                    aria-current={isActive(pathname, href) ? "page" : undefined}
+                  >
+                    <Icon size={17} /> {label}
+                  </Link>
+                ))}
+              </nav>
+
+              <span className="nav-section-label" style={{ marginTop: 20 }}>Quản trị & Đối soát</span>
+              <nav className="app-nav" aria-label="Điều hướng quản trị">
+                {visibleManagement.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                    aria-current={isActive(pathname, href) ? "page" : undefined}
+                  >
+                    <Icon size={17} /> {label}
+                  </Link>
+                ))}
+              </nav>
+
+              {visibleAdmin.length > 0 && (
+                <>
+                  <span className="nav-section-label" style={{ marginTop: 20 }}>Hệ thống nâng cao</span>
+                  <nav className="app-nav" aria-label="Điều hướng hệ thống">
+                    {visibleAdmin.map(({ href, label, icon: Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
+                        aria-current={isActive(pathname, href) ? "page" : undefined}
+                      >
+                        <Icon size={17} /> {label}
+                      </Link>
+                    ))}
+                  </nav>
+                </>
+              )}
+            </>
           )}
 
-          {visibleOperations.length > 0 && <span className="nav-section-label" style={{ marginTop: 20 }}>Vận hành</span>}
-          {visibleOperations.length > 0 && (
-            <nav className="app-nav" aria-label="Điều hướng vận hành">
-              {visibleOperations.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
-                  aria-current={isActive(pathname, href) ? "page" : undefined}
-                >
-                  <Icon size={17} /> {label}
-                </Link>
-              ))}
-            </nav>
-          )}
-
-          {visibleTeam.length > 0 && <span className="nav-section-label" style={{ marginTop: 20 }}>Nhân sự</span>}
-          {visibleTeam.length > 0 && (
-            <nav className="app-nav" aria-label="Điều hướng nhân sự">
-              {visibleTeam.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
-                  aria-current={isActive(pathname, href) ? "page" : undefined}
-                >
-                  <Icon size={17} /> {label}
-                </Link>
-              ))}
-            </nav>
-          )}
-
-          {visibleAdmin.length > 0 && <span className="nav-section-label" style={{ marginTop: 20 }}>Quản trị</span>}
-          {visibleAdmin.length > 0 && (
-            <nav className="app-nav" aria-label="Điều hướng quản trị">
-              {visibleAdmin.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`nav-item ${isActive(pathname, href) ? "active" : ""}`}
-                  aria-current={isActive(pathname, href) ? "page" : undefined}
-                >
-                  <Icon size={17} /> {label}
-                </Link>
-              ))}
-            </nav>
-          )}
           <button
             type="button"
             className="sidebar-bottom w-full cursor-pointer text-left hover:bg-[#fff2f4] transition p-2 rounded-xl"
@@ -299,7 +368,7 @@ export function AppShell({
         <main className="app-main">
           <div className="mobile-topbar">
             <div className="mobile-topbar-primary">
-              <Link href="/app/today" className="brand" title="Về trang Hôm nay">
+              <Link href={isStaff ? "/app/today" : "/app"} className="brand" title="Trở về trang chính">
                 <LoopyMark size="small" /><span>LoopiCafe</span>
               </Link>
               <div className="mobile-topbar-actions">
@@ -349,23 +418,45 @@ export function AppShell({
             </div>
           </header>
 
-          <section className="mobile-quick-panel" aria-label="Tóm tắt ca làm hôm nay">
-            <Link href="/app/schedule" className="mobile-quick-stat">
-              <span>Ca hôm nay</span>
-              <strong>{todaySnapshot?.shift ? `${formatShellTime(todaySnapshot.shift.starts_at)}–${formatShellTime(todaySnapshot.shift.ends_at)}` : "Chưa có ca"}</strong>
-            </Link>
-            <Link href="/app/attendance" className="mobile-quick-stat">
-              <span>Trạng thái</span>
-              <strong className={todaySnapshot?.attendance?.opened_at && !todaySnapshot?.attendance?.closed_at ? "text-[#2e7d32]" : ""}>
-                {todaySnapshot?.attendance?.closed_at ? "Đã ra ca" : todaySnapshot?.attendance?.opened_at ? "Đang trong ca" : "Chưa vào ca"}
-              </strong>
-            </Link>
-            <Link href="/app/checklists" className="mobile-quick-stat">
-              <span>Checklist</span>
-              <strong>{todaySnapshot ? `${todaySnapshot.checklist.done}/${todaySnapshot.checklist.total} việc` : "Đang tải…"}</strong>
-            </Link>
-          </section>
-          <AnimatePresence mode="wait">
+          {isStaff ? (
+            <section className="mobile-quick-panel" aria-label="Tóm tắt ca làm hôm nay">
+              <Link href="/app/schedule" className="mobile-quick-stat">
+                <span>Ca hôm nay</span>
+                <strong>{todaySnapshot?.shift ? `${formatShellTime(todaySnapshot.shift.starts_at)}–${formatShellTime(todaySnapshot.shift.ends_at)}` : "Chưa có ca"}</strong>
+              </Link>
+              <Link href="/app/attendance" className="mobile-quick-stat">
+                <span>Trạng thái</span>
+                <strong className={todaySnapshot?.attendance?.opened_at && !todaySnapshot?.attendance?.closed_at ? "text-[#2e7d32]" : ""}>
+                  {todaySnapshot?.attendance?.closed_at ? "Đã ra ca" : todaySnapshot?.attendance?.opened_at ? "Đang trong ca" : "Chưa vào ca"}
+                </strong>
+              </Link>
+              <Link href="/app/checklists" className="mobile-quick-stat">
+                <span>Checklist</span>
+                <strong>{todaySnapshot ? `${todaySnapshot.checklist.done}/${todaySnapshot.checklist.total} việc` : "Đang tải…"}</strong>
+              </Link>
+            </section>
+          ) : (
+            <section className="mobile-quick-panel" aria-label="Tóm tắt vận hành cửa hàng">
+              <Link href="/app" className="mobile-quick-stat">
+                <span>Đang trực quầy</span>
+                <strong className={ownerMetrics?.activeStaff ? "text-[#2e7d32]" : ""}>
+                  {ownerMetrics ? `${ownerMetrics.activeStaff} nhân sự` : "Đang tải…"}
+                </strong>
+              </Link>
+              <Link href="/app/attendance/review" className="mobile-quick-stat">
+                <span>Cần duyệt</span>
+                <strong className={ownerMetrics?.pendingExceptions ? "text-[#c75865]" : ""}>
+                  {ownerMetrics ? `${ownerMetrics.pendingExceptions} ngoại lệ` : "Đang tải…"}
+                </strong>
+              </Link>
+              <Link href="/app/checklists" className="mobile-quick-stat">
+                <span>Mở ca</span>
+                <strong>{ownerMetrics ? `${ownerMetrics.checklistDone}/${ownerMetrics.checklistTotal} việc` : "Đang tải…"}</strong>
+              </Link>
+            </section>
+          )}
+
+          <AnimatePresence>
             <motion.div
               key={pathname}
               initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
@@ -415,77 +506,132 @@ export function AppShell({
                 </button>
               </div>
 
-              <div className="drawer-shift-summary">
-                <span className="mini-icon pink"><Coffee size={18} /></span>
-                <div>
-                  <small>Ca làm hôm nay</small>
-                  <strong>{todaySnapshot?.shift ? `${formatShellTime(todaySnapshot.shift.starts_at)} — ${formatShellTime(todaySnapshot.shift.ends_at)}` : "Chưa có ca được phân công"}</strong>
-                  <span>{todaySnapshot?.shift?.role_label ?? "Kiểm tra lịch để xem ca tiếp theo"}</span>
-                </div>
-              </div>
+              {isStaff ? (
+                <>
+                  <div className="drawer-shift-summary">
+                    <span className="mini-icon pink"><Coffee size={18} /></span>
+                    <div>
+                      <small>Ca làm hôm nay</small>
+                      <strong>{todaySnapshot?.shift ? `${formatShellTime(todaySnapshot.shift.starts_at)} — ${formatShellTime(todaySnapshot.shift.ends_at)}` : "Chưa có ca được phân công"}</strong>
+                      <span>{todaySnapshot?.shift?.role_label ?? "Kiểm tra lịch để xem ca tiếp theo"}</span>
+                    </div>
+                  </div>
 
-              <div className="drawer-quick-actions">
-                <Link href="/app/attendance" onClick={() => setMobileNavOpen(false)}><Clock3 size={18} /><span>Chấm công</span></Link>
-                <Link href="/app/schedule" onClick={() => setMobileNavOpen(false)}><CalendarDays size={18} /><span>Xem lịch</span></Link>
-                <Link href="/app/issues" onClick={() => setMobileNavOpen(false)}><TriangleAlert size={18} /><span>Báo sự cố</span></Link>
-              </div>
+                  <div className="drawer-quick-actions">
+                    <Link href="/app/attendance" onClick={() => setMobileNavOpen(false)}><Clock3 size={18} /><span>Chấm công</span></Link>
+                    <Link href="/app/schedule" onClick={() => setMobileNavOpen(false)}><CalendarDays size={18} /><span>Xem lịch</span></Link>
+                    <Link href="/app/checklists" onClick={() => setMobileNavOpen(false)}><CheckSquare2 size={18} /><span>Checklist</span></Link>
+                  </div>
 
-              <div className="drawer-nav-groups">
-                {visibleOverview.length > 0 && (
-                  <section>
-                    <h3>Tổng quan</h3>
-                    <nav aria-label="Tổng quan">
-                      {visibleOverview.map(({ href, label, icon: Icon }) => (
-                        <Link
-                          key={href}
-                          href={href}
-                          className={isActive(pathname, href) ? "active" : ""}
-                          aria-current={isActive(pathname, href) ? "page" : undefined}
-                          onClick={() => setMobileNavOpen(false)}
-                        >
-                          <Icon size={17} /><span>{label}</span>
-                        </Link>
-                      ))}
-                    </nav>
-                  </section>
-                )}
+                  <div className="drawer-nav-groups">
+                    <section>
+                      <h3>Ca làm việc</h3>
+                      <nav aria-label="Ca làm việc">
+                        {staffShiftNav.map(({ href, label, icon: Icon }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={isActive(pathname, href, true) ? "active" : ""}
+                            aria-current={isActive(pathname, href, true) ? "page" : undefined}
+                            onClick={() => setMobileNavOpen(false)}
+                          >
+                            <Icon size={17} /><span>{label}</span>
+                          </Link>
+                        ))}
+                      </nav>
+                    </section>
 
-                <section>
-                  <h3>Công việc & Vận hành</h3>
-                  <nav aria-label="Công việc">
-                    {visibleOperations.map(({ href, label, icon: Icon }) => (
-                      <Link
-                        key={href}
-                        href={href}
-                        className={isActive(pathname, href) ? "active" : ""}
-                        aria-current={isActive(pathname, href) ? "page" : undefined}
-                        onClick={() => setMobileNavOpen(false)}
-                      >
-                        <Icon size={17} /><span>{label}</span>
-                      </Link>
-                    ))}
-                  </nav>
-                </section>
+                    <section>
+                      <h3>Nhiệm vụ trong ca</h3>
+                      <nav aria-label="Nhiệm vụ trong ca">
+                        {staffTaskNav.map(({ href, label, icon: Icon }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={isActive(pathname, href, true) ? "active" : ""}
+                            aria-current={isActive(pathname, href, true) ? "page" : undefined}
+                            onClick={() => setMobileNavOpen(false)}
+                          >
+                            <Icon size={17} /><span>{label}</span>
+                          </Link>
+                        ))}
+                      </nav>
+                    </section>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="drawer-shift-summary">
+                    <span className="mini-icon mint"><LayoutDashboard size={18} /></span>
+                    <div>
+                      <small>Tổng quan vận hành</small>
+                      <strong>{ownerMetrics ? `${ownerMetrics.activeStaff} nhân sự đang trực` : "Đang cập nhật…"}</strong>
+                      <span>{ownerMetrics && ownerMetrics.pendingExceptions > 0 ? `⚠️ Có ${ownerMetrics.pendingExceptions} ngoại lệ cần duyệt` : "Mọi việc đang đúng nhịp"}</span>
+                    </div>
+                  </div>
 
-                {(visibleTeam.length > 0 || visibleAdmin.length > 0) && (
-                  <section>
-                    <h3>Quản trị & Hỗ trợ</h3>
-                    <nav aria-label="Quản trị">
-                      {[...visibleTeam, ...visibleAdmin].map(({ href, label, icon: Icon }) => (
-                        <Link
-                          key={href}
-                          href={href}
-                          className={isActive(pathname, href) ? "active" : ""}
-                          aria-current={isActive(pathname, href) ? "page" : undefined}
-                          onClick={() => setMobileNavOpen(false)}
-                        >
-                          <Icon size={17} /><span>{label}</span>
-                        </Link>
-                      ))}
-                    </nav>
-                  </section>
-                )}
-              </div>
+                  <div className="drawer-quick-actions">
+                    <Link href="/app/team" onClick={() => setMobileNavOpen(false)}><UsersRound size={18} /><span>Nhân sự</span></Link>
+                    <Link href="/app/attendance/review" onClick={() => setMobileNavOpen(false)}><ShieldCheck size={18} /><span>Duyệt công</span></Link>
+                    <Link href="/app/reports/attendance" onClick={() => setMobileNavOpen(false)}><FileBarChart size={18} /><span>Báo cáo</span></Link>
+                  </div>
+
+                  <div className="drawer-nav-groups">
+                    <section>
+                      <h3>Vận hành hàng ngày</h3>
+                      <nav aria-label="Vận hành hàng ngày">
+                        {visibleDaily.map(({ href, label, icon: Icon }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={isActive(pathname, href) ? "active" : ""}
+                            aria-current={isActive(pathname, href) ? "page" : undefined}
+                            onClick={() => setMobileNavOpen(false)}
+                          >
+                            <Icon size={17} /><span>{label}</span>
+                          </Link>
+                        ))}
+                      </nav>
+                    </section>
+
+                    <section>
+                      <h3>Quản trị & Đối soát</h3>
+                      <nav aria-label="Quản trị">
+                        {visibleManagement.map(({ href, label, icon: Icon }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={isActive(pathname, href) ? "active" : ""}
+                            aria-current={isActive(pathname, href) ? "page" : undefined}
+                            onClick={() => setMobileNavOpen(false)}
+                          >
+                            <Icon size={17} /><span>{label}</span>
+                          </Link>
+                        ))}
+                      </nav>
+                    </section>
+
+                    {visibleAdmin.length > 0 && (
+                      <section>
+                        <h3>Hệ thống & Cài đặt</h3>
+                        <nav aria-label="Hệ thống">
+                          {visibleAdmin.map(({ href, label, icon: Icon }) => (
+                            <Link
+                              key={href}
+                              href={href}
+                              className={isActive(pathname, href) ? "active" : ""}
+                              aria-current={isActive(pathname, href) ? "page" : undefined}
+                              onClick={() => setMobileNavOpen(false)}
+                            >
+                              <Icon size={17} /><span>{label}</span>
+                            </Link>
+                          ))}
+                        </nav>
+                      </section>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="drawer-account-actions">
                 <button onClick={() => { setMobileNavOpen(false); setShowProfile(true); }}>

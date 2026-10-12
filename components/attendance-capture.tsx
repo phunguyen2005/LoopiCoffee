@@ -1,4 +1,5 @@
 "use client";
+import { readJson } from "@/platform/http/client";
 
 import { Camera, Check, CheckCircle2, LoaderCircle, MapPin, RefreshCw, ShieldAlert, Smartphone, Wifi, X, Eye } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -91,7 +92,7 @@ export function AttendanceCapture() {
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/today", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => response.ok ? readJson<{ attendance: { opened_at?: string; closed_at?: string } | null }>(response) : null)
       .then((payload) => {
         if (payload?.attendance?.opened_at && !payload.attendance.closed_at) setAction("check_out");
       })
@@ -254,13 +255,14 @@ export function AttendanceCapture() {
     setStep("submitting");
     try {
       let currentSession = session;
-      if (!currentSession) {
+      if (!currentSession || Date.parse(currentSession.expiresAt) < Date.now()) {
         const response = await fetch("/api/attendance/capture-sessions", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action }),
         });
-        currentSession = (await response.json()) as CaptureSession;
+        currentSession = await readJson<CaptureSession>(response);
+        setSession(currentSession);
       }
       const actionResponse = await fetch("/api/attendance/actions", {
         method: "POST",
@@ -524,6 +526,7 @@ export function AttendanceCapture() {
 
           {step === "error" && (
             <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 8 }}>
+              {preview && session && location && <button className="button-secondary button-compact" onClick={confirmSubmit}>Gửi lại lần chấm này</button>}
               <button className="button-secondary button-compact" onClick={reset}>
                 <RefreshCw size={15} /> Thử lại
               </button>

@@ -1,10 +1,10 @@
 "use client";
+import { readJson } from "@/platform/http/client";
 
 import {
   AlertTriangle,
   BadgeCheck,
   Building2,
-  Calendar,
   Check,
   Clock,
   Copy,
@@ -14,8 +14,6 @@ import {
   Lock,
   Mail,
   MoreVertical,
-  Phone,
-  Plus,
   Search,
   ShieldCheck,
   Unlock,
@@ -28,7 +26,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type AccountRole = "owner" | "manager" | "employee";
+type AccountRole = "system_admin" | "owner" | "manager" | "team_lead" | "employee";
 type AccountStatus = "active" | "invited" | "suspended" | "offboarded";
 
 type Account = {
@@ -60,11 +58,14 @@ type AuditLog = {
   created_at: string;
 };
 
+type AccountResponse = {
+  accounts?: Account[]; storeName?: string; currentUserEmail?: string;
+  currentUserId?: string; currentUserRole?: AccountRole; auditLogs?: AuditLog[];
+  temporaryPassword?: string; error?: string; message?: string;
+};
 export function AdminAccountsView() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [storeName, setStoreName] = useState("LoopiCafe Nguyễn Trãi");
-  const [currentUserEmail, setCurrentUserEmail] = useState("");
-  const [currentUserId, setCurrentUserId] = useState("");
   const [currentUserRole, setCurrentUserRole] = useState<AccountRole>("owner");
 
   const [loading, setLoading] = useState(true);
@@ -132,12 +133,10 @@ export function AdminAccountsView() {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/accounts", { cache: "no-store" });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setAccounts(data.accounts ?? []);
         if (data.storeName) setStoreName(data.storeName);
-        if (data.currentUserEmail) setCurrentUserEmail(data.currentUserEmail);
-        if (data.currentUserId) setCurrentUserId(data.currentUserId);
         if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
       } else {
         setMessage(data.error ?? "Không thể tải danh sách tài khoản.");
@@ -153,7 +152,7 @@ export function AdminAccountsView() {
     setLoadingAudit(true);
     try {
       const res = await fetch(`/api/admin/accounts?auditFor=${accountId}`, { cache: "no-store" });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setDetailAuditLogs(data.auditLogs ?? []);
       }
@@ -211,7 +210,7 @@ export function AdminAccountsView() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(createForm),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setShowCreateDrawer(false);
         if (data.temporaryPassword) {
@@ -256,7 +255,7 @@ export function AdminAccountsView() {
           ...editForm,
         }),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setEditAccount(null);
         await refreshAccounts();
@@ -280,7 +279,7 @@ export function AdminAccountsView() {
           role: targetRole,
         }),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setRoleChangeAccount(null);
         await refreshAccounts();
@@ -304,7 +303,7 @@ export function AdminAccountsView() {
           status: targetStatus,
         }),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         setStatusChangeAccount(null);
         await refreshAccounts();
@@ -327,7 +326,7 @@ export function AdminAccountsView() {
           action: "reset_password",
         }),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok && data.temporaryPassword) {
         setIssuedCredential({ email: acc.email, password: data.temporaryPassword });
         await refreshAccounts();
@@ -349,7 +348,7 @@ export function AdminAccountsView() {
           action: "resend_invite",
         }),
       });
-      const data = await res.json();
+      const data = await readJson<AccountResponse>(res);
       if (res.ok) {
         alert(`Đã gửi lại lời mời kích hoạt tới ${acc.email}`);
         await refreshAccounts();
@@ -372,6 +371,7 @@ export function AdminAccountsView() {
 
   return (
     <div className="space-y-6">
+      {message && <p role="status" className="attention-card">{message}</p>}
       {/* 1. Header Metrics (4 Cards) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4 flex items-center gap-3">
@@ -886,7 +886,7 @@ export function AdminAccountsView() {
                       >
                         <option value="employee">Nhân viên</option>
                         <option value="manager">Quản lý</option>
-                        {currentUserRole === "owner" && <option value="owner">Chủ quán (Admin)</option>}
+                        {["owner", "system_admin"].includes(currentUserRole) && <option value="owner">Chủ quán (Admin)</option>}
                       </select>
                     </div>
                   </div>
@@ -1309,7 +1309,7 @@ export function AdminAccountsView() {
                 >
                   <option value="employee">Nhân viên</option>
                   <option value="manager">Quản lý</option>
-                  {currentUserRole === "owner" && <option value="owner">Chủ quán (Admin)</option>}
+                  {["owner", "system_admin"].includes(currentUserRole) && <option value="owner">Chủ quán (Admin)</option>}
                 </select>
               </div>
 

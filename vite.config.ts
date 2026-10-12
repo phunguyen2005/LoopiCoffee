@@ -2,6 +2,7 @@ import vinext from "vinext";
 import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
+import { resolve } from "node:path";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -34,7 +35,9 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async ({ mode }) => {
-  const appEnv = loadEnv(mode, process.cwd(), "");
+  const localOnly = process.env.LOOPI_RUNTIME_PROFILE === "local" || process.env.LOOPI_LOCAL_ONLY === "true";
+  const envDir = localOnly ? resolve("tooling/local-runtime") : process.cwd();
+  const appEnv = loadEnv(mode, envDir, "");
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? appEnv.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseAnonKey =
@@ -50,6 +53,7 @@ export default defineConfig(async ({ mode }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    envDir,
     optimizeDeps: {
       exclude: ["framer-motion"],
     },
@@ -62,13 +66,18 @@ export default defineConfig(async ({ mode }) => {
     define: {
       "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(supabaseUrl),
       "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY": JSON.stringify(supabaseAnonKey),
+      "process.env.NEXT_PUBLIC_LOCAL_ONLY": JSON.stringify(localOnly ? "true" : "false"),
     },
     plugins: [
       vinext(),
       sites(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
-        config: localBindingConfig,
+        ...(localOnly ? {
+          configPath: resolve("tooling/local-runtime/wrangler.jsonc"),
+          persistState: { path: resolve(".wrangler/local-readiness") },
+          inspectorPort: false as const,
+        } : { config: localBindingConfig }),
       }),
     ],
   };

@@ -1,26 +1,30 @@
 import { ensureDatabase } from "@/db/runtime";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { businessDate } from "@/modules/operations/domain/business-day";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
 export async function GET() {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const result = await db.prepare(
-    `SELECT id, label, assignee, required, completed, completed_at
-     FROM checklist_items WHERE store_id = ? ORDER BY id`,
-  ).bind(auth.actor.storeId).all();
+    `SELECT i.id, i.label, i.assignee, i.required, COALESCE(x.completed,0) AS completed, x.completed_at
+     FROM checklist_items i LEFT JOIN checklist_executions x ON x.item_id=i.id AND x.business_date=?
+     WHERE i.store_id = ? ORDER BY i.id`,
+  ).bind(businessDate(),auth.actor.storeId).all();
   return Response.json({ items: result.results });
 }
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readObject(request, { label: "string", assignee: "string", required: "boolean" })) as {
     label?: string;
     assignee?: string;
     required?: boolean;
   };
-  if (!body.label?.trim()) {
+  if (!body.label?.trim() || body.label.length > 200 || (body.assignee?.length ?? 0) > 100) {
     return Response.json({ error: "Vui lòng nhập tên công việc checklist." }, { status: 400 });
   }
 
@@ -40,12 +44,12 @@ export async function POST(request: Request) {
   ]);
 
   return Response.json({ item: { id, label, assignee, required, completed: 0 } });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as { id?: string; completed?: boolean };
+  const body = await readObject(request, {id:"string",completed:"boolean"}) as { id?: string; completed?: boolean };
   if (!body.id || typeof body.completed !== "boolean") {
     return Response.json({ error: "Cập nhật checklist không hợp lệ." }, { status: 400 });
   }
@@ -56,17 +60,19 @@ export async function PATCH(request: Request) {
   const now = new Date().toISOString();
   await db.batch([
     db.prepare(
-      "UPDATE checklist_items SET completed = ?, completed_at = ?, updated_at = ? WHERE id = ?",
-    ).bind(body.completed ? 1 : 0, body.completed ? now : null, now, body.id),
+      `INSERT INTO checklist_executions(item_id,business_date,completed,completed_at,completed_by,updated_at)
+       VALUES(?,?,?,?,?,?) ON CONFLICT(item_id,business_date) DO UPDATE SET
+       completed=excluded.completed,completed_at=excluded.completed_at,completed_by=excluded.completed_by,updated_at=excluded.updated_at`,
+    ).bind(body.id,businessDate(),body.completed ? 1 : 0,body.completed ? now : null,auth.actor.email,now),
     auditStatement(
       db,
       auth.actor.email,
       "checklist_item",
       body.id,
       body.completed ? "checklist.completed" : "checklist.reopened",
-      {},
+      { businessDate: businessDate() },
       now,
     ),
   ]);
   return Response.json({ updated: true, completed: body.completed, completedAt: body.completed ? now : null });
-}
+});

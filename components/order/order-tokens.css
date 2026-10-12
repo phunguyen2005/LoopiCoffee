@@ -1,0 +1,181 @@
+:root {
+  --lb-olive-900: #1b2a1c;
+  --lb-olive-800: #2b3e2d;
+  --lb-olive-700: #3d5a40;
+  --lb-olive-600: #4e6f52;
+  --lb-olive-500: #628766;
+  --lb-olive-100: #ebf1ea;
+  --lb-olive-50: #f4f7f3;
+
+  --lb-cream-50: #ffffff;
+  --lb-cream-100: #faf7f2;
+  --lb-cream-200: #f4efea;
+  --lb-cream-300: #eae2d7;
+  --lb-cream-400: #d8cdbf;
+
+  --lb-brown-800: #4a3525;
+  --lb-brown-700: #634832;
+  --lb-brown-600: #8a6b53;
+
+  --lb-terracotta: #c85a32;
+  --lb-terracotta-hover: #b34e29;
+  --lb-terracotta-light: #fbeee8;
+
+  --lb-gold: #d4a373;
+  --lb-gold-light: #fcf6ef;
+
+  --lb-text-main: #231f1d;
+  --lb-text-muted: #6e645e;
+  --lb-text-light: #9e9389;
+
+  --lb-radius-sm: 8px;
+  --lb-radius-md: 14px;
+  --lb-radius-lg: 20px;
+  --lb-radius-xl: 28px;
+  --lb-radius-full: 9999px;
+
+  --lb-shadow-sm: 0 2px 8px rgba(43, 62, 45, 0.05);
+  --lb-shadow-md: 0 6px 20px -2px rgba(43, 62, 45, 0.08);
+  --lb-shadow-lg: 0 14px 36px -4px rgba(43, 62, 45, 0.12);
+  --lb-shadow-modal: 0 20px 50px -10px rgba(27, 42, 28, 0.25);
+}
+
+/* Base Customer Page Layout */
+.laboong-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--lb-cream-100);
+  color: var(--lb-text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+}
+
+@media (min-width: 1024px) {
+  .laboong-page {
+    padding-bottom: 48px;
+  }
+}
+
+/* Modern Responsive Card Layout */
+/* Default for ultra-narrow (<350px, e.g. 320px): 1 column */
+.laboong-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* Standard Mobile (350px to 639px): 2 columns */
+@media (min-width: 350px) {
+  .laboong-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+@media (min-width: 480px) {
+  .laboong-grid {
+    gap: 14px;
+  }
+}
+
+/* Tablet (640px to 899px): 2 columns with generous padding */
+@media (min-width: 640px) {
+  .laboong-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+}
+
+/* Medium desktop (900px to 1199px): 3 columns */
+@media (min-width: 900px) {
+  .laboong-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+  }
+}
+
+/* Wide desktop (1200px+): 4 columns */
+@media (min-width: 1200px) {
+  .laboong-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 24px;
+  }
+}
+
+/* Pill Tabs with Horizontal Scroll & Touch-Friendly Hit Areas */
+.laboong-tabs-container {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.laboong-tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+.laboong-tab-pill {
+  flex-shrink: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: var(--lb-radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--lb-cream-300);
+  background: var(--lb-cream-50);
+  color: var(--lb-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.laboong-tab-pill:hover {
+  background: var(--lb-cream-200);
+  color: var(--lb-text-main);
+}
+
+.laboong-tab-pill.active {
+  background: var(--lb-olive-800);
+  color: #ffffff;
+  border-color: var(--lb-olive-800);
+  box-shadow: 0 4px 12px rgba(43, 62, 45, 0.2);
+}
+
+/* Glassmorphism Sticky Header */
+.laboong-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(250, 247, 242, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(216, 205, 191, 0.5);
+  transition: all 0.25s ease;
+}
+
+/* Custom Scrollbars for modal and panels */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: var(--lb-cream-200);
+  border-radius: 99px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: var(--lb-cream-400);
+  border-radius: 99px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--lb-brown-600);
+}

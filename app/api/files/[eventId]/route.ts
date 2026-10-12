@@ -1,4 +1,5 @@
 import { ensureDatabase, getBindings } from "@/db/runtime";
+import { loadUnexpiredPhoto } from "@/modules/attendance/application/load-photo";
 import { auditStatement, requireApiUser } from "@/server/auth";
 
 export async function GET(
@@ -9,17 +10,7 @@ export async function GET(
   if (!auth.actor) return auth.response;
   const { eventId } = await context.params;
   const db = await ensureDatabase();
-  const photo = await db.prepare(
-    `SELECT p.object_key, p.mime_type, p.sha256
-     FROM attendance_photos p
-     JOIN attendance_events e ON e.id = p.event_id
-     JOIN attendance_sessions s ON s.id = e.session_id
-     WHERE p.event_id = ? AND p.deleted_at IS NULL AND s.store_id = ?`,
-  ).bind(eventId, auth.actor.storeId).first<{
-    object_key: string;
-    mime_type: string;
-    sha256: string;
-  }>();
+  const photo = await loadUnexpiredPhoto(db, eventId, auth.actor.storeId);
   if (!photo) return Response.json({ error: "Không tìm thấy ảnh hoặc ảnh đã hết hạn." }, { status: 404 });
 
   const { evidence } = getBindings();

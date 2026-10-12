@@ -11,7 +11,7 @@ export default function NotFoundPage() {
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-2xl border border-[#eee3df] flex flex-col items-center">
         {/* Dynamic Speech Bubble */}
         <div className="loopy-speech-bubble mb-4 max-w-xs">
-          "Ồ không! Loopy dùng kính lúp soi khắp nơi mà vẫn không thấy trang này ở đâu hết! 🔍"
+          &quot;Ồ không! Loopy dùng kính lúp soi khắp nơi mà vẫn không thấy trang này ở đâu hết! 🔍&quot;
         </div>
 
         <MotionLoopySticker mood="investigating" size={170} />

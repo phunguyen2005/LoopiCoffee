@@ -1,13 +1,46 @@
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
+import { correctAttendance } from "@/modules/attendance/application/correct-attendance";
+import { reviewAttendance } from "@/modules/attendance/application/review-attendance";
 import { ensureDatabase } from "@/db/runtime";
-import { auditStatement, requireApiUser } from "@/server/auth";
+import { requireApiUser } from "@/server/auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
+  const url = new URL(request.url);
+  const historyFor = url.searchParams.get("historyFor");
+
+  if (historyFor) {
+    const historyLogs = await db.prepare(
+      `SELECT id, actor_email, action, metadata, created_at
+       FROM audit_events
+       WHERE entity_type = 'attendance_event' AND entity_id IN (?, (SELECT session_id FROM attendance_events WHERE id = ?))
+         AND EXISTS (SELECT 1 FROM attendance_events e JOIN attendance_sessions s ON s.id = e.session_id WHERE e.id = ? AND s.store_id = ?)
+       ORDER BY created_at DESC LIMIT 20`,
+    ).bind(historyFor, historyFor, historyFor, auth.actor.storeId).all<{
+      id: string;
+      actor_email: string;
+      action: string;
+      metadata: string | null;
+      created_at: string;
+    }>();
+    return Response.json({
+      history: historyLogs.results.map((log) => ({
+        id: log.id,
+        actorEmail: log.actor_email,
+        action: log.action,
+        metadata: safeJsonObject(log.metadata),
+        createdAt: log.created_at,
+      })),
+    });
+  }
+
   const result = await db.prepare(
     `SELECT e.id, e.action, e.recorded_at, e.verification_results, e.photo_status,
-            e.review_required, x.status AS exception_status, x.employee_reason,
+            e.review_required, s.id AS session_id, s.revision,
+             CASE WHEN e.action = 'check_in' THEN s.opened_at ELSE s.closed_at END AS effective_at, x.status AS exception_status, x.employee_reason,
             x.reviewer_note, emp.display_name,
             l.latitude, l.longitude, l.accuracy_meters, l.distance_from_store_meters,
             CASE WHEN p.event_id IS NULL THEN 0 ELSE 1 END AS photo_present
@@ -15,14 +48,17 @@ export async function GET() {
      JOIN attendance_sessions s ON s.id = e.session_id
      LEFT JOIN employees emp ON lower(emp.email) = lower(e.employee_email)
      LEFT JOIN attendance_exceptions x ON x.event_id = e.id
-     LEFT JOIN attendance_locations l ON l.event_id = e.id AND l.deleted_at IS NULL
-     LEFT JOIN attendance_photos p ON p.event_id = e.id AND p.deleted_at IS NULL
+     LEFT JOIN attendance_locations l ON l.event_id = e.id AND l.deleted_at IS NULL AND datetime(l.expires_at) > datetime('now')
+     LEFT JOIN attendance_photos p ON p.event_id = e.id AND p.deleted_at IS NULL AND datetime(p.expires_at) > datetime('now')
      WHERE s.store_id = ?
      ORDER BY e.recorded_at DESC LIMIT 60`,
   ).bind(auth.actor.storeId).all<{
     id: string;
     action: "check_in" | "check_out";
     recorded_at: string;
+    effective_at: string;
+    session_id: string;
+    revision: number;
     verification_results: string;
     photo_status: string;
     review_required: number;
@@ -42,10 +78,13 @@ export async function GET() {
       id: row.id,
       employeeName: row.display_name ?? "Nhân viên",
       action: row.action,
-      recordedAt: row.recorded_at,
+      recordedAt: row.effective_at,
+      originalRecordedAt: row.recorded_at,
+      sessionId: row.session_id,
+      revision: row.revision,
       verification: safeJsonArray(row.verification_results),
       photoStatus: row.photo_status,
-      photoPresent: Boolean(row.photo_present),
+      photoPresent: Boolean(row.photo_present) && auth.actor.role !== "team_lead",
       reviewRequired: Boolean(row.review_required),
       exceptionStatus: row.exception_status,
       employeeReason: row.employee_reason,
@@ -60,57 +99,34 @@ export async function GET() {
   });
 }
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as {
-    eventId?: string;
-    decision?: "approved" | "rejected";
-    reviewerNote?: string;
-  };
-  if (!body.eventId || (body.decision !== "approved" && body.decision !== "rejected")) {
-    return Response.json({ error: "Quyết định duyệt không hợp lệ." }, { status: 400 });
-  }
-
+  const body = await readObject(request, { eventId: "string", sessionId: "string", action: "string", attendanceAction: "string", adjustedTime: "string", reason: "string", decision: "string", reviewerNote: "string", expectedRevision: "number" });
   const db = await ensureDatabase();
-  const event = await db.prepare(
-    `SELECT e.id, e.session_id, s.closed_at
-     FROM attendance_events e
-     JOIN attendance_sessions s ON s.id = e.session_id
-     WHERE e.id = ? AND s.store_id = ?`,
-  ).bind(body.eventId, auth.actor.storeId).first<{
-    id: string;
-    session_id: string;
-    closed_at: string | null;
-  }>();
-  if (!event) return Response.json({ error: "Không tìm thấy sự kiện chấm công." }, { status: 404 });
-
-  const now = new Date().toISOString();
-  const statements = [
-    db.prepare(
-      `UPDATE attendance_exceptions
-       SET status = ?, reviewer_email = ?, reviewer_note = ?, reviewed_at = ?
-       WHERE event_id = ?`,
-    ).bind(body.decision, auth.actor.email, body.reviewerNote?.trim().slice(0, 500) ?? null, now, event.id),
-    auditStatement(
-      db,
-      auth.actor.email,
-      "attendance_event",
-      event.id,
-      `attendance.review_${body.decision}`,
-      { hasReviewerNote: Boolean(body.reviewerNote?.trim()) },
-      now,
-    ),
-  ];
-  if (body.decision === "approved") {
-    statements.push(
-      db.prepare("UPDATE attendance_events SET review_required = 0 WHERE id = ?").bind(event.id),
-      db.prepare("UPDATE attendance_sessions SET status = ? WHERE id = ?")
-        .bind(event.closed_at ? "completed" : "open", event.session_id),
-    );
+  if (body.action === "adjust_time") {
+    return Response.json(await correctAttendance(db, auth.actor, {
+      eventId: body.eventId as string | undefined,
+      sessionId: body.sessionId as string | undefined,
+      action: body.attendanceAction as "check_in" | "check_out" | undefined,
+      adjustedTime: body.adjustedTime,
+      reason: body.reason,
+      expectedRevision: body.expectedRevision as number | undefined,
+    }));
   }
-  await db.batch(statements);
-  return Response.json({ updated: true, eventId: event.id, status: body.decision });
+  if (typeof body.eventId !== "string" || !body.eventId || (body.decision !== "approved" && body.decision !== "rejected")) {
+    return Response.json({ error: "Sự kiện hoặc quyết định duyệt không hợp lệ." }, { status: 400 });
+  }
+  return Response.json(await reviewAttendance(db, auth.actor, body.eventId, body.decision, body.reviewerNote as string | undefined));
+});
+
+function safeJsonObject(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function safeJsonArray(value: string) {

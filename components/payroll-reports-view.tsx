@@ -25,47 +25,10 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type ReportStatus = "unchecked" | "exception" | "attendance_approved" | "payroll_finalized" | "paid";
-type PayrollException = {
-  id: string;
-  employeeEmail: string;
-  occurredAt: string;
-  kind: "attendance" | "duration" | "missing_checkout";
-  title: string;
-  status: "pending" | "approved" | "rejected";
-  reviewerEmail: string | null;
-  reviewerNote: string | null;
-  employeeReason: string | null;
-  canReview: boolean;
-};
-type ReportRow = {
-  displayName: string;
-  email: string;
-  role: string;
-  jobTitle: string;
-  compensationType: "hourly" | "monthly" | "shift" | "none";
-  includeInPayroll: boolean;
-  hasPayrollData: boolean;
-  hourlyRate: number;
-  monthlySalary: number;
-  scheduledMinutes: number;
-  recordedMinutes: number;
-  approvedMinutes: number;
-  overtimeMinutes: number;
-  shiftCount: number;
-  lateCount: number;
-  earlyLeaveCount: number;
-  exceptionCount: number;
-  pendingExceptionCount: number;
-  allowanceAmount: number;
-  bonusAmount: number;
-  deductionAmount: number;
-  baseSalary: number;
-  overtimePay: number;
-  totalSalary: number;
-  status: ReportStatus;
-  exceptions: PayrollException[];
-};
+import { readJson } from "@/platform/http/client";
+import { AttendanceCorrectionForm } from "@/components/attendance-correction-form";
+import type { PayrollReportRow as ReportRow, PayrollException } from "@/modules/payroll/contracts/report";
+type ReportStatus = ReportRow["status"];
 type ReportPayload = {
   period: { key: string; label: string; startDate: string; endDate: string };
   storeName: string;
@@ -76,6 +39,7 @@ type ReportPayload = {
   finalizedBy: string | null;
   canViewPayroll: boolean;
   canManagePayroll: boolean;
+  canReviewAttendance: boolean;
   rows: ReportRow[];
 };
 type SortKey = "displayName" | "scheduledMinutes" | "recordedMinutes" | "approvedMinutes" | "overtimeMinutes" | "exceptionCount" | "totalSalary" | "status";
@@ -103,30 +67,43 @@ export function PayrollReportsView() {
   const [exportOpen, setExportOpen] = useState(false);
   const [mutating, setMutating] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentReason, setAdjustmentReason] = useState("");
+  const adjustmentKeyRef = useRef("");
   const exportRef = useRef<HTMLDivElement>(null);
 
-  const loadReport = useCallback(async () => {
+  const loadReport = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/reports/attendance?period=${encodeURIComponent(period)}`, { cache: "no-store" });
-      const payload = await response.json().catch(() => ({}));
+      const response = await fetch(`/api/reports/attendance?period=${encodeURIComponent(period)}`, { cache: "no-store", signal });
+      const payload = await readJson<ReportPayload & { error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Không thể tải báo cáo kỳ lương.");
+      if (signal?.aborted) return;
       setReport(payload);
       setSelectedRow((current) => current
         ? payload.rows.find((row: ReportRow) => row.email === current.email) ?? null
         : null);
     } catch (loadError) {
+      if (signal?.aborted) return;
       setError(loadError instanceof Error ? loadError.message : "Không thể tải báo cáo kỳ lương.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [period]);
 
-  useEffect(() => { void loadReport(); }, [loadReport]);
-  useEffect(() => { setPage(1); }, [activeTab, search, jobTitle, status, pageSize, period]);
   useEffect(() => {
-    if (activeTab === "payroll" && report && !report.canViewPayroll) setActiveTab("attendance");
+    const controller = new AbortController();
+    const timer = setTimeout(() => { void loadReport(controller.signal); }, 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [loadReport]);
+  useEffect(() => {
+    queueMicrotask(() => setPage(1));
+  }, [activeTab, search, jobTitle, status, pageSize, period]);
+  useEffect(() => {
+    if (activeTab === "payroll" && report && !report.canViewPayroll) {
+      queueMicrotask(() => setActiveTab("attendance"));
+    }
   }, [activeTab, report]);
   useEffect(() => {
     const closeMenu = (event: MouseEvent) => {
@@ -182,6 +159,7 @@ export function PayrollReportsView() {
     setSelectedRow(row);
     setDrawerFocus(focus);
     setReviewNote("");
+    setAdjustmentAmount(""); setAdjustmentReason(""); adjustmentKeyRef.current = "";
   }
 
   async function mutatePeriod(action: "finalize" | "reopen") {
@@ -197,7 +175,7 @@ export function PayrollReportsView() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, period }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJson<{ error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Không thể cập nhật kỳ lương.");
       await loadReport();
     } catch (mutationError) {
@@ -217,7 +195,7 @@ export function PayrollReportsView() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ eventId: exception.id, decision, reviewerNote: reviewNote.trim() }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJson<{ error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Không thể xử lý ngoại lệ.");
       setReviewNote("");
       await loadReport();
@@ -226,6 +204,18 @@ export function PayrollReportsView() {
     } finally {
       setMutating(false);
     }
+  }
+
+  async function addAdjustment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!selectedRow || mutating) return;
+    setMutating(true); setError("");
+    try {
+      if (!adjustmentKeyRef.current) adjustmentKeyRef.current = crypto.randomUUID();
+      await readJson(await fetch("/api/reports/payroll", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "adjust", id: adjustmentKeyRef.current, period, employeeEmail: selectedRow.email, amount: Number(adjustmentAmount), reason: adjustmentReason }) }));
+      adjustmentKeyRef.current = ""; setAdjustmentAmount(""); setAdjustmentReason(""); await loadReport();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể lưu điều chỉnh lương."); }
+    finally { setMutating(false); }
   }
 
   return (
@@ -341,6 +331,7 @@ export function PayrollReportsView() {
           </div>
         </div>
 
+        {report?.rows.some((row) => row.snapshotComplete === false) && <p className="attention-card" role="status">Kỳ lương cũ giữ nguyên tổng tiền đã lưu. Các chi tiết không được lưu trước đây được đánh dấu “—”, không tính lại theo đơn giá hiện tại.</p>}
         {error && <div className="report-error" role="alert"><AlertTriangle size={16} /> {error}<button onClick={() => setError("")} aria-label="Đóng thông báo"><X size={14} /></button></div>}
         <div className="report-table-scroll">
           <table className="report-table payroll-table">
@@ -378,14 +369,14 @@ export function PayrollReportsView() {
                   </td>
                   {activeTab === "attendance" ? (
                     <>
-                      <td className="numeric-cell">{formatMinutes(row.scheduledMinutes)}</td>
-                      <td className="numeric-cell">{formatMinutes(row.recordedMinutes)}</td>
+                      <td className="numeric-cell">{row.snapshotComplete === false ? "—" : formatMinutes(row.scheduledMinutes)}</td>
+                      <td className="numeric-cell">{row.snapshotComplete === false ? "—" : formatMinutes(row.recordedMinutes)}</td>
                       <td className="numeric-cell"><strong>{formatMinutes(row.approvedMinutes)}</strong></td>
                       <td className="numeric-cell">{formatMinutes(row.overtimeMinutes)}</td>
-                      <td>{row.lateCount} lần / {row.earlyLeaveCount} lần</td>
+                      <td>{row.snapshotComplete === false ? "—" : `${row.lateCount} lần / ${row.earlyLeaveCount} lần`}</td>
                       <td className="numeric-cell">
                         <button className={`exception-button ${row.pendingExceptionCount > 0 ? "has-exception" : ""}`} onClick={(event) => { event.stopPropagation(); openDetails(row, "exceptions"); }}>
-                          {row.exceptionCount > 0 ? `${row.exceptionCount} ngoại lệ` : "Không có"}
+                          {row.snapshotComplete === false ? "—" : row.exceptionCount > 0 ? `${row.exceptionCount} ngoại lệ` : "Không có"}
                         </button>
                       </td>
                       <td><StatusBadge status={row.status} /></td>
@@ -394,7 +385,7 @@ export function PayrollReportsView() {
                     <>
                       <td className="numeric-cell">{formatMinutes(row.approvedMinutes)}</td>
                       <td className="numeric-cell">{formatMinutes(row.overtimeMinutes)}</td>
-                      <td className="numeric-cell">{row.compensationType === "monthly" ? `${formatMoney(row.monthlySalary)}/tháng` : `${formatMoney(row.hourlyRate)}/h`}</td>
+                      <td className="numeric-cell">{row.snapshotComplete === false ? "—" : row.compensationType === "monthly" ? `${formatMoney(row.monthlySalary)}/tháng` : `${formatMoney(row.hourlyRate)}/h`}</td>
                       <td className="numeric-cell">{formatSignedMoney(row.allowanceAmount + row.bonusAmount - row.deductionAmount)}</td>
                       <td className="numeric-cell salary-cell"><strong>{formatMoney(row.totalSalary)}</strong></td>
                       <td><StatusBadge status={row.status} /></td>
@@ -432,20 +423,22 @@ export function PayrollReportsView() {
               {drawerFocus === "exceptions" && <div className="drawer-anchor-note"><AlertTriangle size={15} /> Đang mở danh sách ngoại lệ cần xử lý.</div>}
               <DrawerSection title="Tổng quan kỳ lương">
                 <div className="drawer-stat-grid">
-                  <DrawerStat label="Giờ lịch" value={formatMinutes(selectedRow.scheduledMinutes)} />
-                  <DrawerStat label="Giờ ghi nhận" value={formatMinutes(selectedRow.recordedMinutes)} />
+                  <DrawerStat label="Giờ lịch" value={selectedRow.snapshotComplete === false ? "—" : formatMinutes(selectedRow.scheduledMinutes)} />
+                  <DrawerStat label="Giờ ghi nhận" value={selectedRow.snapshotComplete === false ? "—" : formatMinutes(selectedRow.recordedMinutes)} />
                   <DrawerStat label="Giờ đã duyệt" value={formatMinutes(selectedRow.approvedMinutes)} />
                   <DrawerStat label="Tăng ca" value={formatMinutes(selectedRow.overtimeMinutes)} />
-                  <DrawerStat label="Đi muộn" value={`${selectedRow.lateCount} lần`} />
-                  <DrawerStat label="Về sớm" value={`${selectedRow.earlyLeaveCount} lần`} />
+                  <DrawerStat label="Đi muộn" value={selectedRow.snapshotComplete === false ? "—" : `${selectedRow.lateCount} lần`} />
+                  <DrawerStat label="Về sớm" value={selectedRow.snapshotComplete === false ? "—" : `${selectedRow.earlyLeaveCount} lần`} />
                 </div>
               </DrawerSection>
 
               {report?.canViewPayroll && selectedRow.includeInPayroll && (
                 <>
                   <DrawerSection title="Thu nhập">
-                    <MoneyLine label="Lương theo giờ" value={selectedRow.baseSalary} />
-                    <MoneyLine label="Phần tăng ca" value={selectedRow.overtimePay} />
+                    {selectedRow.snapshotComplete === false ? <p>Không có chi tiết đơn giá lịch sử.</p> : <>
+                      <MoneyLine label="Lương cơ bản" value={selectedRow.baseSalary} />
+                      <MoneyLine label="Phần tăng ca" value={selectedRow.overtimePay} />
+                    </>}
                     <MoneyLine label="Phụ cấp" value={selectedRow.allowanceAmount} />
                     <MoneyLine label="Thưởng" value={selectedRow.bonusAmount} />
                   </DrawerSection>
@@ -453,11 +446,20 @@ export function PayrollReportsView() {
                     <MoneyLine label="Tổng khấu trừ" value={selectedRow.deductionAmount} negative />
                   </DrawerSection>
                   <div className="net-pay-row"><span>Thực nhận</span><strong>{formatMoney(selectedRow.totalSalary)}</strong></div>
+                  <DrawerSection title="Điều chỉnh có lý do">
+                    {(selectedRow.adjustments ?? []).map((item) => <p key={item.id}>{formatMoney(item.amount)} · {item.reason} · {item.actorEmail}</p>)}
+                    {report.canManagePayroll && report.periodStatus === "reviewing" && <form className="operation-form" onSubmit={addAdjustment}>
+                      <p>Lương cơ bản = giờ được duyệt × đơn giá. Số tiền dương để cộng, âm để trừ; sửa sai bằng một điều chỉnh bù.</p>
+                      <label>Số tiền (đồng)<input type="number" step="1" min="-100000000" max="100000000" required value={adjustmentAmount} onChange={(event) => { setAdjustmentAmount(event.target.value); adjustmentKeyRef.current = ""; }} /></label>
+                      <label>Lý do<textarea minLength={5} maxLength={1000} required value={adjustmentReason} onChange={(event) => { setAdjustmentReason(event.target.value); adjustmentKeyRef.current = ""; }} /></label>
+                      <button className="button-secondary button-compact" disabled={mutating}>Lưu điều chỉnh</button>
+                    </form>}
+                  </DrawerSection>
                 </>
               )}
 
               <DrawerSection title={`Ngoại lệ (${selectedRow.exceptions.length})`}>
-                {selectedRow.exceptions.length === 0 && <div className="drawer-empty"><CheckCircle2 size={18} /> Không có ngoại lệ trong kỳ này.</div>}
+                {selectedRow.exceptions.length === 0 && <div className="drawer-empty"><CheckCircle2 size={18} /> {selectedRow.snapshotComplete === false ? "Không có dữ liệu ngoại lệ lịch sử." : "Không có ngoại lệ trong kỳ này."}</div>}
                 {selectedRow.exceptions.map((exception) => (
                   <article className="drawer-exception" key={exception.id}>
                     <div className="drawer-exception-top"><strong>{formatDate(exception.occurredAt)} · {exception.title}</strong><ExceptionStatus status={exception.status} /></div>
@@ -469,7 +471,9 @@ export function PayrollReportsView() {
                         <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Thêm ghi chú xử lý (không bắt buộc)" maxLength={500} />
                         <div><button className="button-secondary button-compact" disabled={mutating} onClick={() => void reviewException(exception, "rejected")}>Từ chối</button><button className="button button-compact" disabled={mutating} onClick={() => void reviewException(exception, "approved")}>Phê duyệt</button></div>
                       </div>
-                    ) : exception.status === "pending" ? (
+                    ) : exception.status === "pending" && report?.canReviewAttendance && report.periodStatus === "reviewing" && exception.sessionId && exception.correctionAction ? (
+                      <AttendanceCorrectionForm sessionId={exception.sessionId} revision={exception.revision} action={exception.correctionAction} onSaved={loadReport} />
+                    ) : exception.status === "pending" && report?.canReviewAttendance ? (
                       <Link href="/app/attendance/review" className="text-link">Mở màn hình kiểm tra để chỉnh giờ</Link>
                     ) : null}
                   </article>
@@ -501,6 +505,7 @@ function StatusBadge({ status }: { status: ReportStatus }) {
 }
 
 function ExceptionStatus({ status }: { status: PayrollException["status"] }) {
+  if (status === "informational") return <span className="badge neutral">Thông tin</span>;
   return <span className={`badge ${status === "pending" ? "warning" : status === "approved" ? "success" : "danger"}`}>{status === "pending" ? "Chờ xử lý" : status === "approved" ? "Đã duyệt" : "Từ chối"}</span>;
 }
 

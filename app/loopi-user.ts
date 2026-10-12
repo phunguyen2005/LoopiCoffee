@@ -1,6 +1,6 @@
-import { getChatGPTUser, requireChatGPTUser } from "./chatgpt-auth";
-import { getApiUser } from "@/server/auth";
+import { getApiUser, getVerifiedIdentity } from "@/server/auth";
 import { cache } from "react";
+import { redirect } from "next/navigation";
 
 export type LoopiUser = {
   email: string;
@@ -11,20 +11,16 @@ export type LoopiUser = {
 const getRequestActor = cache(getApiUser);
 
 export async function getLoopiUser(returnTo: string): Promise<LoopiUser> {
+  void returnTo;
   const actor = await getRequestActor();
   if (actor) {
+    if (actor.mustChangePassword) redirect("/auth/change-password");
     return {
       email: actor.email,
       displayName: actor.displayName,
       role: actor.role,
     };
   }
-  let authenticated = await getChatGPTUser();
-  if (!authenticated && process.env.NODE_ENV !== "production") {
-    return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh", role: "owner" };
-  }
-  if (!authenticated) {
-    authenticated = await requireChatGPTUser(returnTo);
-  }
-  throw new Error(`Tài khoản ${authenticated.email} chưa được thêm vào LoopiCafe.`);
+  if (await getVerifiedIdentity()) redirect("/auth/access");
+  redirect("/auth/login");
 }

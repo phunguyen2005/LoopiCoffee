@@ -21,7 +21,7 @@ export default function ErrorPage({
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-2xl border border-[#eee3df] flex flex-col items-center">
         {/* Dynamic Speech Bubble */}
         <div className="loopy-speech-bubble mb-4 max-w-xs">
-          "Hic hic... Đã có sự cố bất ngờ xảy ra! Loopy đang rất lo lắng nè! 😭"
+          &quot;Hic hic... Đã có sự cố bất ngờ xảy ra! Loopy đang rất lo lắng nè! 😭&quot;
         </div>
 
         <MotionLoopySticker mood="crying" size={170} />

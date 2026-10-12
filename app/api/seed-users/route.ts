@@ -1,5 +1,6 @@
 import { createAdmin } from '@/lib/supabase/server';
-import { ensureDatabase, STORE_ID } from '@/db/runtime';
+import { STORE_ID } from '@/db/runtime';
+import { seedDemoDatabase } from '@/db/seed';
 import { NextResponse } from 'next/server';
 
 const TEST_ACCOUNTS = [
@@ -21,7 +22,10 @@ const TEST_ACCOUNTS = [
 ];
 
 export async function POST(request: Request) {
-  const seedSecret = process.env.SEED_SECRET ?? process.env.CRON_SECRET;
+  if (process.env.ENABLE_DEMO_SEED !== "true") {
+    return NextResponse.json({ error: "Demo seeding is disabled" }, { status: 403 });
+  }
+  const seedSecret = process.env.SEED_SECRET;
   const accountPassword = process.env.TEST_ACCOUNT_PASSWORD;
   const authorization = request.headers.get("authorization");
 
@@ -36,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdmin();
-  const db = await ensureDatabase();
+  const db = await seedDemoDatabase();
   const results = [];
   const now = new Date().toISOString();
   const { data: existingUsers, error: listError } =

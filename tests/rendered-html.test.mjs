@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("renders the LoopiCafe Vietnamese landing page", async () => {
+test("landing source and assets retain Vietnamese content", async () => {
   const [page, layout, mascot] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
@@ -72,15 +72,20 @@ test("enforces membership, protected retention, and persistent workflows", async
   const [auth, retention, operations, report, payrollReport] = await Promise.all([
     readFile(new URL("../server/auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/retention/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../components/operational-views.tsx", import.meta.url), "utf8"),
+    Promise.all([
+      readFile(new URL("../components/operational-views.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/operational/checklists-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/operational/issues-view.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../components/operational/handovers-view.tsx", import.meta.url), "utf8"),
+    ]).then((files) => files.join("\n")),
     readFile(new URL("../app/api/reports/attendance.csv/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/payroll-report.ts", import.meta.url), "utf8"),
+    readFile(new URL("../modules/payroll/application/load-report.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(auth, /SELECT COUNT\(\*\) AS count FROM employees/);
+  assert.doesNotMatch(auth, /INSERT INTO employees|UPDATE employees|INSERT INTO employee_consents/);
   assert.match(auth, /status !== "active"/);
   assert.match(auth, /employee_consents/);
   assert.match(retention, /if \(!secret\)/);
-  assert.match(retention, /attendance_locations/);
+  assert.match(retention, /expireEvidence/);
   assert.match(operations, /fetch\(\"\/api\/checklists/);
   assert.match(operations, /fetch\(\"\/api\/incidents/);
   assert.match(operations, /fetch\(\"\/api\/handovers/);
@@ -107,15 +112,15 @@ test("keeps upgrade migrations compatible with Cloudflare D1", async () => {
 
 test("keeps startup work and high-resolution mascot assets bounded", async () => {
   const mascotPaths = [
-    "loopy-hello.png",
-    "loopy-cheer.png",
-    "loopy-celebrate.png",
-    "loopy-worries.png",
-    "loopy-shy.png",
-    "loopy-checkin.png",
-    "loopy-checklist.png",
-    "loopy-working.png",
-    "loopy-success.png",
+    "loopy-hello.webp",
+    "loopy-cheer.webp",
+    "loopy-celebrate.webp",
+    "loopy-worries.webp",
+    "loopy-shy.webp",
+    "loopy-checkin.webp",
+    "loopy-checklist.webp",
+    "loopy-working.webp",
+    "loopy-success.webp",
   ];
   const [runtime, dashboard, today, auth, globalStyles, proxy, mascotComponent, ...mascots] =
     await Promise.all([
@@ -124,20 +129,20 @@ test("keeps startup work and high-resolution mascot assets bounded", async () =>
       readFile(new URL("../app/api/today/route.ts", import.meta.url), "utf8"),
       readFile(new URL("../server/auth.ts", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-      readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+      readFile(new URL("../server/session.ts", import.meta.url), "utf8"),
       readFile(new URL("../components/loopy-sticker.tsx", import.meta.url), "utf8"),
       ...mascotPaths.map((name) => readFile(new URL(`../public/mascots/${name}`, import.meta.url))),
     ]);
 
-  assert.match(runtime, /databaseInitialization \?\?=/);
+  assert.match(runtime, /export async function ensureDatabase\(\)/);
   assert.match(dashboard, /db\.batch\(/);
   assert.match(today, /db\.batch\(/);
   assert.match(auth, /validatedIdentityCache/);
   assert.match(proxy, /auth\.getSession\(\)/);
   assert.doesNotMatch(proxy, /auth\.getUser\(\)/);
-  assert.match(mascotComponent, /\/mascots\/loopy-hello\.png/);
+  assert.match(mascotComponent, /\/mascots\/loopy-hello\.webp/);
   assert.match(globalStyles, /object-fit:\s*contain/);
   assert.doesNotMatch(globalStyles, /fonts\.googleapis/);
   assert.equal(mascots.length, mascotPaths.length);
-  assert.ok(mascots.every((mascot) => mascot.byteLength < 1_200_000));
+  assert.ok(mascots.every((mascot) => mascot.byteLength < 100_000));
 });

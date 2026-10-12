@@ -1,10 +1,15 @@
+import { canManageEmployee, assignableRoles, type EmployeeStatus } from "@/modules/people/domain/access";
+import { updateEmployeeAccess } from "@/modules/people/application/update-access";
+import { resetPassword } from "@/modules/people/application/reset-password";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 import { ensureDatabase } from "@/db/runtime";
 import { createAdmin } from "@/lib/supabase/server";
 import { auditStatement, requireApiUser, type ActorRole } from "@/server/auth";
 
-const creatableRoles: ActorRole[] = ["owner", "manager", "employee"];
+const creatableRoles: readonly ActorRole[] = assignableRoles;
 
-export async function GET(request: Request) {
+export const GET = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
@@ -17,9 +22,10 @@ export async function GET(request: Request) {
     const logs = await db.prepare(
       `SELECT id, actor_email, action, metadata, created_at
        FROM audit_events
-       WHERE entity_type = 'employee' AND entity_id = ?
+       WHERE entity_type = 'employee' AND entity_id = ? AND store_id = ?
+          AND EXISTS (SELECT 1 FROM employees e WHERE e.id = audit_events.entity_id AND e.store_id = ?)
        ORDER BY created_at DESC LIMIT 20`
-    ).bind(auditForId).all();
+    ).bind(auditForId, auth.actor.storeId, auth.actor.storeId).all();
     return Response.json({ auditLogs: logs.results });
   }
 
@@ -44,13 +50,17 @@ export async function GET(request: Request) {
     currentUserId: auth.actor.id,
     currentUserRole: auth.actor.role,
   });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readObject(request, {
+    email: "string", displayName: "string", jobTitle: "string", phone: "string", startDate: "string", role: "string",
+    activationMethod: "string", mustChangePassword: "boolean", participatesAttendance: "boolean", payrollEligible: "boolean",
+    compensationType: "string", hourlyRate: "money", monthlySalary: "money",
+  })) as {
     email?: string;
     displayName?: string;
     jobTitle?: string;
@@ -90,7 +100,7 @@ export async function POST(request: Request) {
   if (
     !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
     !displayName || displayName.length < 2 ||
-    !role || !creatableRoles.includes(role)
+    !role || !creatableRoles.includes(role) || !["invite", "temporary_password"].includes(activationMethod)
   ) {
     return Response.json({ error: "Thông tin tài khoản không hợp lệ. Vui lòng kiểm tra lại." }, { status: 400 });
   }
@@ -114,7 +124,6 @@ export async function POST(request: Request) {
       user_metadata: {
         display_name: displayName.slice(0, 100),
         job_title: jobTitle,
-        must_change_password: mustChangePassword,
       },
       app_metadata: {
         role,
@@ -124,23 +133,23 @@ export async function POST(request: Request) {
 
     if (error || !data.user) {
       return Response.json(
-        { error: error?.message ?? "Không thể tạo tài khoản trên Supabase Auth." },
+        { error: "Không thể tạo tài khoản đăng nhập. Hãy kiểm tra email hoặc thử lại sau." },
         { status: 400 },
       );
     }
     authUserId = data.user.id;
   } else {
     // Send invitation email via Supabase
+    if (!process.env.NEXT_PUBLIC_APP_URL) return Response.json({ error: "Chưa cấu hình địa chỉ ứng dụng để gửi lời mời." }, { status: 503 });
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
       data: {
         display_name: displayName.slice(0, 100),
         job_title: jobTitle,
       },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/login`,
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/auth/callback`,
     });
-    if (!error && data.user) {
-      authUserId = data.user.id;
-    }
+    if (error || !data.user) return Response.json({ error: "Không thể gửi lời mời kích hoạt." }, { status: 502 });
+    authUserId = data.user.id;
   }
 
   const id = crypto.randomUUID();
@@ -151,8 +160,8 @@ export async function POST(request: Request) {
         `INSERT INTO employees
           (id, store_id, email, display_name, job_title, phone, start_date, auth_user_id, role, status,
            participates_attendance, payroll_eligible, compensation_type, hourly_rate, monthly_salary,
-           invited_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           invited_by, created_at, updated_at, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         id,
         auth.actor.storeId,
@@ -172,6 +181,7 @@ export async function POST(request: Request) {
         auth.actor.email,
         now,
         now,
+        activationMethod === "invite" || mustChangePassword ? 1 : 0,
       ),
       auditStatement(db, auth.actor.email, "employee", id, "account.created", { role, jobTitle, activationMethod }, now),
     ]);
@@ -201,13 +211,16 @@ export async function POST(request: Request) {
     },
     temporaryPassword,
   });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readObject(request, {
+    id: "string", action: "string", displayName: "string", jobTitle: "string", phone: "string", startDate: "string", role: "string", status: "string",
+    participatesAttendance: "boolean", payrollEligible: "boolean", compensationType: "string", hourlyRate: "money", monthlySalary: "money",
+  })) as {
     id?: string;
     action?: "update_info" | "change_role" | "update_status" | "reset_password" | "resend_invite";
     displayName?: string;
@@ -215,7 +228,7 @@ export async function PATCH(request: Request) {
     phone?: string;
     startDate?: string;
     role?: ActorRole;
-    status?: "active" | "suspended" | "offboarded" | "invited";
+    status?: EmployeeStatus;
     participatesAttendance?: boolean;
     payrollEligible?: boolean;
     compensationType?: "hourly" | "monthly" | "shift" | "none";
@@ -229,15 +242,17 @@ export async function PATCH(request: Request) {
 
   const db = await ensureDatabase();
   const account = await db.prepare(
-    "SELECT id, email, display_name, store_id, auth_user_id, role, status, job_title FROM employees WHERE id = ?",
-  ).bind(body.id).first<{
-    id: string; email: string; display_name: string; store_id: string; auth_user_id: string | null; role: ActorRole; status: string; job_title: string;
+    "SELECT id, email, display_name, store_id, auth_user_id, role, status, job_title, phone, start_date, participates_attendance, payroll_eligible, compensation_type, hourly_rate, monthly_salary FROM employees WHERE id = ? AND store_id = ?",
+  ).bind(body.id, auth.actor.storeId).first<{
+    id: string; email: string; display_name: string; store_id: string; auth_user_id: string | null; role: ActorRole; status: EmployeeStatus; job_title: string;
+    phone: string | null; start_date: string | null; participates_attendance: number; payroll_eligible: number;
+    compensation_type: "hourly" | "monthly" | "shift" | "none"; hourly_rate: number; monthly_salary: number;
   }>();
 
   if (!account) return Response.json({ error: "Không tìm thấy tài khoản nhân sự." }, { status: 404 });
 
   // Manager cannot modify Owner account
-  if (auth.actor.role === "manager" && account.role === "owner") {
+  if (!canManageEmployee(auth.actor, account)) {
     return Response.json({ error: "Quản lý không có quyền chỉnh sửa tài khoản Chủ quán." }, { status: 403 });
   }
 
@@ -248,15 +263,15 @@ export async function PATCH(request: Request) {
   if (body.action === "update_info") {
     const nextName = body.displayName?.trim() || account.display_name;
     const nextJobTitle = body.jobTitle?.trim() || account.job_title;
-    const nextPhone = body.phone?.trim() || "";
-    const nextStartDate = body.startDate || "";
-    const nextParticipatesAttendance = body.participatesAttendance === false ? 0 : 1;
+    const nextPhone = body.phone === undefined ? account.phone : body.phone.trim();
+    const nextStartDate = body.startDate ?? account.start_date;
+    const nextParticipatesAttendance = body.participatesAttendance === undefined ? account.participates_attendance : Number(body.participatesAttendance);
     const nextCompensationType = ["hourly", "monthly", "shift", "none"].includes(body.compensationType ?? "")
       ? body.compensationType!
-      : "hourly";
-    const nextPayrollEligible = nextCompensationType !== "none" && body.payrollEligible !== false ? 1 : 0;
-    const nextHourlyRate = safeMoney(body.hourlyRate, 0);
-    const nextMonthlySalary = safeMoney(body.monthlySalary, 0);
+      : account.compensation_type;
+    const nextPayrollEligible = nextCompensationType === "none" ? 0 : body.payrollEligible === undefined ? account.payroll_eligible : Number(body.payrollEligible);
+    const nextHourlyRate = safeMoney(body.hourlyRate, account.hourly_rate);
+    const nextMonthlySalary = safeMoney(body.monthlySalary, account.monthly_salary);
 
     await db.batch([
       db.prepare(
@@ -268,9 +283,7 @@ export async function PATCH(request: Request) {
         nextPayrollEligible, nextCompensationType, nextHourlyRate, nextMonthlySalary, now, body.id,
       ),
       auditStatement(db, auth.actor.email, "employee", body.id, "account.info_updated", {
-        displayName: nextName,
-        jobTitle: nextJobTitle,
-        phone: nextPhone,
+        fields: Object.keys(body).filter((key) => key !== "id" && key !== "action"),
         participatesAttendance: Boolean(nextParticipatesAttendance),
         payrollEligible: Boolean(nextPayrollEligible),
         compensationType: nextCompensationType,
@@ -298,22 +311,7 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Quản lý không có quyền thăng cấp thành Chủ quán." }, { status: 403 });
     }
 
-    // Safeguard: Check if demoting the last Owner
-    if (account.role === "owner" && newRole !== "owner") {
-      const ownerCount = await db.prepare(
-        "SELECT COUNT(*) AS count FROM employees WHERE role = 'owner' AND status = 'active'"
-      ).first<{ count: number }>();
-      if ((ownerCount?.count ?? 0) <= 1) {
-        return Response.json({ error: "Không thể hạ quyền Chủ quán cuối cùng trong hệ thống!" }, { status: 400 });
-      }
-    }
-
-    await db.batch([
-      db.prepare("UPDATE employees SET role = ?, updated_at = ? WHERE id = ?").bind(newRole, now, body.id),
-      auditStatement(db, auth.actor.email, "employee", body.id, "account.role_changed", {
-        previousRole: account.role, newRole
-      }, now),
-    ]);
+    await updateEmployeeAccess(db, auth.actor, body.id, { role: newRole });
 
     if (account.auth_user_id) {
       await supabase.auth.admin.updateUserById(account.auth_user_id, {
@@ -331,27 +329,7 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Trạng thái tài khoản không hợp lệ." }, { status: 400 });
     }
 
-    // Safeguard: Cannot suspend or offboard self
-    if (body.id === auth.actor.id) {
-      return Response.json({ error: "Bạn không thể tự khóa hoặc chấm dứt tài khoản của chính mình!" }, { status: 400 });
-    }
-
-    // Safeguard: Cannot lock last Owner
-    if (account.role === "owner" && (newStatus === "suspended" || newStatus === "offboarded")) {
-      const ownerCount = await db.prepare(
-        "SELECT COUNT(*) AS count FROM employees WHERE role = 'owner' AND status = 'active'"
-      ).first<{ count: number }>();
-      if ((ownerCount?.count ?? 0) <= 1) {
-        return Response.json({ error: "Không thể khóa tài khoản Chủ quán duy nhất của hệ thống!" }, { status: 400 });
-      }
-    }
-
-    await db.batch([
-      db.prepare("UPDATE employees SET status = ?, updated_at = ? WHERE id = ?").bind(newStatus, now, body.id),
-      auditStatement(db, auth.actor.email, "employee", body.id, `account.status_${newStatus}`, {
-        previousStatus: account.status, newStatus
-      }, now),
-    ]);
+    await updateEmployeeAccess(db, auth.actor, body.id, { status: newStatus });
 
     if (account.auth_user_id) {
       await supabase.auth.admin.updateUserById(account.auth_user_id, {
@@ -371,26 +349,23 @@ export async function PATCH(request: Request) {
 
   // Action 4: Reset Password (Cấp lại mật khẩu tạm)
   if (body.action === "reset_password") {
+    if (!account.auth_user_id) return Response.json({ error: "Tài khoản chưa được liên kết với dịch vụ đăng nhập." }, { status: 409 });
     const temporaryPassword = generateTemporaryPassword();
 
-    if (account.auth_user_id) {
-      const { error } = await supabase.auth.admin.updateUserById(account.auth_user_id, {
-        password: temporaryPassword,
-        user_metadata: { must_change_password: true },
-      });
-      if (error) return Response.json({ error: error.message }, { status: 400 });
-    }
-
-    await auditStatement(db, auth.actor.email, "employee", body.id, "account.password_reset", {}, now).run();
+    await resetPassword(db, auth.actor.email, account.id, () =>
+      supabase.auth.admin.updateUserById(account.auth_user_id!, { password: temporaryPassword }));
 
     return Response.json({ updated: true, temporaryPassword, message: "Đã tạo mật khẩu tạm thời mới." });
   }
 
   // Action 5: Resend Invitation (Gửi lại lời mời)
   if (body.action === "resend_invite") {
-    if (account.auth_user_id) {
-      await supabase.auth.admin.inviteUserByEmail(account.email).catch(() => undefined);
-    }
+    if (account.status !== "invited") return Response.json({ error: "Chỉ gửi lại lời mời cho tài khoản đang chờ kích hoạt." }, { status: 409 });
+    if (!process.env.NEXT_PUBLIC_APP_URL) return Response.json({ error: "Chưa cấu hình địa chỉ ứng dụng để gửi lời mời." }, { status: 503 });
+    const { error } = await supabase.auth.admin.inviteUserByEmail(account.email, {
+      redirectTo: process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback` : undefined,
+    });
+    if (error) return Response.json({ error: "Không gửi được lời mời. Vui lòng kiểm tra dịch vụ email." }, { status: 502 });
 
     await auditStatement(db, auth.actor.email, "employee", body.id, "account.invite_resent", {}, now).run();
 
@@ -398,7 +373,7 @@ export async function PATCH(request: Request) {
   }
 
   return Response.json({ error: "Hành động không hợp lệ." }, { status: 400 });
-}
+});
 
 function generateTemporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";

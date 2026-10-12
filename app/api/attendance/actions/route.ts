@@ -1,3 +1,4 @@
+import { evaluateShiftWindow, type AttendanceRule as Rule, type AssignedShift as Shift } from "@/modules/attendance/domain/policy";
 import { distanceInMeters, formatStoreTime, isCoordinate } from "@/lib/attendance";
 import {
   createServerStampedSvg,
@@ -7,6 +8,8 @@ import {
 } from "@/lib/evidence";
 import { ensureDatabase, getBindings } from "@/db/runtime";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
 type AttendanceBody = {
   captureSessionId?: string;
@@ -25,31 +28,16 @@ type AttendanceBody = {
   };
 };
 
-type Rule = {
-  id: string;
-  early_checkin_minutes: number;
-  late_minutes: number;
-  early_departure_minutes: number;
-  absence_minutes: number;
-  missing_checkout_minutes: number;
-  evidence_retention_days: number;
-};
 
-type Shift = {
-  id: string;
-  starts_at: string;
-  ends_at: string;
-};
-
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const actor = auth.actor;
-  const body = (await request.json().catch(() => ({}))) as AttendanceBody;
+  const body = (await readObject(request, { captureSessionId: "string", captureToken: "string", idempotencyKey: "string", action: "string", photo: "string", exceptionReason: "string" })) as AttendanceBody;
   if (
     !body.captureSessionId ||
     !body.captureToken ||
-    !body.idempotencyKey ||
+    !body.idempotencyKey || body.idempotencyKey.length > 128 || body.captureToken.length > 256 ||
     (body.action !== "check_in" && body.action !== "check_out")
   ) {
     return Response.json({ error: "Thiếu thông tin phiên chấm công." }, { status: 400 });
@@ -57,10 +45,10 @@ export async function POST(request: Request) {
 
   const db = await ensureDatabase();
   const existing = await db.prepare(
-    `SELECT e.id, e.session_id, e.recorded_at, e.verification_results,
+    `SELECT e.id, e.session_id, e.recorded_at, e.verification_results, e.action, e.photo_status,
             e.review_required, l.distance_from_store_meters
      FROM attendance_events e
-     LEFT JOIN attendance_locations l ON l.event_id = e.id
+     LEFT JOIN attendance_locations l ON l.event_id = e.id AND l.deleted_at IS NULL AND datetime(l.expires_at) > datetime('now')
      WHERE e.idempotency_key = ? AND e.employee_email = ?`,
   ).bind(body.idempotencyKey, actor.email).first<{
     id: string;
@@ -68,9 +56,12 @@ export async function POST(request: Request) {
     recorded_at: string;
     verification_results: string;
     review_required: number;
+    action: string;
+    photo_status: string;
     distance_from_store_meters: number | null;
   }>();
   if (existing) {
+    if (existing.action !== body.action) return Response.json({ error: "Mã gửi đã được dùng cho thao tác khác.", code: "attendance_conflict" }, { status: 409 });
     return Response.json({
       eventId: existing.id,
       sessionId: existing.session_id,
@@ -79,6 +70,8 @@ export async function POST(request: Request) {
       verification: safeJsonArray(existing.verification_results),
       reviewRequired: Boolean(existing.review_required),
       distance: existing.distance_from_store_meters,
+      photoStatus: existing.photo_status,
+      evidenceStored: existing.photo_status === "stored",
     });
   }
 
@@ -153,7 +146,7 @@ export async function POST(request: Request) {
     : null;
 
   const activeSession = await db.prepare(
-    `SELECT id, opened_at, shift_id, rule_version_id
+    `SELECT id, opened_at, shift_id, rule_version_id, revision
      FROM attendance_sessions
      WHERE employee_email = ? AND store_id = ? AND closed_at IS NULL
        AND status IN ('open', 'review_required')
@@ -163,6 +156,7 @@ export async function POST(request: Request) {
     opened_at: string | null;
     shift_id: string | null;
     rule_version_id: string | null;
+    revision: number;
   }>();
   if (body.action === "check_in" && activeSession) {
     return Response.json(
@@ -177,7 +171,7 @@ export async function POST(request: Request) {
       ? await db.prepare("SELECT id, starts_at, ends_at FROM shifts WHERE id = ?")
           .bind(activeSession.shift_id).first<Shift>()
       : null;
-  evaluateShiftWindow(body.action, shift, rule, recordedAt, verification);
+  verification.push(...evaluateShiftWindow(body.action, shift, rule, recordedAt));
   if (body.action === "check_out" && !activeSession) verification.push("no_active_session");
 
   const eventId = crypto.randomUUID();
@@ -282,8 +276,8 @@ export async function POST(request: Request) {
     statements.push(
       db.prepare(
         `UPDATE attendance_sessions
-         SET status = ?, closed_at = ?, worked_minutes = ? WHERE id = ?`,
-      ).bind(reviewRequired ? "review_required" : "completed", recordedAt, workedMinutes, sessionId),
+         SET status = ?, closed_at = ?, worked_minutes = ?, revision = ? WHERE id = ?`,
+      ).bind(reviewRequired ? "review_required" : "completed", recordedAt, workedMinutes, activeSession.revision + 1, sessionId),
     );
   } else {
     statements.push(
@@ -299,8 +293,8 @@ export async function POST(request: Request) {
     db.prepare(
       `INSERT INTO attendance_events
         (id, session_id, employee_email, action, recorded_at, idempotency_key,
-         verification_results, review_required, photo_status, exception_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         verification_results, review_required, photo_status, exception_reason, capture_session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       eventId,
       sessionId,
@@ -312,6 +306,7 @@ export async function POST(request: Request) {
       reviewRequired ? 1 : 0,
       photoStatus,
       employeeReason ?? defaultExceptionReason(verification),
+      capture.id,
     ),
     db.prepare(
       "UPDATE attendance_capture_sessions SET used_at = ? WHERE id = ? AND used_at IS NULL",
@@ -393,8 +388,12 @@ export async function POST(request: Request) {
   } catch (error) {
     if (objectKey) {
       const { evidence } = getBindings();
-      await evidence?.delete(objectKey);
+      await evidence?.delete(objectKey).catch(() => {});
     }
+    const replay = await db.prepare("SELECT id, session_id, recorded_at, verification_results, review_required, photo_status FROM attendance_events WHERE idempotency_key = ? AND employee_email = ?")
+      .bind(body.idempotencyKey, actor.email).first<{ id: string; session_id: string; recorded_at: string; verification_results: string; review_required: number; photo_status: string }>();
+    if (replay) return Response.json({ eventId: replay.id, sessionId: replay.session_id, recordedAt: replay.recorded_at, localTime: `${formatStoreTime(replay.recorded_at)} GMT+7`, verification: safeJsonArray(replay.verification_results), reviewRequired: Boolean(replay.review_required), photoStatus: replay.photo_status, evidenceStored: replay.photo_status === "stored", distance: null });
+    if (error instanceof Error && /UNIQUE|constraint|attendance_conflict/i.test(error.message)) return Response.json({ error: "Phiên công vừa được ghi nhận hoặc đã thay đổi. Hãy tải lại trước khi thử tiếp.", code: "attendance_conflict" }, { status: 409 });
     throw error;
   }
 
@@ -409,7 +408,7 @@ export async function POST(request: Request) {
     photoStatus,
     evidenceStored: photoStatus === "stored",
   });
-}
+});
 
 async function findNearestShift(
   db: D1Database,
@@ -421,42 +420,10 @@ async function findNearestShift(
   const dayAfter = new Date(Date.parse(recordedAt) + 24 * 60 * 60 * 1000).toISOString();
   return db.prepare(
     `SELECT id, starts_at, ends_at FROM shifts
-     WHERE employee_email = ? AND store_id = ? AND status = 'published'
+     WHERE employee_email = ? AND store_id = ? AND status = 'published' AND approved_leave_request_id IS NULL
        AND starts_at BETWEEN ? AND ?
      ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1`,
   ).bind(employeeEmail, storeId, dayBefore, dayAfter, recordedAt).first<Shift>();
-}
-
-function evaluateShiftWindow(
-  action: "check_in" | "check_out",
-  shift: Shift | null,
-  rule: Rule,
-  recordedAt: string,
-  verification: string[],
-) {
-  if (!shift) {
-    verification.push("no_assigned_shift");
-    return;
-  }
-  const now = Date.parse(recordedAt);
-  const startsAt = Date.parse(shift.starts_at);
-  const endsAt = Date.parse(shift.ends_at);
-  if (action === "check_in") {
-    if (
-      now < startsAt - rule.early_checkin_minutes * 60_000 ||
-      now > startsAt + rule.absence_minutes * 60_000
-    ) {
-      verification.push("outside_shift_window");
-    } else if (now > startsAt + rule.late_minutes * 60_000) {
-      verification.push("late");
-    }
-  } else {
-    if (now < startsAt - rule.early_checkin_minutes * 60_000 || now > endsAt + rule.missing_checkout_minutes * 60_000) {
-      verification.push("outside_shift_window");
-    } else if (now < endsAt - rule.early_departure_minutes * 60_000) {
-      verification.push("early_departure");
-    }
-  }
 }
 
 function defaultExceptionReason(verification: string[]) {

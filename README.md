@@ -7,20 +7,23 @@ LoopiCafe is a Vietnamese, mobile-first operations pilot for a single coffee sho
 Requirements: Node.js 22.13 or newer.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`. Local development uses a demo owner identity and local Cloudflare D1/R2 bindings.
+Open the address printed by the development server. Local development uses project-local Cloudflare D1/R2 bindings. Copy `.env.example` to an ignored local environment file and configure the required authentication values. Demo authentication is opt-in; startup no longer creates tables, staff memberships, or demo records.
+
+Before using an existing local database, follow [database preflight and rollout](docs/database-operations.md). New databases require the versioned D1 migrations and explicit store/owner provisioning. Never use the demo seeder with real staff data.
 
 ## Verify
 
 ```bash
-npm run lint
-npm test
+npm run check
 ```
 
-`npm test` builds the Cloudflare Worker bundle and verifies the public interface, server-side evidence stamping, restricted object paths, real image decoding, retention controls, and attendance privacy invariants.
+`npm run check` runs type generation/checking, lint, behavioral/schema/boundary tests, and the production build. `npm test` runs tests only, using temporary in-memory databases without credentials or live writes. Source/asset tests are not browser-rendering tests.
+
+See [architecture decisions and remaining work](docs/architecture.md) for the module boundaries and intentionally unfinished integrations.
 
 ## Attendance evidence
 
@@ -32,7 +35,7 @@ npm test
 - The submitted evidence includes coordinates, device-reported accuracy, and calculated distance from the configured store.
 - Distance is review evidence only; it never automatically declares an employee onsite or blocks attendance.
 - Missing camera or location evidence requires an employee explanation, still records server time, and creates a manager-review exception.
-- Photos and precise coordinates expire after 90 days.
+- Photos and precise coordinates use the configured retention period (90 days by default). An approved scheduler must invoke the protected cleanup endpoint; see the operations guide.
 
 The browser preview is not attendance proof. Completed evidence is rendered by the server with an opaque footer containing the action, server time, coordinates, reported accuracy, distance from the configured store, and attendance event ID. Only managers and owners assigned to the store can retrieve the private stamped image.
 

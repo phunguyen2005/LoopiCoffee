@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useSyncExternalStore, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { LoopySticker } from '@/components/loopy-sticker';
-import { Mail, Lock, Sparkles, ArrowRight, ShieldCheck, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { LoopyPreloader } from '@/components/loopy-preloader';
+import { Mail, Lock, Sparkles, ArrowRight, ShieldCheck, Eye, EyeOff, Coffee } from 'lucide-react';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const savedEmail = useSyncExternalStore(subscribeRememberedEmail, readRememberedEmail, () => '');
+  const [editedEmail, setEmail] = useState<string | null>(null);
+  const email = editedEmail ?? savedEmail;
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -16,18 +18,8 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isMagicLink, setIsMagicLink] = useState(false);
-  const router = useRouter();
+  const [preloaderVisible, setPreloaderVisible] = useState(false);
   const supabase = createClient();
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedEmail = localStorage.getItem('loopicafe_remembered_email');
-      if (savedEmail) {
-        setEmail(savedEmail);
-        setRememberMe(true);
-      }
-    }
-  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,13 +27,15 @@ export default function LoginPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Save/clear remembered email safely without storing passwords
-    if (typeof window !== 'undefined') {
+    // Remembering an email is optional; blocked storage must not prevent sign-in.
+    try {
       if (rememberMe) {
         localStorage.setItem('loopicafe_remembered_email', email);
       } else {
         localStorage.removeItem('loopicafe_remembered_email');
       }
+    } catch {
+      // Continue when browser privacy settings make local storage unavailable.
     }
 
     try {
@@ -49,48 +43,60 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
+            shouldCreateUser: false,
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         });
         if (error) throw error;
         setSuccessMsg('Đã gửi liên kết đăng nhập! Vui lòng kiểm tra hộp thư email của bạn.');
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        router.push(data.user.user_metadata?.must_change_password ? '/auth/change-password' : '/app/today');
-        router.refresh();
+        const activation = await fetch("/api/auth/activate", { method: "POST" });
+        if (!activation.ok) {
+          window.location.replace("/auth/access");
+          return;
+        }
+        const membership = await activation.json() as { mustChangePassword?: boolean };
+        // Start one fresh authenticated request with single clean preloader
+        setPreloaderVisible(true);
+        await new Promise<void>((resolve) => setTimeout(resolve, 650));
+        window.location.replace(membership.mustChangePassword ? '/auth/change-password' : '/app/today');
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.';
       setErrorMsg(message);
+      setPreloaderVisible(false);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#fffaf4] relative">
-      {/* Top Left Navigation back to Landing Page */}
-      <div className="absolute top-6 left-6 hidden sm:block">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-xs font-semibold text-[#6b4b3e] hover:text-[#6f2939] bg-white border border-[#eee3df] hover:bg-[#fff2f4] px-4 py-2.5 rounded-full transition shadow-sm"
-        >
-          <ArrowLeft size={16} /> Trang chủ
-        </Link>
-      </div>
+    <>
+      <LoopyPreloader visible={preloaderVisible} />
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#fffaf4] relative">
+        {/* Top Left Navigation to Order Page */}
+        <div className="absolute top-6 left-6 hidden sm:block">
+          <Link
+            href="/order"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29] bg-white border border-[#eee3df] hover:bg-[#fff2f4] px-4 py-2.5 rounded-full transition shadow-sm"
+          >
+            <Coffee size={16} /> Đặt món ngay
+          </Link>
+        </div>
 
       <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 shadow-[0_18px_50px_rgba(82,43,48,0.09)] border border-[#eee3df]">
-        {/* Mobile-visible back to home link */}
+        {/* Mobile-visible link to Order Page */}
         <div className="mb-3 sm:hidden text-left">
           <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#7b6f70] hover:text-[#6f2939]"
+            href="/order"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29]"
           >
-            <ArrowLeft size={14} /> Trang chủ
+            <Coffee size={14} /> Đặt món ngay
           </Link>
         </div>
 
@@ -107,7 +113,7 @@ export default function LoginPage() {
 
         {/* Feedback Alerts */}
         {errorMsg && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-[#fff2f4] border border-[#ffe1e7] text-[#c75865] text-xs font-medium flex items-center gap-2">
+          <div role="alert" className="mb-5 p-3.5 rounded-2xl bg-[#fff2f4] border border-[#ffe1e7] text-[#c75865] text-xs font-medium flex items-center gap-2">
             <span>⚠️</span> {errorMsg}
           </div>
         )}
@@ -117,49 +123,18 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Static Google Sign-In Button */}
-        <button
-          type="button"
-          className="w-full py-3 px-4 bg-white border border-[#eee3df] hover:bg-[#fff2f4] hover:border-[#f4a9b7] text-[#332a2b] font-semibold rounded-2xl transition flex items-center justify-center gap-2.5 text-xs sm:text-sm shadow-sm cursor-pointer mb-4"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          Đăng nhập bằng Google
-        </button>
-
-        {/* Divider */}
-        <div className="relative my-4 text-center">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[#eee3df]"></div>
-          </div>
-          <span className="relative bg-white px-3 text-[11px] text-[#7b6f70] font-medium">Hoặc tài khoản email</span>
-        </div>
-
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-3.5">
           <div>
-            <label className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider mb-1.5">
+            <label htmlFor="login-email" className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider mb-1.5">
               Địa chỉ Email
             </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70]" size={16} />
               <input
+                id="login-email"
+                name="email"
+                autoComplete="username"
                 type="email"
                 required
                 value={email}
@@ -173,15 +148,11 @@ export default function LoginPage() {
           {!isMagicLink && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider">
+                <label htmlFor="login-password" className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider">
                   Mật khẩu
                 </label>
                 <Link
                   href="/auth/forgot-password"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert("Bạn cần hỗ trợ đổi mật khẩu? Vui lòng nhắn Trưởng ca hoặc Chủ quán để được cấp lại nhé.");
-                  }}
                   className="text-[11px] text-[#d96d83] hover:underline font-semibold"
                 >
                   Quên mật khẩu?
@@ -190,6 +161,9 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70]" size={16} />
                 <input
+                  id="login-password"
+                  name="password"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -247,11 +221,32 @@ export default function LoginPage() {
           </button>
         </div>
 
+        {/* Customer Order Link */}
+        <div className="mt-4 pt-4 border-t border-[#eee3df] text-center">
+          <p className="text-xs text-[#7b6f70] mb-2">Bạn là khách hàng muốn gọi món?</p>
+          <Link
+            href="/order"
+            className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-[#fffaf4] hover:bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7] font-semibold rounded-2xl text-xs transition"
+          >
+            <Coffee size={15} /> Xem thực đơn & Đặt món ngay
+          </Link>
+        </div>
+
         {/* Security Note */}
-        <div className="mt-4 text-center text-[11px] text-[#7b6f70]">
+        <div className="mt-3 text-center text-[11px] text-[#7b6f70]">
           🔒 Dữ liệu cửa hàng được bảo mật riêng tư
         </div>
       </div>
     </div>
-  );
+  </>
+);
+}
+
+function subscribeRememberedEmail(callback: () => void) {
+  window.addEventListener('storage', callback);
+  return () => window.removeEventListener('storage', callback);
+}
+function readRememberedEmail() {
+  try { return localStorage.getItem('loopicafe_remembered_email') ?? ''; }
+  catch { return ''; }
 }

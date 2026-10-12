@@ -15,37 +15,37 @@ import {
 const landingExpressions = [
   {
     mood: "hello",
-    src: "/mascots/loopy-hello.png",
+    src: "/mascots/loopy-hello.webp",
     bubble: "Hôm nay quán ổn nè! ♡",
     subtitle: "Bấm vào Loopy để xem biểu cảm ✨",
   },
   {
     mood: "investigating",
-    src: "/mascots/loopy-investigating.png",
+    src: "/mascots/loopy-investigating.webp",
     bubble: "Đang soi kỹ dữ liệu vận hành... 🔍",
     subtitle: "Kiểm tra vị trí chính xác!",
   },
   {
     mood: "thinking",
-    src: "/mascots/loopy-thinking.png",
+    src: "/mascots/loopy-thinking.webp",
     bubble: "Hừm, tối ưu lịch làm tuần này thế nào nhỉ? 🤔",
     subtitle: "Phân ca tự động!",
   },
   {
     mood: "cheer",
-    src: "/mascots/loopy-cheer.png",
+    src: "/mascots/loopy-cheer.webp",
     bubble: "Cố lên! Một ngày bán đắt hàng nhé! 🎉",
     subtitle: "Tạo động lực cho nhân sự!",
   },
   {
     mood: "sleeping",
-    src: "/mascots/loopy-sleeping.png",
+    src: "/mascots/loopy-sleeping.webp",
     bubble: "Zzz... Đóng cửa an toàn, an tâm ngủ ngon 😴",
     subtitle: "Theo dõi từ xa 24/7!",
   },
   {
     mood: "celebrate",
-    src: "/mascots/loopy-celebrate.png",
+    src: "/mascots/loopy-celebrate.webp",
     bubble: "Tuyệt vời! Quản lý nhẹ nhàng, quán phát triển! ✨",
     subtitle: "Trải nghiệm mượt mà!",
   },

@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+/worker-configuration.d.ts
 
 # vercel
 .vercel
@@ -43,3 +45,10 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# Isolated local auth/runtime credentials and generated test output
+.dev.vars*
+tooling/local-auth/supabase/.temp/
+tooling/local-auth/supabase/.branches/
+playwright-report/
+test-results/

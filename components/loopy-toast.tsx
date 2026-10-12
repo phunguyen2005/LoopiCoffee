@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LoopySticker } from "./loopy-sticker";
 import type { StickerMood } from "./loopy-sticker";
-import { X, Sparkles, CheckCircle2, AlertTriangle, Info } from "lucide-react";
+import { X, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 
 export type LoopyMood = StickerMood;
 

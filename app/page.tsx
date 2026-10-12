@@ -1,13 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Camera,
-  CheckCircle2,
   ClipboardCheck,
   Clock3,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { LoopyMark } from "@/components/loopy-mark";
 import "./landing-video.css";
@@ -36,6 +33,8 @@ const benefits = [
 ];
 
 export default function Home() {
+  redirect("/auth/login");
+
   return (
     <main className="landing">
       <header className="landing-nav">

@@ -1,0 +1,6 @@
+// Type generation only. Sites owns deployment bindings in .openai/hosting.json.
+{
+  "name": "loopicafe-types",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat"]
+}
