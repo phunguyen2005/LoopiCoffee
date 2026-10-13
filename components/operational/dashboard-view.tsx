@@ -23,6 +23,8 @@ import {
 import { MotionLoopySticker, type StickerMood } from "../loopy-sticker";
 import {
   MetricCard,
+  AsyncStatePanel,
+  MetricSkeleton,
   ViewHeader,
   formatDateTime,
   formatTime,
@@ -122,6 +124,8 @@ export function OperationsDashboardView() {
 
   const isStoreOpen = metrics.activeStaff > 0;
   const isShiftUnattended = !isStoreOpen && lateOrMissingStaff.length > 0;
+  const todayShifts = data?.todayShifts ?? [];
+  const upcomingTodayShifts = todayShifts.filter((shift) => new Date(shift.starts_at).getTime() > currentTimestamp);
 
   const mascotMood: StickerMood = isShiftUnattended
     ? "panicked"
@@ -131,10 +135,26 @@ export function OperationsDashboardView() {
     ? "cheer"
     : "hello";
 
+  if (!data) {
+    return (
+      <div className="stack">
+        {error ? (
+          <AsyncStatePanel state="error" title="Không thể tải bảng điều hành" description="Số liệu vận hành chưa được xác nhận. Hãy kiểm tra kết nối rồi thử lại." actionLabel="Thử lại" onAction={loadDashboard} />
+        ) : (
+          <>
+            <AsyncStatePanel state="loading" title="Đang tải bảng điều hành" description="LoopiCafe đang xác nhận ca làm, chấm công và các việc cần xử lý." />
+            <section className="metric-grid" aria-hidden="true">
+              {Array.from({ length: 4 }, (_, index) => <MetricSkeleton key={index} label="chỉ số vận hành" />)}
+            </section>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="stack">
-      {error && <p role="alert">Không tải được bảng điều hành. <button className="text-link" onClick={loadDashboard}>Thử lại</button></p>}
-      {!data && !error && <p role="status">Đang tải bảng điều hành…</p>}
+      {error && <AsyncStatePanel compact state="error" title="Chưa thể cập nhật dữ liệu mới" description="Các số liệu bên dưới là lần tải gần nhất, có thể đã cũ." actionLabel="Thử lại" onAction={loadDashboard} />}
       {/* 1. HERO OPERATIONAL PULSE */}
       <section
         className="hero-status-card relative overflow-hidden"
@@ -178,10 +198,14 @@ export function OperationsDashboardView() {
                 ? "CỬA HÀNG ĐANG MỞ CA"
                 : isShiftUnattended
                 ? "CHƯA CÓ NHÂN VIÊN VÀO CA"
-                : "CỬA HÀNG ĐANG NGHỈ CA"}
+                : todayShifts.length === 0
+                ? "CHƯA CÓ CA ĐƯỢC LÊN LỊCH"
+                : upcomingTodayShifts.length > 0
+                ? "CA TIẾP THEO CHƯA BẮT ĐẦU"
+                : "HIỆN KHÔNG TRONG CA LÀM"}
             </span>
             <span className="status-label">
-              <CheckCircle2 size={14} /> Dữ liệu trực tiếp hôm nay
+              <CheckCircle2 size={14} /> {error ? "Dữ liệu lần tải gần nhất" : "Dữ liệu trực tiếp hôm nay"}
             </span>
           </div>
 
@@ -192,7 +216,11 @@ export function OperationsDashboardView() {
               ? `Có ${totalActionItems} việc vận hành cần bạn xử lý ngay`
               : isStoreOpen
               ? "Mọi việc tại cửa hàng đang diễn ra đúng nhịp"
-              : "Hôm nay chưa có ca trực nào đang diễn ra"}
+              : todayShifts.length === 0
+              ? "Hôm nay chưa có ca làm việc được lên lịch"
+              : upcomingTodayShifts.length > 0
+              ? "Ca tiếp theo chưa bắt đầu"
+              : "Hiện không có ca làm việc đang diễn ra"}
           </h2>
 
           <p>
@@ -200,7 +228,13 @@ export function OperationsDashboardView() {
               ? "Đã quá giờ bắt đầu ca làm nhưng chưa có lượt chấm công nào từ nhân viên trực. Hãy kiểm tra hoặc liên hệ ngay."
               : totalActionItems > 0
               ? `Bao gồm ${metrics.pendingExceptions} ngoại lệ chấm công, ${pendingRequests} yêu cầu nhân viên và ${metrics.openIncidents} sự cố.`
-              : "Toàn bộ nhân sự đang làm việc đúng ca, không có ngoại lệ hay yêu cầu tồn đọng."}
+              : isStoreOpen
+              ? "Đang có nhân sự check-in. Không có ngoại lệ, yêu cầu hoặc sự cố tồn đọng theo dữ liệu vừa tải."
+              : todayShifts.length === 0
+              ? "Chưa có dữ liệu ca để đánh giá tình trạng chấm công hôm nay."
+              : upcomingTodayShifts.length > 0
+              ? `Ca tiếp theo bắt đầu lúc ${formatTime(upcomingTodayShifts[0].starts_at)}. Hệ thống sẽ cập nhật khi nhân viên check-in.`
+              : "Các ca đã lên lịch trong ngày hiện không diễn ra. Hãy xem lịch để kiểm tra chi tiết."}
           </p>
 
           <div className="status-metrics">
@@ -358,7 +392,7 @@ export function OperationsDashboardView() {
 
       {/* 4. ACTION ITEMS INBOX (IF ANY PENDING) */}
       {totalActionItems > 0 && (
-        <section className="card border-l-4 border-l-[#d96d83]">
+        <section className="card border-l-4 border-l-[#d96d83]" style={{ order: -1 }}>
           <div className="card-header pb-2">
             <ViewHeader
               title={`Cần xử lý ngay (${totalActionItems})`}

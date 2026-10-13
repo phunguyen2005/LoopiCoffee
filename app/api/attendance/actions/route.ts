@@ -29,11 +29,24 @@ type AttendanceBody = {
 };
 
 
+const ATTENDANCE_ACTION_MAX_BYTES = 3 * 1024 * 1024; // 3 MiB
+
 export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const actor = auth.actor;
-  const body = (await readObject(request, { captureSessionId: "string", captureToken: "string", idempotencyKey: "string", action: "string", photo: "string", exceptionReason: "string" })) as AttendanceBody;
+  const body = (await readObject(
+    request,
+    {
+      captureSessionId: "string",
+      captureToken: "string",
+      idempotencyKey: "string",
+      action: "string",
+      photo: "string",
+      exceptionReason: "string",
+    },
+    { maxBytes: ATTENDANCE_ACTION_MAX_BYTES },
+  )) as AttendanceBody;
   if (
     !body.captureSessionId ||
     !body.captureToken ||

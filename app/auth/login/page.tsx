@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isMagicLink, setIsMagicLink] = useState(false);
   const [preloaderVisible, setPreloaderVisible] = useState(false);
+  const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
   const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -124,7 +125,11 @@ export default function LoginPage() {
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-3.5">
+        <form
+          onSubmit={handleLogin}
+          data-auth-ready={hydrated ? "true" : "false"}
+          className="space-y-3.5"
+        >
           <div>
             <label htmlFor="login-email" className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider mb-1.5">
               Địa chỉ Email
@@ -245,6 +250,9 @@ export default function LoginPage() {
 function subscribeRememberedEmail(callback: () => void) {
   window.addEventListener('storage', callback);
   return () => window.removeEventListener('storage', callback);
+}
+function subscribeHydration() {
+  return () => {};
 }
 function readRememberedEmail() {
   try { return localStorage.getItem('loopicafe_remembered_email') ?? ''; }

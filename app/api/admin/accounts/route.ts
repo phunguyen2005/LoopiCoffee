@@ -1,4 +1,4 @@
-import { canManageEmployee, assignableRoles, type EmployeeStatus } from "@/modules/people/domain/access";
+import { canManageEmployee, canAssignRole, assignableRoles, type EmployeeStatus } from "@/modules/people/domain/access";
 import { updateEmployeeAccess } from "@/modules/people/application/update-access";
 import { resetPassword } from "@/modules/people/application/reset-password";
 import { apiHandler } from "@/platform/http/errors";
@@ -26,15 +26,15 @@ export const GET = apiHandler(async (request: Request) => {
           AND EXISTS (SELECT 1 FROM employees e WHERE e.id = audit_events.entity_id AND e.store_id = ?)
        ORDER BY created_at DESC LIMIT 20`
     ).bind(auditForId, auth.actor.storeId, auth.actor.storeId).all();
-    return Response.json({ auditLogs: logs.results });
+    return Response.json({ auditLogs: logs.results }, { headers: { "Cache-Control": "private, no-store" } });
   }
 
   const result = await db.prepare(
     `SELECT id, email, display_name, COALESCE(job_title, 'Barista') AS job_title, phone, start_date, last_login_at,
             role, status, auth_user_id, invited_by, created_at, updated_at,
-            COALESCE(participates_attendance, CASE WHEN role IN ('owner', 'system_admin') THEN 0 ELSE 1 END) AS participates_attendance,
-            COALESCE(payroll_eligible, CASE WHEN role IN ('owner', 'system_admin') THEN 0 ELSE 1 END) AS payroll_eligible,
-            COALESCE(compensation_type, CASE WHEN role IN ('owner', 'system_admin') THEN 'none' ELSE 'hourly' END) AS compensation_type,
+            COALESCE(participates_attendance, CASE WHEN role = 'owner' THEN 0 ELSE 1 END) AS participates_attendance,
+            COALESCE(payroll_eligible, CASE WHEN role = 'owner' THEN 0 ELSE 1 END) AS payroll_eligible,
+            COALESCE(compensation_type, CASE WHEN role = 'owner' THEN 'none' ELSE 'hourly' END) AS compensation_type,
             COALESCE(hourly_rate, CASE WHEN role = 'manager' THEN 35000 ELSE 25000 END) AS hourly_rate,
             COALESCE(monthly_salary, 0) AS monthly_salary
      FROM employees WHERE store_id = ? ORDER BY status, display_name`,
@@ -49,7 +49,7 @@ export const GET = apiHandler(async (request: Request) => {
     currentUserEmail: auth.actor.email,
     currentUserId: auth.actor.id,
     currentUserRole: auth.actor.role,
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 });
 
 export const POST = apiHandler(async (request: Request) => {
@@ -83,18 +83,22 @@ export const POST = apiHandler(async (request: Request) => {
   const startDate = body.startDate || new Date().toISOString().split("T")[0];
   const role = body.role || "employee";
   const activationMethod = body.activationMethod || "temporary_password";
+  if (role === "system_admin" || !["owner", "manager", "team_lead", "employee"].includes(role)) {
+    return Response.json({ error: "Vai trò không hợp lệ trong phạm vi cửa hàng." }, { status: 400 });
+  }
+
   const mustChangePassword = body.mustChangePassword !== false;
-  const participatesAttendance = body.participatesAttendance ?? (role !== "owner" && role !== "system_admin");
+  const participatesAttendance = body.participatesAttendance ?? (role !== "owner");
   const compensationType = ["hourly", "monthly", "shift", "none"].includes(body.compensationType ?? "")
     ? body.compensationType!
-    : role === "owner" || role === "system_admin" ? "none" : "hourly";
-  const payrollEligible = compensationType !== "none" && (body.payrollEligible ?? (role !== "owner" && role !== "system_admin"));
+    : role === "owner" ? "none" : "hourly";
+  const payrollEligible = compensationType !== "none" && (body.payrollEligible ?? (role !== "owner"));
   const hourlyRate = safeMoney(body.hourlyRate, role === "manager" ? 35000 : 25000);
   const monthlySalary = safeMoney(body.monthlySalary, 0);
 
-  // Manager cannot assign Owner role
-  if (auth.actor.role === "manager" && role === "owner") {
-    return Response.json({ error: "Quản lý không có quyền cấp vai trò Admin / Chủ quán." }, { status: 403 });
+  // Manager cannot assign Owner or Manager role
+  if (!canAssignRole(auth.actor, role)) {
+    return Response.json({ error: "Quản lý chỉ có quyền cấp vai trò nhân viên cấp dưới." }, { status: 403 });
   }
 
   if (
@@ -251,9 +255,9 @@ export const PATCH = apiHandler(async (request: Request) => {
 
   if (!account) return Response.json({ error: "Không tìm thấy tài khoản nhân sự." }, { status: 404 });
 
-  // Manager cannot modify Owner account
+  // Manager cannot modify Owner account or peer Manager account
   if (!canManageEmployee(auth.actor, account)) {
-    return Response.json({ error: "Quản lý không có quyền chỉnh sửa tài khoản Chủ quán." }, { status: 403 });
+    return Response.json({ error: "Bạn không có quyền quản trị hoặc thay đổi tài khoản này." }, { status: 403 });
   }
 
   const now = new Date().toISOString();
@@ -277,10 +281,10 @@ export const PATCH = apiHandler(async (request: Request) => {
       db.prepare(
         `UPDATE employees SET display_name = ?, job_title = ?, phone = ?, start_date = ?,
           participates_attendance = ?, payroll_eligible = ?, compensation_type = ?,
-          hourly_rate = ?, monthly_salary = ?, updated_at = ? WHERE id = ?`
+          hourly_rate = ?, monthly_salary = ?, updated_at = ? WHERE id = ? AND store_id = ?`
       ).bind(
         nextName, nextJobTitle, nextPhone, nextStartDate, nextParticipatesAttendance,
-        nextPayrollEligible, nextCompensationType, nextHourlyRate, nextMonthlySalary, now, body.id,
+        nextPayrollEligible, nextCompensationType, nextHourlyRate, nextMonthlySalary, now, body.id, auth.actor.storeId,
       ),
       auditStatement(db, auth.actor.email, "employee", body.id, "account.info_updated", {
         fields: Object.keys(body).filter((key) => key !== "id" && key !== "action"),
@@ -306,9 +310,9 @@ export const PATCH = apiHandler(async (request: Request) => {
       return Response.json({ error: "Vai trò phân quyền không hợp lệ." }, { status: 400 });
     }
 
-    // Manager cannot assign Owner
-    if (auth.actor.role === "manager" && newRole === "owner") {
-      return Response.json({ error: "Quản lý không có quyền thăng cấp thành Chủ quán." }, { status: 403 });
+    // Manager cannot assign Owner or Manager
+    if (!canAssignRole(auth.actor, newRole)) {
+      return Response.json({ error: "Bạn không có quyền phân bổ vai trò này." }, { status: 403 });
     }
 
     await updateEmployeeAccess(db, auth.actor, body.id, { role: newRole });

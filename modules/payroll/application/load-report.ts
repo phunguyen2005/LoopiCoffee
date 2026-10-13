@@ -37,6 +37,7 @@ type PayrollEntryRow = {
   deduction_amount: number;
   total_amount: number;
   status: PayrollReportRow["status"];
+  row_snapshot?: string | null;
 };
 
 type EventExceptionRow = {
@@ -184,7 +185,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   if (payrollPeriod) {
     const entries = await db.prepare(
       `SELECT employee_email, approved_minutes, overtime_minutes, allowance_amount,
-              bonus_amount, deduction_amount, total_amount, status
+              bonus_amount, deduction_amount, total_amount, status, row_snapshot
        FROM payroll_entries WHERE payroll_period_id = ?`,
     ).bind(payrollPeriod.id).all<PayrollEntryRow>();
     entries.results.forEach((entry: PayrollEntryRow) => entryMap.set(entry.employee_email.toLowerCase(), entry));
@@ -208,7 +209,20 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
     const allowanceAmount = 0;
     const bonusAmount = employeeAdjustments.reduce((total, item) => total + Math.max(0, item.amount), 0);
     const deductionAmount = employeeAdjustments.reduce((total, item) => total + Math.max(0, -item.amount), 0);
-    const baseSalary = row.compensation_type === "hourly" ? Math.round((approvedMinutes / 60) * row.hourly_rate) : 0;
+
+    let effectiveHourlyRate = row.hourly_rate;
+    if (entry?.row_snapshot) {
+      try {
+        const snap = JSON.parse(entry.row_snapshot);
+        if (typeof snap.hourlyRate === "number" && snap.hourlyRate > 0) {
+          effectiveHourlyRate = snap.hourlyRate;
+        }
+      } catch {
+        // Fallback to row.hourly_rate
+      }
+    }
+
+    const baseSalary = row.compensation_type === "hourly" ? Math.round((approvedMinutes / 60) * effectiveHourlyRate) : 0;
     // Basic hourly payroll only. Any additional payment needs an explicit reasoned adjustment.
     const overtimePay = 0;
     const calculatedTotal = Math.max(0, baseSalary + overtimePay + allowanceAmount + bonusAmount - deductionAmount);
@@ -222,7 +236,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
       compensationType: row.compensation_type,
       includeInPayroll: Boolean(row.payroll_eligible) && row.compensation_type !== "none",
       hasPayrollData: row.compensation_type === "monthly" || row.scheduled_minutes > 0 || row.recorded_minutes > 0 || row.pending_exception_count > 0 || employeeAdjustments.length > 0 || Boolean(entry),
-      hourlyRate: row.hourly_rate,
+      hourlyRate: effectiveHourlyRate,
       monthlySalary: row.monthly_salary,
       scheduledMinutes: row.scheduled_minutes,
       recordedMinutes: row.recorded_minutes,

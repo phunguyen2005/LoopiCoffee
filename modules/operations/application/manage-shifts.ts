@@ -5,7 +5,7 @@ import { auditStatement } from "../../../server/audit.ts";
 
 type ShiftInput = { startsAt: unknown; endsAt: unknown; roleLabel?: unknown; isShiftLead?: unknown };
 function authorize(actor: AccessActor) {
-  if (!["owner", "manager", "team_lead", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền quản lý ca.", 403, "forbidden");
+  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền quản lý ca.", 403, "forbidden");
 }
 function parseShift(input: ShiftInput) {
   const startsAt = attendanceTime(input.startsAt), endsAt = attendanceTime(input.endsAt);
@@ -25,8 +25,11 @@ export async function createShifts(db: D1Database, actor: AccessActor, employeeE
   if (typeof employeeEmail !== "string" || !employeeEmail.trim()) throw new ApplicationError("Chưa chọn nhân viên.");
   if (!Array.isArray(inputs) || !inputs.length || inputs.length > 31 || inputs.some((item) => !item || typeof item !== "object")) throw new ApplicationError("Mỗi lần tạo từ 1 đến 31 ca.");
   const email = employeeEmail.trim().toLowerCase();
-  const employee = await db.prepare("SELECT id FROM employees WHERE lower(email) = ? AND store_id = ? AND status = 'active'").bind(email, actor.storeId).first();
+  const employee = await db.prepare("SELECT id, role FROM employees WHERE lower(email) = ? AND store_id = ? AND status = 'active'").bind(email, actor.storeId).first<{ id: string; role: string }>();
   if (!employee) throw new ApplicationError("Nhân viên chưa hoạt động trong cửa hàng.", 404, "not_found");
+  if (actor.role === "team_lead" && ["owner", "manager"].includes(employee.role)) {
+    throw new ApplicationError("Trưởng ca không có quyền tạo ca cho quản lý hoặc chủ quán.", 403, "forbidden");
+  }
   const shifts = inputs.map(parseShift).map((shift) => ({ ...shift, id: crypto.randomUUID() }));
   const now = new Date().toISOString();
   try {
@@ -44,6 +47,11 @@ export async function createShifts(db: D1Database, actor: AccessActor, employeeE
 export async function changeShift(db: D1Database, actor: AccessActor, input: { id: string; action: "edit" | "cancel"; expectedRevision: number; startsAt?: unknown; endsAt?: unknown; roleLabel?: unknown; isShiftLead?: unknown }) {
   authorize(actor);
   if (!input.id || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) throw new ApplicationError("Thông tin phiên bản ca không hợp lệ.");
+  const existingShift = await db.prepare("SELECT s.id, s.employee_email, e.role FROM shifts s LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email) AND e.store_id = s.store_id WHERE s.id = ? AND s.store_id = ?").bind(input.id, actor.storeId).first<{ id: string; employee_email: string; role: string | null }>();
+  if (!existingShift) throw new ApplicationError("Ca làm không tồn tại.", 404, "not_found");
+  if (actor.role === "team_lead" && existingShift.role && ["owner", "manager"].includes(existingShift.role)) {
+    throw new ApplicationError("Trưởng ca không có quyền sửa hoặc hủy ca của quản lý hoặc chủ quán.", 403, "forbidden");
+  }
   const shift = input.action === "edit" ? parseShift(input as ShiftInput) : null;
   const now = new Date().toISOString();
   const commandId = crypto.randomUUID();

@@ -4,7 +4,7 @@ import type { Map as LeafletMap, Marker, Circle, LeafletMouseEvent } from "leafl
 import "leaflet/dist/leaflet.css";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, MapPin, Building, Sliders, Shield, FileClock, ExternalLink } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, MapPin, Building, Sliders, Shield, FileClock, ExternalLink } from "lucide-react";
 import { InputField, ViewHeader, readJson } from "./shared";
 const localOnly = process.env.NEXT_PUBLIC_LOCAL_ONLY === "true";
 
@@ -357,15 +357,14 @@ export function PersistentStoreSettingsView() {
                         key={radius}
                         type="button"
                         onClick={() => update("geofenceRadiusMeters", radius)}
-                        className={`button button-compact ${
-                          form.geofenceRadiusMeters === radius ? "" : "secondary"
-                        }`}
+                        aria-pressed={form.geofenceRadiusMeters === radius}
+                        className={form.geofenceRadiusMeters === radius ? "button button-compact" : "button-secondary button-compact"}
                         style={{
                           flex: 1,
                           fontWeight: form.geofenceRadiusMeters === radius ? 700 : 500,
                         }}
                       >
-                        {radius}m {radius === 100 ? "⭐" : ""}
+                        {form.geofenceRadiusMeters === radius && <Check size={14} aria-hidden="true" />} {radius}m
                       </button>
                     ))}
                   </div>
@@ -398,6 +397,13 @@ export function PersistentStoreSettingsView() {
                 }}
               >
                 <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />
+                {(localOnly || !leaflet) && (
+                  <div className="store-map-fallback" role="status">
+                    <MapPin size={24} aria-hidden="true" />
+                    <strong>{localOnly ? "Bản đồ trực tuyến đang tắt ở môi trường local" : "Đang tải bản đồ…"}</strong>
+                    <span>Bạn vẫn có thể nhập và lưu tọa độ cửa hàng bằng biểu mẫu.</span>
+                  </div>
+                )}
                 <div
                   style={{
                     position: "absolute",

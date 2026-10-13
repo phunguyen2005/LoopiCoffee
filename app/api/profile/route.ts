@@ -4,20 +4,23 @@ import { auditStatement, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
 
-  return Response.json({
-    user: {
-      id: auth.actor.id,
-      email: auth.actor.email,
-      displayName: auth.actor.displayName,
-      role: auth.actor.role,
-      storeId: auth.actor.storeId,
+  return Response.json(
+    {
+      user: {
+        id: auth.actor.id,
+        email: auth.actor.email,
+        displayName: auth.actor.displayName,
+        role: auth.actor.role,
+        storeId: auth.actor.storeId,
+      },
     },
-  });
-}
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});
 
 export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();

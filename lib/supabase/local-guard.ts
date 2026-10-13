@@ -11,10 +11,16 @@ export function localSupabaseOptions(url: string, localOnly: boolean) {
   assertLocalSupabaseUrl(url);
   return {
     global: {
-      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         assertLocalSupabaseUrl(input instanceof Request ? input.url : String(input));
         // A local endpoint must never redirect an authorization header to a cloud host.
-        return fetch(input, { ...init, redirect: "error" });
+        // Workerd rejects `redirect: "error"`, so stop redirects manually and
+        // reject every 3xx response before Supabase can follow its Location.
+        const response = await fetch(input, { ...init, redirect: "manual" });
+        if (response.status >= 300 && response.status < 400) {
+          throw new Error("Local authentication endpoint returned a forbidden redirect.");
+        }
+        return response;
       },
     },
   };

@@ -1,8 +1,10 @@
 import { ensureDatabase } from "@/db/runtime";
 import { sha256Hex } from "@/lib/evidence";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const actor = auth.actor;
@@ -13,7 +15,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { action?: string };
+  const body = (await readObject(request, { action: "string" })) as { action?: string };
   if (body.action !== "check_in" && body.action !== "check_out") {
     return Response.json({ error: "Hành động không hợp lệ." }, { status: 400 });
   }
@@ -89,4 +91,4 @@ export async function POST(request: Request) {
       longitude: store.longitude,
     },
   });
-}
+});

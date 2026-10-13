@@ -15,3 +15,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Seed local database
+        run: node tooling/local.mjs seed-menu
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
+        env:
+          CI: "1"

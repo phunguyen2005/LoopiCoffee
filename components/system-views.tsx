@@ -3,20 +3,28 @@ import { readJson } from "@/platform/http/client";
 
 import Link from "next/link";
 import { Bell, CheckCircle2, FileClock } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AsyncStatePanel, ListSkeleton } from "@/components/operational/shared";
 
 export function NotificationsView() {
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
   const [items, setItems] = useState<Array<{
     id: string; title: string; entity_href: string | null; read_at: string | null; created_at: string;
   }>>([]);
-  useEffect(() => {
-    fetch("/api/notifications", { cache: "no-store" })
-      .then(readJson<{ notifications: typeof items }>)
-      .then((payload) => setItems(payload.notifications ?? []))
-      .catch(() => setError("Không tải được thông báo. Hãy tải lại trang."));
+  const loadNotifications = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const payload = await readJson<{ notifications: typeof items }>(await fetch("/api/notifications", { cache: "no-store" }));
+      setItems(payload.notifications ?? []);
+    } catch { setError("Không tải được thông báo. Hãy thử lại."); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadNotifications(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadNotifications]);
   async function markRead(id: string) {
     if (pending) return;
     setPending(id); setError(null);
@@ -32,11 +40,10 @@ export function NotificationsView() {
   }
   return (
     <section className="card">
-      <div className="card-header"><div><h2 className="card-title">Thông báo của bạn</h2><p className="card-subtitle">{items.filter((item) => !item.read_at).length} chưa đọc</p></div></div>
+      <div className="card-header"><div><h2 className="card-title">Thông báo của bạn</h2><p className="card-subtitle">{loading || error ? "Chưa xác nhận số thông báo chưa đọc" : `${items.filter((item) => !item.read_at).length} chưa đọc`}</p></div></div>
       <div className="list">
-        {error && <p role="alert">{error}</p>}
-        {items.length === 0 && <p className="supporting-copy">Chưa có thông báo mới.</p>}
-        {items.map((item) => (
+        {loading ? <ListSkeleton rows={4} /> : error ? <AsyncStatePanel state="error" title="Không thể tải thông báo" description={error} actionLabel="Thử lại" onAction={() => void loadNotifications()} /> : items.length === 0 ? <AsyncStatePanel state="empty" title="Chưa có thông báo" description="Các cập nhật về ca làm và vận hành sẽ xuất hiện tại đây." /> : null}
+        {!loading && items.map((item) => (
           <div className="list-row" key={item.id}>
             <div className="person"><span className={`mini-icon ${item.read_at ? "mint" : "pink"}`}>{item.read_at ? <CheckCircle2 size={15} /> : <Bell size={15} />}</span><span className="person-copy"><strong>{item.title}</strong><small>{formatDateTime(item.created_at)}</small></span></div>
             <div className="row-actions">
@@ -61,17 +68,23 @@ export function AuditView() {
     created_at: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "attendance" | "employee" | "payroll" | "store">("all");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/audit", { cache: "no-store" })
-      .then(readJson<{ events: typeof events }>)
-      .then((payload) => setEvents(payload.events ?? []))
-      .catch(() => setEvents([]))
-      .finally(() => setLoading(false));
+  const loadAudit = useCallback(async () => {
+    setLoading(true); setLoadError("");
+    try {
+      const payload = await readJson<{ events: typeof events }>(await fetch("/api/audit", { cache: "no-store" }));
+      setEvents(payload.events ?? []);
+    } catch (cause) { setLoadError(cause instanceof Error ? cause.message : "Không thể tải nhật ký kiểm toán."); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadAudit(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadAudit]);
 
   const filteredEvents = useMemo(() => {
     return (events ?? []).filter((event) => {
@@ -111,7 +124,7 @@ export function AuditView() {
             </p>
           </div>
           <span className="badge neutral" style={{ fontSize: "0.82rem" }}>
-            {events.length} sự kiện được lưu trữ
+            {loading || loadError ? "— sự kiện" : `${events.length} sự kiện được lưu trữ`}
           </span>
         </div>
 
@@ -187,15 +200,11 @@ export function AuditView() {
       {/* Audit Events List */}
       <section className="card" style={{ padding: 0 }}>
         {loading ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
-            Đang tải dữ liệu kiểm toán...
-          </div>
+          <ListSkeleton rows={5} />
+        ) : loadError ? (
+          <AsyncStatePanel state="error" title="Không thể tải nhật ký kiểm toán" description={loadError} actionLabel="Thử lại" onAction={() => void loadAudit()} />
         ) : filteredEvents.length === 0 ? (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <FileClock size={32} style={{ margin: "0 auto 10px", color: "var(--muted)", opacity: 0.6 }} />
-            <p style={{ fontWeight: 600, margin: "0 0 4px" }}>Không tìm thấy bản ghi kiểm toán phù hợp</p>
-            <p style={{ fontSize: "0.85rem", color: "var(--muted)", margin: 0 }}>Thử tìm kiếm với từ khóa khác.</p>
-          </div>
+          search.trim() || categoryFilter !== "all" ? <AsyncStatePanel state="empty" title="Không có sự kiện khớp bộ lọc" description="Thử từ khóa khác hoặc xóa bộ lọc hiện tại." actionLabel="Xóa bộ lọc" onAction={() => { setSearch(""); setCategoryFilter("all"); }} /> : <AsyncStatePanel state="empty" title="Chưa phát sinh sự kiện kiểm toán" description="Các thao tác quan trọng sẽ được hiển thị tại đây khi phát sinh." />
         ) : (
           <div className="list">
             {filteredEvents.map((event) => {

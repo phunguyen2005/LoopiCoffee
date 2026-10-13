@@ -63,3 +63,15 @@ tooling/                 Local type generation and read-only schema preflight
 `npm run check` generates Workers types, checks TypeScript, runs ESLint, runs tests, and builds the Worker. CI uses the same command without production credentials.
 
 A dependency audit during this pass found existing production-tree advisories for Next.js, its PostCSS/Sharp dependencies, and Nano ID. The framework/runtime versions were not automatically upgraded or force-fixed. Triage with `npm audit --omit=dev`, then perform an isolated compatible upgrade and repeat the full check plus staging auth/attendance/payroll tests. No assertion is made that all advisories are exploitable in the Vinext Worker deployment.
+
+## Agent review baseline
+
+This document records verified architecture decisions from the hardening pass. Agents must re-check paths and behavior against the current checkout before treating them as current evidence. The following constraints remain the review baseline:
+
+- Keep the single-store modular monolith; do not introduce microservices or multi-store scope without approval.
+- Treat the server as authoritative for identity, role and resource scope, attendance time, order pricing, and business-state transitions.
+- Keep D1 as the operational data source, Drizzle migrations as the schema change history, and R2 attendance evidence private.
+- Store and compare timestamps consistently, then interpret business dates in `Asia/Ho_Chi_Minh`.
+- Public ordering routes still require server validation, anti-abuse controls, server-calculated totals, and non-enumerable tracking credentials.
+
+For each architecture audit, verify the actual framework/runtime versions, authentication and authorization coverage, D1 batch/transaction behavior, migration/index state, non-idempotent side effects, binding/secret configuration, and module dependency direction. Record file paths, lines, reproduction evidence, impact, and verification status for every finding.

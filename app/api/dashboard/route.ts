@@ -1,8 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
+import { apiHandler } from "@/platform/http/errors";
 import { requireApiUser } from "@/server/auth";
 import { businessDate } from "@/modules/operations/domain/business-day";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -82,19 +83,22 @@ export async function GET() {
   const pendingRequests = pendingRequestsResult.results[0] as { count: number } | undefined;
   const payrollEstimate = payrollEstimateResult.results[0] as { total_minutes: number } | undefined;
 
-  return Response.json({
-    metrics: {
-      activeStaff: active?.count ?? 0,
-      pendingExceptions: exceptions?.count ?? 0,
-      checklistDone: checklist?.done ?? 0,
-      checklistTotal: checklist?.total ?? 0,
-      openIncidents: incidents?.count ?? 0,
-      pendingRequests: pendingRequests?.count ?? 0,
-      monthWorkedMinutes: payrollEstimate?.total_minutes ?? 0,
+  return Response.json(
+    {
+      metrics: {
+        activeStaff: active?.count ?? 0,
+        pendingExceptions: exceptions?.count ?? 0,
+        checklistDone: checklist?.done ?? 0,
+        checklistTotal: checklist?.total ?? 0,
+        openIncidents: incidents?.count ?? 0,
+        pendingRequests: pendingRequests?.count ?? 0,
+        monthWorkedMinutes: payrollEstimate?.total_minutes ?? 0,
+      },
+      activeStaffList: activeStaffListResult.results,
+      todayShifts: todayShiftsResult.results,
+      nextShifts: nextShifts.results,
+      latestHandover: handover ?? null,
     },
-    activeStaffList: activeStaffListResult.results,
-    todayShifts: todayShiftsResult.results,
-    nextShifts: nextShifts.results,
-    latestHandover: handover ?? null,
-  });
-}
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});

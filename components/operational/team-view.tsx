@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -11,11 +11,10 @@ import {
   Check,
   X,
   CalendarDays,
-  Users,
   Copy,
   AlertCircle,
 } from "lucide-react";
-import { ViewHeader, initials, readJson, roleLabel } from "./shared";
+import { AsyncStatePanel, ListSkeleton, ViewHeader, initials, readJson, roleLabel } from "./shared";
 
 type TeamMember = {
   id: string;
@@ -33,6 +32,7 @@ type TeamMember = {
 export function PersistentTeamView() {
   const [employees, setEmployees] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teamError, setTeamError] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -49,50 +49,37 @@ export function PersistentTeamView() {
   const [createdCredential, setCreatedCredential] = useState<{ email: string; password?: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/admin/accounts", { cache: "no-store" })
-      .then(async (res) => (res.ok ? readJson<{ accounts?: TeamMember[] }>(res) : null))
-      .then(async (payload) => {
-        if (!cancelled && payload?.accounts) {
-          setEmployees(payload.accounts);
-          setLoading(false);
-          return;
-        }
-        if (!cancelled) {
-          const teamRes = await fetch("/api/team", { cache: "no-store" });
-          if (teamRes.ok) {
-            const teamPayload = await readJson<{ employees?: TeamMember[] }>(teamRes);
-            if (!cancelled) setEmployees(teamPayload.employees ?? []);
-          }
-          if (!cancelled) setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function refreshTeam() {
+  const loadTeam = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setTeamError("");
     try {
-      const res = await fetch("/api/admin/accounts", { cache: "no-store" });
+      const res = await fetch("/api/admin/accounts", { cache: "no-store", signal });
       if (res.ok) {
         const payload = await readJson<{ accounts?: TeamMember[] }>(res);
+        if (signal?.aborted) return;
         setEmployees(payload.accounts ?? []);
-      } else {
-        const teamRes = await fetch("/api/team", { cache: "no-store" });
-        if (teamRes.ok) {
-          const teamPayload = await readJson<{ employees?: TeamMember[] }>(teamRes);
-          setEmployees(teamPayload.employees ?? []);
-        }
+        return;
       }
-    } catch {
-      // Ignore
+      const teamRes = await fetch("/api/team", { cache: "no-store", signal });
+      const teamPayload = await readJson<{ employees?: TeamMember[]; error?: string }>(teamRes);
+      if (!teamRes.ok) throw new Error(teamPayload.error ?? "Không thể tải danh sách nhân sự.");
+      if (!signal?.aborted) setEmployees(teamPayload.employees ?? []);
+    } catch (cause) {
+      if (signal?.aborted) return;
+      setTeamError(cause instanceof Error ? cause.message : "Không thể tải danh sách nhân sự.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => { void loadTeam(controller.signal); }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [loadTeam]);
+
+  async function refreshTeam() {
+    await loadTeam();
   }
 
   const filteredEmployees = useMemo(() => {
@@ -172,12 +159,12 @@ export function PersistentTeamView() {
           <div>
             <ViewHeader
               title="Đội ngũ nhân sự LoopiCafe"
-              subtitle={`${activeCount} nhân sự đang hoạt động trên tổng số ${employees.length} tài khoản`}
+              subtitle={loading ? "Đang xác nhận dữ liệu nhân sự…" : teamError ? "Chưa thể xác nhận số liệu nhân sự" : `${activeCount} nhân sự đang hoạt động trên tổng số ${employees.length} tài khoản`}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <span className="badge success" style={{ fontSize: "0.78rem" }}>{activeCount} Đang hoạt động</span>
-              <span className="badge warning" style={{ fontSize: "0.78rem" }}>{managerCount} Quản trị / Trưởng ca</span>
-              <span className="badge neutral" style={{ fontSize: "0.78rem" }}>{employees.length - activeCount} Đã mời / Vô hiệu</span>
+              <span className="badge success" style={{ fontSize: "0.78rem" }}>{loading || teamError ? "—" : activeCount} Đang hoạt động</span>
+              <span className="badge warning" style={{ fontSize: "0.78rem" }}>{loading || teamError ? "—" : managerCount} Quản trị / Trưởng ca</span>
+              <span className="badge neutral" style={{ fontSize: "0.78rem" }}>{loading || teamError ? "—" : employees.length - activeCount} Đã mời / Vô hiệu</span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
@@ -257,17 +244,15 @@ export function PersistentTeamView() {
       {/* Employee Directory Grid / List */}
       <section className="card" style={{ padding: "0" }}>
         {loading ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
-            Đang tải danh sách đội ngũ nhân sự...
-          </div>
+          <ListSkeleton rows={5} />
+        ) : teamError ? (
+          <AsyncStatePanel state="error" title="Không thể tải danh sách nhân sự" description={teamError} actionLabel="Thử lại" onAction={() => void loadTeam()} />
         ) : filteredEmployees.length === 0 ? (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <Users size={32} style={{ margin: "0 auto 12px", color: "var(--muted)", opacity: 0.6 }} />
-            <p style={{ fontWeight: 600, margin: "0 0 6px" }}>Không tìm thấy nhân viên nào</p>
-            <p style={{ fontSize: "0.85rem", color: "var(--muted)", margin: 0 }}>
-              Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc.
-            </p>
-          </div>
+          search.trim() || roleFilter !== "all" ? (
+            <AsyncStatePanel state="empty" title="Không có nhân viên khớp bộ lọc" description="Thử từ khóa khác hoặc xóa bộ lọc hiện tại." actionLabel="Xóa bộ lọc" onAction={() => { setSearch(""); setRoleFilter("all"); }} />
+          ) : (
+            <AsyncStatePanel state="empty" title="Chưa có nhân sự" description="Thêm nhân viên đầu tiên để bắt đầu phân ca và quản lý vận hành." actionLabel="Thêm nhân viên" onAction={() => setShowAddModal(true)} />
+          )
         ) : (
           <div className="list">
             {filteredEmployees.map((employee) => {

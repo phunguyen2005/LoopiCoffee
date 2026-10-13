@@ -19,12 +19,24 @@ export type ApiActor = {
 
 type Identity = VerifiedIdentity;
 
-const AUTH_CACHE_TTL_MS = 10_000;
+export const AUTH_REVOCATION_WINDOW_SLA_MS = 10_000;
 const AUTH_CACHE_LIMIT = 100;
-const validatedIdentityCache = new Map<string, { identity: Identity; expiresAt: number }>();
+export const validatedIdentityCache = new Map<string, { identity: Identity; expiresAt: number }>();
 
-export async function getApiUser(): Promise<ApiActor | null> {
-  const identity = await getVerifiedIdentity();
+export function invalidateIdentityCache(tokenFingerprint?: string) {
+  if (tokenFingerprint) {
+    validatedIdentityCache.delete(tokenFingerprint);
+  } else {
+    validatedIdentityCache.clear();
+  }
+}
+
+export type AuthOptions = {
+  bypassCache?: boolean;
+};
+
+export async function getApiUser(options?: AuthOptions): Promise<ApiActor | null> {
+  const identity = await getVerifiedIdentity(options);
   if (!identity) return null;
 
   const db = await ensureDatabase();
@@ -63,10 +75,10 @@ export async function getApiUser(): Promise<ApiActor | null> {
   };
 }
 
-export async function requireApiUser(roles?: ActorRole[]): Promise<
+export async function requireApiUser(roles?: ActorRole[], options?: AuthOptions): Promise<
   { actor: ApiActor; response: null } | { actor: null; response: Response }
 > {
-  const actor = await getApiUser();
+  const actor = await getApiUser(options);
   if (!actor) {
     return { actor: null, response: Response.json({ error: "Bạn cần đăng nhập hoặc được mời vào cửa hàng." }, { status: 401 }) };
   }
@@ -74,17 +86,13 @@ export async function requireApiUser(roles?: ActorRole[]): Promise<
     return { actor: null, response: Response.json({ error: "Hãy đổi mật khẩu tạm trước khi tiếp tục.", code: "password_change_required" }, { status: 403 }) };
   }
   if (roles && !roles.includes(actor.role)) {
-    // System admin has administrative access to owner/manager routes
-    if (actor.role === "system_admin" && (roles.includes("owner") || roles.includes("manager"))) {
-      return { actor, response: null };
-    }
     return { actor: null, response: Response.json({ error: "Bạn không có quyền thực hiện thao tác này." }, { status: 403 }) };
   }
   return { actor, response: null };
 }
 
-export async function getVerifiedIdentity() {
-  const supabaseIdentity = await getValidatedSupabaseIdentity();
+export async function getVerifiedIdentity(options?: AuthOptions) {
+  const supabaseIdentity = await getValidatedSupabaseIdentity(options);
   if (supabaseIdentity) return supabaseIdentity;
 
   if (process.env.NODE_ENV !== "production" && process.env.ALLOW_DEMO_AUTH === "true") {
@@ -93,7 +101,7 @@ export async function getVerifiedIdentity() {
   return null;
 }
 
-async function getValidatedSupabaseIdentity(): Promise<Identity | null> {
+async function getValidatedSupabaseIdentity(options?: AuthOptions): Promise<Identity | null> {
   try {
     const cookieStore = await cookies();
     const hasSupabaseSession = cookieStore.getAll().some(({ name }) =>
@@ -106,10 +114,16 @@ async function getValidatedSupabaseIdentity(): Promise<Identity | null> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return null;
 
+    if (session.expires_at && session.expires_at * 1000 <= Date.now()) {
+      return null;
+    }
+
     const fingerprint = await tokenFingerprint(session.access_token);
-    const cached = validatedIdentityCache.get(fingerprint);
-    if (cached && cached.expiresAt > Date.now()) return cached.identity;
-    if (cached) validatedIdentityCache.delete(fingerprint);
+    if (!options?.bypassCache) {
+      const cached = validatedIdentityCache.get(fingerprint);
+      if (cached && cached.expiresAt > Date.now()) return cached.identity;
+      if (cached) validatedIdentityCache.delete(fingerprint);
+    }
 
     const { data: { user }, error } = await supabase.auth.getUser(session.access_token);
     if (error) return null;
@@ -124,10 +138,14 @@ async function getValidatedSupabaseIdentity(): Promise<Identity | null> {
         const oldestKey = validatedIdentityCache.keys().next().value;
         if (oldestKey) validatedIdentityCache.delete(oldestKey);
       }
-      validatedIdentityCache.set(fingerprint, {
-        identity,
-        expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
-      });
+      const sessionExpiryMs = session.expires_at ? session.expires_at * 1000 : Infinity;
+      const boundedExpiresAt = Math.min(Date.now() + AUTH_REVOCATION_WINDOW_SLA_MS, sessionExpiryMs);
+      if (boundedExpiresAt > Date.now()) {
+        validatedIdentityCache.set(fingerprint, {
+          identity,
+          expiresAt: boundedExpiresAt,
+        });
+      }
       return identity;
     }
   } catch {

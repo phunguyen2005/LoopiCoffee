@@ -1,5 +1,3 @@
-import jpeg from "jpeg-js";
-
 const JPEG_PREFIX = "data:image/jpeg;base64,";
 const MAX_RAW_PHOTO_BYTES = 2 * 1024 * 1024;
 
@@ -31,7 +29,15 @@ export function validateJpegDataUrl(value: unknown): ValidatedJpeg {
   }
   let bytes: Uint8Array;
   try {
-    bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    if (typeof Buffer !== "undefined") {
+      bytes = new Uint8Array(Buffer.from(base64, "base64"));
+    } else {
+      const binaryString = atob(base64);
+      bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+    }
   } catch {
     throw new Error("Không thể giải mã ảnh.");
   }
@@ -46,20 +52,12 @@ export function validateJpegDataUrl(value: unknown): ValidatedJpeg {
   ) {
     throw new Error("Nội dung tải lên không phải ảnh JPEG.");
   }
-  const dimensions = readJpegDimensions(bytes);
-  if (!dimensions || dimensions.width < 240 || dimensions.height < 240) {
+  const dimensions = parseJpegDimensions(bytes);
+  if (dimensions.width < 240 || dimensions.height < 240) {
     throw new Error("Ảnh quá nhỏ hoặc không đọc được kích thước.");
   }
   if (dimensions.width > 2048 || dimensions.height > 2048) {
     throw new Error("Kích thước ảnh vượt quá giới hạn.");
-  }
-  try {
-    const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: false });
-    if (decoded.width !== dimensions.width || decoded.height !== dimensions.height || !decoded.data?.length) {
-      throw new Error("Decoded dimensions do not match");
-    }
-  } catch {
-    throw new Error("Không thể giải mã nội dung JPEG.");
   }
   return { bytes, base64, ...dimensions };
 }
@@ -99,35 +97,95 @@ export function evidenceObjectKey(storeId: string, employeeId: string, eventId: 
   return `${storeId}/attendance/${employeeId}/${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, "0")}/${eventId}.svg`;
 }
 
-function readJpegDimensions(bytes: Uint8Array) {
+export function parseJpegDimensions(bytes: Uint8Array): { width: number; height: number } {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    throw new Error("Nội dung tải lên không phải ảnh JPEG.");
+  }
   let offset = 2;
-  while (offset + 8 < bytes.length) {
+  let dimensions: { width: number; height: number } | null = null;
+  let hasSos = false;
+
+  while (offset < bytes.length) {
     if (bytes[offset] !== 0xff) {
+      throw new Error("Không thể giải mã nội dung JPEG.");
+    }
+    while (offset < bytes.length && bytes[offset] === 0xff) {
       offset += 1;
+    }
+    if (offset >= bytes.length) {
+      throw new Error("Không thể giải mã nội dung JPEG.");
+    }
+    const marker = bytes[offset];
+    offset += 1;
+
+    // Standalone markers without length payload
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
       continue;
     }
-    const marker = bytes[offset + 1];
-    if (marker === 0xd8 || marker === 0xd9) {
-      offset += 2;
-      continue;
+    // EOI (End of image)
+    if (marker === 0xd9) {
+      break;
     }
-    if (offset + 4 >= bytes.length) return null;
-    const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
-    if (segmentLength < 2 || offset + 2 + segmentLength > bytes.length) return null;
-    if (
+
+    // Segment with length payload
+    if (offset + 2 > bytes.length) {
+      throw new Error("Không thể giải mã nội dung JPEG.");
+    }
+    const segmentLength = (bytes[offset] << 8) | bytes[offset + 1];
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      throw new Error("Không thể giải mã nội dung JPEG.");
+    }
+
+    // SOF markers:
+    // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2), SOF3 (0xC3),
+    // SOF5..SOF7 (0xC5..0xC7), SOF9..SOF11 (0xC9..0xCB), SOF13..SOF15 (0xCD..0xCF)
+    const isSof =
       (marker >= 0xc0 && marker <= 0xc3) ||
       (marker >= 0xc5 && marker <= 0xc7) ||
       (marker >= 0xc9 && marker <= 0xcb) ||
-      (marker >= 0xcd && marker <= 0xcf)
-    ) {
-      const height = (bytes[offset + 5] << 8) | bytes[offset + 6];
-      const width = (bytes[offset + 7] << 8) | bytes[offset + 8];
-      return { width, height };
+      (marker >= 0xcd && marker <= 0xcf);
+
+    if (isSof) {
+      if (segmentLength < 8) {
+        throw new Error("Không thể giải mã nội dung JPEG.");
+      }
+      const precision = bytes[offset + 2];
+      const height = (bytes[offset + 3] << 8) | bytes[offset + 4];
+      const width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+      const components = bytes[offset + 7];
+
+      if (precision !== 8 && precision !== 12) {
+        throw new Error("Không thể giải mã nội dung JPEG.");
+      }
+      if (components !== 1 && components !== 3 && components !== 4) {
+        throw new Error("Không thể giải mã nội dung JPEG.");
+      }
+      if (width <= 0 || height <= 0) {
+        throw new Error("Ảnh quá nhỏ hoặc không đọc được kích thước.");
+      }
+      dimensions = { width, height };
+    } else if (marker === 0xda) {
+      // SOS (Start of Scan)
+      hasSos = true;
+      offset += segmentLength;
+      if (offset >= bytes.length - 2) {
+        // Missing scan data between SOS and EOI
+        throw new Error("Không thể giải mã nội dung JPEG.");
+      }
+      break;
     }
-    offset += 2 + segmentLength;
+
+    offset += segmentLength;
   }
-  return null;
+
+  if (!dimensions || !hasSos) {
+    throw new Error("Không thể giải mã nội dung JPEG.");
+  }
+
+  return dimensions;
 }
+
+export const readJpegDimensions = parseJpegDimensions;
 
 function escapeXml(value: string) {
   return value.replace(/[<>&"']/g, (character) => {

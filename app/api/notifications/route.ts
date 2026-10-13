@@ -1,7 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
 import { requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -11,16 +13,16 @@ export async function GET() {
      ORDER BY created_at DESC LIMIT 100`,
   ).bind(auth.actor.email).all();
   return Response.json({ notifications: result.results });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as { id?: string };
+  const body = (await readObject(request, { id: "string" })) as { id?: string };
   if (!body.id) return Response.json({ error: "Thiếu thông báo." }, { status: 400 });
   const db = await ensureDatabase();
   await db.prepare(
     "UPDATE notifications SET read_at = ? WHERE id = ? AND lower(recipient_email) = lower(?)",
   ).bind(new Date().toISOString(), body.id, auth.actor.email).run();
   return Response.json({ updated: true });
-}
+});

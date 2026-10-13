@@ -1,8 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
 import { loadPayrollReport } from "@/lib/payroll-report";
+import { apiHandler } from "@/platform/http/errors";
 import { requireApiUser } from "@/server/auth";
 
-export async function GET(request: Request) {
+export const GET = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
   const url = new URL(request.url);
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
       "cache-control": "private, no-store",
     },
   });
-}
+});
 
 function cell(value: string, style?: string) {
   return `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;

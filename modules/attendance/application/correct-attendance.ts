@@ -11,7 +11,7 @@ export function attendanceTime(value: unknown) {
 }
 
 export async function correctAttendance(db: D1Database, actor: AccessActor, input: { eventId?: string; sessionId?: string; action?: "check_in" | "check_out"; adjustedTime: unknown; reason: unknown; expectedRevision?: number }) {
-  if (!["owner", "manager", "team_lead", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "forbidden");
+  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "forbidden");
   const effectiveTime = attendanceTime(input.adjustedTime);
   if (Date.parse(effectiveTime) > Date.now() + 60_000) throw new ApplicationError("Không thể điều chỉnh công tới thời điểm tương lai.");
   if (typeof input.reason !== "string" || input.reason.trim().length < 5 || input.reason.length > 1000) throw new ApplicationError("Cần lý do điều chỉnh từ 5 đến 1000 ký tự.");

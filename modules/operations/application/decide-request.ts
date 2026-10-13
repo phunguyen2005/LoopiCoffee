@@ -3,11 +3,21 @@ import { ApplicationError } from "../../../platform/http/errors.ts";
 import type { AccessActor } from "../../people/domain/access.ts";
 
 export async function decideRequest(db: D1Database, actor: AccessActor, id: string, decision: "approved" | "rejected") {
-  if (!["owner", "manager", "team_lead", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt yêu cầu.", 403, "forbidden");
+  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt yêu cầu.", 403, "forbidden");
   const now = new Date().toISOString();
   const commandId = crypto.randomUUID();
+
+  const targetRequest = await db.prepare(
+    "SELECT id, type, title, status FROM requests WHERE id = ? AND store_id = ?",
+  ).bind(id, actor.storeId).first<{ id: string; type: string; title: string; status: string }>();
+
+  if (!targetRequest || targetRequest.status !== "pending") {
+    throw new ApplicationError("Yêu cầu không còn chờ duyệt, ca đã thay đổi hoặc kỳ lương đã khóa.", 409, "request_conflict");
+  }
+
   const results = await db.batch([
-    db.prepare(      `UPDATE requests SET status = ?, reviewer_email = ?, reviewed_at = ?
+    db.prepare(
+      `UPDATE requests SET status = ?, reviewer_email = ?, reviewed_at = ?
        WHERE id = ? AND store_id = ? AND status = 'pending'
        AND (? = 'rejected' OR type <> 'leave' OR shift_id IS NULL OR EXISTS (
          SELECT 1 FROM shifts s WHERE s.id = requests.shift_id AND s.store_id = requests.store_id
@@ -17,15 +27,39 @@ export async function decideRequest(db: D1Database, actor: AccessActor, id: stri
            AND NOT EXISTS (SELECT 1 FROM payroll_periods p WHERE p.store_id = s.store_id AND p.status IN ('finalized', 'paid') AND p.period_start < s.ends_at AND p.period_end > s.starts_at)))`,
     ).bind(decision, actor.email, now, id, actor.storeId, decision),
     auditStatement(db, actor.email, "request", id, `request.${decision}`, {}, now, true, commandId),
-    db.prepare(      `UPDATE shifts SET approved_leave_request_id = ?, revision = revision + 1
+    db.prepare(
+      `UPDATE shifts SET approved_leave_request_id = ?, revision = revision + 1
        WHERE id = (SELECT shift_id FROM requests WHERE id = ? AND type = 'leave') AND ? = 'approved'
        AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`,
     ).bind(id, id, decision, commandId),
-    db.prepare(      `INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at)
-       SELECT ?, employee_email, 'request_decision', ? || title, '/app/requests', ?
+    db.prepare(
+      `INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at)
+       SELECT ?, employee_email, 'request_decision',
+         CASE
+           WHEN ? = 'rejected' THEN 'Đã từ chối: ' || title
+           WHEN type = 'swap' THEN 'Đã duyệt nguyên tắc (chờ xếp lại lịch): ' || title
+           WHEN type = 'correction' THEN 'Đã duyệt nguyên tắc (chờ điều chỉnh công): ' || title
+           ELSE 'Đã duyệt: ' || title
+         END,
+         '/app/requests', ?
        FROM requests WHERE id = ? AND store_id = ? AND EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`,
-    ).bind(crypto.randomUUID(), decision === "approved" ? "Đã duyệt: " : "Đã từ chối: ", now, id, actor.storeId, commandId),
+    ).bind(crypto.randomUUID(), decision, now, id, actor.storeId, commandId),
   ]);
   if (!results[0].meta.changes) throw new ApplicationError("Yêu cầu không còn chờ duyệt, ca đã thay đổi hoặc kỳ lương đã khóa.", 409, "request_conflict");
-  return { updated: true, status: decision, coverageWarning: results[2].meta.changes > 0 ? "Ca đã đánh dấu nghỉ được duyệt. Quản lý cần bố trí người thay; hệ thống chưa tự xếp người." : null };
+
+  const coverageWarning = results[2].meta.changes > 0
+    ? "Ca đã đánh dấu nghỉ được duyệt. Quản lý cần bố trí người thay; hệ thống chưa tự xếp người."
+    : decision === "approved" && targetRequest.type === "swap"
+      ? "Đề nghị đổi ca đã duyệt nguyên tắc. Quản lý cần chủ động cập nhật lại Lịch làm việc để áp dụng thay đổi."
+      : decision === "approved" && targetRequest.type === "correction"
+        ? "Đề nghị sửa chấm công đã duyệt nguyên tắc. Quản lý cần chủ động điều chỉnh giờ công trong mục Chấm công."
+        : null;
+
+  return {
+    updated: true,
+    status: decision,
+    coverageWarning,
+    guidance: coverageWarning,
+    requiresManualAction: decision === "approved" && (targetRequest.type === "swap" || targetRequest.type === "correction"),
+  };
 }

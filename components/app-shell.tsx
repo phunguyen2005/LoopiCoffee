@@ -113,6 +113,7 @@ export function AppShell({
   const mobileDrawerCloseButtonRef = useRef<HTMLButtonElement>(null);
 
   const isStaff = user.role === "employee";
+  const hasStickyCta = (isStaff && (pathname === "/app" || pathname.startsWith("/app/today"))) || pathname === "/app/attendance";
   const [ownerMetrics, setOwnerMetrics] = useState<OwnerDashboardSnapshot | null>(null);
 
   useEffect(() => {
@@ -365,7 +366,7 @@ export function AppShell({
           </button>
         </aside>
 
-        <main className="app-main">
+        <main className={`app-main ${hasStickyCta ? "has-mobile-nav-and-cta" : ""}`}>
           <div className="mobile-topbar">
             <div className="mobile-topbar-primary">
               <Link href={isStaff ? "/app/today" : "/app"} className="brand" title="Trở về trang chính">
@@ -737,6 +738,7 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/app/handovers")) return "Bàn giao ca";
   if (pathname.startsWith("/app/requests")) return "Yêu cầu của nhân viên";
   if (pathname.startsWith("/app/team")) return "Nhân sự";
+  if (pathname.startsWith("/app/orders")) return "Đơn hàng online";
   if (pathname.startsWith("/app/admin/accounts")) return "Quản trị tài khoản";
   if (pathname.startsWith("/app/reports")) return "Báo cáo";
   if (pathname.startsWith("/app/settings")) return "Thiết lập cửa hàng";
@@ -760,6 +762,7 @@ function subtitleForPath(pathname: string, today: TodaySnapshot | null) {
     return today ? `Bạn đã hoàn tất ${today.checklist.done}/${today.checklist.total} công việc` : "Theo dõi checklist trong ca";
   }
   if (pathname.startsWith("/app/issues")) return "Báo nhanh và theo dõi sự cố tại cửa hàng";
+  if (pathname.startsWith("/app/orders")) return "Theo dõi đơn mới và tiến độ pha chế theo thời gian thực";
   return "LoopiCafe · Cửa hàng chính";
 }
 

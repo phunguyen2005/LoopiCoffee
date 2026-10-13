@@ -1,7 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
 import { auditStatement, requireApiUser } from "@/server/auth";
+import { apiHandler } from "@/platform/http/errors";
+import { readObject } from "@/platform/http/input";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -10,29 +12,42 @@ export async function GET() {
      FROM incidents WHERE store_id = ? ORDER BY created_at DESC LIMIT 100`,
   ).bind(auth.actor.storeId).all();
   return Response.json({ incidents: result.results });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readObject(request, {
+    title: "string",
+    category: "string",
+    severity: "string",
+  })) as {
     title?: string;
     category?: string;
     severity?: "low" | "medium" | "high";
   };
   const title = body.title?.trim();
-  if (!title || title.length < 3 || !body.severity || !["low", "medium", "high"].includes(body.severity)) {
+  const category = body.category?.trim();
+  if (
+    !title ||
+    title.length < 3 ||
+    title.length > 180 ||
+    (category && category.length > 60) ||
+    !body.severity ||
+    !["low", "medium", "high"].includes(body.severity)
+  ) {
     return Response.json({ error: "Thông tin sự cố không hợp lệ." }, { status: 400 });
   }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const db = await ensureDatabase();
+  const finalCategory = category || "Khác";
   const statements = [
     db.prepare(
       `INSERT INTO incidents
         (id, store_id, reporter_email, title, category, severity, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
-    ).bind(id, auth.actor.storeId, auth.actor.email, title.slice(0, 180), body.category?.trim().slice(0, 60) || "Khác", body.severity, now, now),
+    ).bind(id, auth.actor.storeId, auth.actor.email, title, finalCategory, body.severity, now, now),
     auditStatement(db, auth.actor.email, "incident", id, "incident.created", { severity: body.severity }, now),
   ];
   if (body.severity === "high") {
@@ -48,27 +63,76 @@ export async function POST(request: Request) {
       ).bind(crypto.randomUUID(), reviewer.email, `Sự cố mức cao: ${title.slice(0, 120)}`, now)));
   }
   await db.batch(statements);
-  return Response.json({ incident: { id, title, category: body.category || "Khác", severity: body.severity, status: "open", created_at: now } });
-}
+  return Response.json({ incident: { id, title, category: finalCategory, severity: body.severity, status: "open", created_at: now } });
+});
 
-export async function PATCH(request: Request) {
+const ALLOWED_PREVIOUS_STATUS: Record<string, string[]> = {
+  open: [],
+  acknowledged: ["open"],
+  resolved: ["acknowledged"],
+  closed: ["resolved"],
+};
+
+const VALID_STATUSES = ["open", "acknowledged", "resolved", "closed"];
+
+export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readObject(request, {
+    id: "string",
+    status: "string",
+  })) as {
     id?: string;
-    status?: "acknowledged" | "resolved" | "closed";
+    status?: string;
   };
-  if (!body.id || !body.status || !["acknowledged", "resolved", "closed"].includes(body.status)) {
+  const id = body.id?.trim();
+  const targetStatus = body.status?.trim();
+  if (!id || !targetStatus || !VALID_STATUSES.includes(targetStatus)) {
     return Response.json({ error: "Trạng thái sự cố không hợp lệ." }, { status: 400 });
   }
+
   const db = await ensureDatabase();
+  const existing = await db.prepare(
+    "SELECT id, status FROM incidents WHERE id = ? AND store_id = ?",
+  ).bind(id, auth.actor.storeId).first<{ id: string; status: string }>();
+
+  if (!existing) {
+    return Response.json({ error: "Không tìm thấy sự cố." }, { status: 404 });
+  }
+
+  const allowedPrevious = ALLOWED_PREVIOUS_STATUS[targetStatus];
+  if (!allowedPrevious || !allowedPrevious.includes(existing.status)) {
+    return Response.json(
+      { error: "Chuyển trạng thái sự cố không hợp lệ hoặc sự cố đã thay đổi." },
+      { status: 409 },
+    );
+  }
+
   const now = new Date().toISOString();
-  const result = await db.prepare(
-    "UPDATE incidents SET status = ?, updated_at = ? WHERE id = ? AND store_id = ?",
-  ).bind(body.status, now, body.id, auth.actor.storeId).run();
-  if (!result.meta.changes) return Response.json({ error: "Không tìm thấy sự cố." }, { status: 404 });
-  await db.batch([
-    auditStatement(db, auth.actor.email, "incident", body.id, `incident.${body.status}`, {}, now),
-  ]);
-  return Response.json({ updated: true, status: body.status });
-}
+  const commandId = crypto.randomUUID();
+  const updateStmt = db.prepare(
+    "UPDATE incidents SET status = ?, updated_at = ? WHERE id = ? AND store_id = ? AND status = ?",
+  ).bind(targetStatus, now, id, auth.actor.storeId, existing.status);
+
+  const auditStmt = auditStatement(
+    db,
+    auth.actor.email,
+    "incident",
+    id,
+    `incident.${targetStatus}`,
+    { fromStatus: existing.status, toStatus: targetStatus },
+    now,
+    true,
+    commandId,
+  );
+
+  const results = await db.batch([updateStmt, auditStmt]);
+  if (!results[0].meta.changes) {
+    return Response.json(
+      { error: "Chuyển trạng thái sự cố không hợp lệ hoặc sự cố đã thay đổi." },
+      { status: 409 },
+    );
+  }
+
+  return Response.json({ updated: true, status: targetStatus });
+});

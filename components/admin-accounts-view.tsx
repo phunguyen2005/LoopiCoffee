@@ -69,6 +69,7 @@ export function AdminAccountsView() {
   const [currentUserRole, setCurrentUserRole] = useState<AccountRole>("owner");
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
 
   // Filters & Search
@@ -131,6 +132,7 @@ export function AdminAccountsView() {
 
   async function refreshAccounts() {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch("/api/admin/accounts", { cache: "no-store" });
       const data = await readJson<AccountResponse>(res);
@@ -139,10 +141,10 @@ export function AdminAccountsView() {
         if (data.storeName) setStoreName(data.storeName);
         if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
       } else {
-        setMessage(data.error ?? "Không thể tải danh sách tài khoản.");
+        setLoadError(data.error ?? "Không thể tải danh sách tài khoản.");
       }
     } catch {
-      setMessage("Lỗi kết nối khi tải danh sách tài khoản.");
+      setLoadError("Lỗi kết nối khi tải danh sách tài khoản.");
     } finally {
       setLoading(false);
     }
@@ -379,7 +381,7 @@ export function AdminAccountsView() {
             <UsersRound size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-slate-800">{stats.total}</div>
+            <div className="text-2xl font-black text-slate-800">{loading || loadError ? "—" : stats.total}</div>
             <div className="text-xs font-medium text-slate-500">Tổng tài khoản</div>
           </div>
         </div>
@@ -389,7 +391,7 @@ export function AdminAccountsView() {
             <UserCheck size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-emerald-700">{stats.active}</div>
+            <div className="text-2xl font-black text-emerald-700">{loading || loadError ? "—" : stats.active}</div>
             <div className="text-xs font-medium text-slate-500">Đang hoạt động</div>
           </div>
         </div>
@@ -399,7 +401,7 @@ export function AdminAccountsView() {
             <Mail size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-amber-700">{stats.invited}</div>
+            <div className="text-2xl font-black text-amber-700">{loading || loadError ? "—" : stats.invited}</div>
             <div className="text-xs font-medium text-slate-500">Chờ kích hoạt</div>
           </div>
         </div>
@@ -409,7 +411,7 @@ export function AdminAccountsView() {
             <Lock size={20} />
           </div>
           <div>
-            <div className="text-2xl font-black text-slate-700">{stats.suspended}</div>
+            <div className="text-2xl font-black text-slate-700">{loading || loadError ? "—" : stats.suspended}</div>
             <div className="text-xs font-medium text-slate-500">Khóa / Đã nghỉ</div>
           </div>
         </div>
@@ -535,6 +537,14 @@ export function AdminAccountsView() {
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400">
                     Đang tải danh sách tài khoản…
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-rose-700">
+                    <p className="font-semibold">Không thể tải danh sách tài khoản</p>
+                    <p className="mt-1 text-xs text-slate-500">{loadError}</p>
+                    <button type="button" className="button-secondary button-compact mt-3" onClick={() => void refreshAccounts()}>Thử lại</button>
                   </td>
                 </tr>
               ) : filteredAccounts.length === 0 ? (

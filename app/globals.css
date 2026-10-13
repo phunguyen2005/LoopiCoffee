@@ -29,8 +29,9 @@
   --status-neutral: #6b7280;
   --status-neutral-bg: #f3f4f6;
   --shadow: 0 18px 50px rgba(82, 43, 48, 0.09);
+  --bottom-nav-height: 80px;
+  --bottom-nav-with-cta-height: 154px;
 }
-
 * {
   box-sizing: border-box;
 }
@@ -134,6 +135,60 @@ p {
   font-weight: 700;
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
+
+.async-state-panel {
+  min-height: 180px;
+  padding: 28px 22px;
+  border: 1px dashed var(--line);
+  border-radius: 18px;
+  background: #fffdfa;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+.async-state-panel.compact { min-height: 96px; padding: 18px; flex-direction: row; text-align: left; }
+.async-state-panel.error { border-color: #f2b8c2; background: #fff7f8; color: #8f3046; }
+.async-state-panel strong { display: block; color: var(--coffee); font-size: 15px; }
+.async-state-panel p { margin: 4px 0 0; max-width: 520px; font-size: 13px; line-height: 1.55; }
+.async-state-spinner { animation: state-spin .8s linear infinite; }
+@keyframes state-spin { to { transform: rotate(360deg); } }
+.skeleton-block { display: block; border-radius: 999px; background: linear-gradient(90deg, #eee8e4 25%, #faf7f4 50%, #eee8e4 75%); background-size: 200% 100%; animation: state-shimmer 1.4s infinite; }
+@keyframes state-shimmer { to { background-position: -200% 0; } }
+.metric-card-skeleton { align-items: flex-start; justify-content: center; gap: 9px; }
+.skeleton-icon { width: 34px; height: 34px; }
+.skeleton-value { width: 52%; height: 20px; }
+.skeleton-label { width: 72%; height: 13px; }
+.state-list-skeleton { padding: 8px 0; }
+.state-list-skeleton-row { min-height: 68px; padding: 12px 18px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.skeleton-avatar { width: 40px; height: 40px; flex: 0 0 auto; }
+.state-list-skeleton-copy { flex: 1; display: grid; gap: 8px; }
+.state-list-skeleton-copy .skeleton-block:first-child { width: min(240px, 65%); height: 14px; }
+.state-list-skeleton-copy .skeleton-block:last-child { width: min(360px, 88%); height: 11px; }
+.schedule-week-navigation { margin-bottom: 14px; display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+.schedule-week-navigation label { margin-left: auto; display: grid; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.schedule-week-navigation input { min-height: 44px; }
+.schedule-add-day { width: 100%; min-height: 32px; margin-top: 4px; border: 1px dashed #d7c8c3; border-radius: 8px; background: white; color: var(--burgundy); font: inherit; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.schedule-add-day:hover, .schedule-add-day:focus-visible { border-style: solid; background: #fff3f5; }
+.store-map-fallback { position: absolute; inset: 0 0 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 24px; text-align: center; background: #fffaf4; color: var(--muted); }
+.store-map-fallback strong { color: var(--coffee); font-size: 14px; }
+.store-map-fallback span { max-width: 360px; font-size: 12px; line-height: 1.5; }
+@media (max-width: 640px) { .schedule-week-navigation > button { flex: 1 1 auto; } .schedule-week-navigation label { width: 100%; margin-left: 0; } }
+.confirm-dialog-layer { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 16px; }
+.confirm-dialog-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: rgba(35, 24, 24, .52); }
+.confirm-dialog { position: relative; width: min(100%, 520px); padding: 22px; border-radius: 22px; background: white; box-shadow: 0 24px 80px rgba(35, 24, 24, .25); }
+.confirm-dialog-heading { display: grid; grid-template-columns: 42px 1fr 44px; align-items: start; gap: 12px; }
+.confirm-dialog-heading h2 { margin: 0; color: var(--coffee); font-size: 19px; }
+.confirm-dialog-heading p { margin: 5px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.confirm-dialog-icon { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: #fff0f2; color: #a6384f; }
+.confirm-dialog-icon.primary { background: #f4eef0; color: var(--burgundy); }
+.confirm-dialog-details { margin: 18px 0 0 54px; padding-left: 18px; color: var(--coffee); font-size: 14px; line-height: 1.7; }
+.confirm-dialog-actions { margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px; }
+.button-danger { background: #a6384f; box-shadow: 0 10px 24px rgba(166, 56, 79, .2); }
+@media (max-width: 480px) { .confirm-dialog-heading { grid-template-columns: 38px 1fr 44px; } .confirm-dialog-details { margin-left: 0; } .confirm-dialog-actions { flex-direction: column-reverse; } .confirm-dialog-actions button { width: 100%; } }
 
 .button {
   background: var(--burgundy);
@@ -798,13 +853,14 @@ select:focus-visible {
   margin: 0;
   font-family: var(--font-display), sans-serif;
   color: var(--burgundy-dark);
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .card-subtitle {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .text-link {
@@ -812,7 +868,7 @@ select:focus-visible {
   background: transparent;
   color: var(--pink-500);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -955,7 +1011,7 @@ select:focus-visible {
 .metric-card span {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 13px;
 }
 
 .badge {
@@ -1155,7 +1211,6 @@ select:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-
 .progress {
   height: 8px;
   overflow: hidden;
@@ -1273,7 +1328,7 @@ select:focus-visible {
 
 .field label {
   color: var(--coffee);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1285,6 +1340,7 @@ select:focus-visible {
   border-radius: 13px;
   background: #fffdfb;
   color: var(--ink);
+  font-size: 14px;
 }
 
 .field input,
@@ -1575,7 +1631,7 @@ select:focus-visible {
 .supporting-copy {
   margin: 9px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.7;
 }
 
@@ -2038,6 +2094,45 @@ select:focus-visible {
 .payroll-table tbody tr:focus-visible {
   outline: 2px solid var(--pink-500);
   outline-offset: -2px;
+}
+
+@media (max-width: 640px) {
+  .payroll-table {
+    min-width: 680px;
+  }
+
+  .payroll-table th,
+  .payroll-table td {
+    padding: 8px 6px;
+  }
+
+  .payroll-table .sticky-column,
+  .payroll-table .employee-cell {
+    min-width: 130px;
+    max-width: 140px;
+  }
+
+  .payroll-table .employee-avatar {
+    display: none;
+  }
+
+  .payroll-table .employee-cell {
+    gap: 0;
+  }
+
+  .payroll-table .employee-cell small {
+    max-width: 115px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .payroll-table .employee-cell strong {
+    max-width: 115px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .numeric-cell {
@@ -2689,7 +2784,14 @@ select:focus-visible {
   }
 
   .app-main {
-    padding: 0 20px calc(108px + env(safe-area-inset-bottom, 0px));
+    padding: 0 20px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
+  }
+
+  .app-main:has(.mobile-sticky-primary),
+  .app-main:has(.mobile-attendance-cta),
+  .app-main.has-mobile-nav-and-cta,
+  .has-mobile-nav-and-cta {
+    padding-bottom: calc(var(--bottom-nav-with-cta-height) + env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   .mobile-topbar {
@@ -3766,7 +3868,7 @@ select:focus-visible {
   .mobile-topbar-actions .avatar-button { display: none; }
   .mobile-quick-panel { margin-inline: -2px; }
 
-  .employee-today-view { gap: 13px; padding-bottom: 70px; }
+  .employee-today-view { gap: 13px; padding-bottom: 0; }
   .today-summary-card {
     min-height: 0;
     padding: 20px;
@@ -3822,7 +3924,7 @@ select:focus-visible {
     overscroll-behavior-inline: contain;
   }
 
-  .attendance-page-grid { gap: 13px; padding-bottom: 70px; }
+  .attendance-page-grid { gap: 13px; padding-bottom: 0; }
   .capture-card { min-height: 0; border-radius: 22px; }
   .capture-stage { min-height: 242px; }
   .capture-video,
@@ -4372,7 +4474,16 @@ select:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .loopy-preloader--minimal .loopy-preloader__ring-detail {
     animation: none;
   }
 }
+

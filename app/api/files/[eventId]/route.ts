@@ -1,11 +1,12 @@
 import { ensureDatabase, getBindings } from "@/db/runtime";
 import { loadUnexpiredPhoto } from "@/modules/attendance/application/load-photo";
+import { apiHandler } from "@/platform/http/errors";
 import { auditStatement, requireApiUser } from "@/server/auth";
 
-export async function GET(
+export const GET = apiHandler(async (
   _request: Request,
   context: { params: Promise<{ eventId: string }> },
-) {
+) => {
   const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
   const { eventId } = await context.params;
@@ -36,4 +37,4 @@ export async function GET(
       "x-evidence-sha256": photo.sha256,
     },
   });
-}
+});

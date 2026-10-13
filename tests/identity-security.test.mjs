@@ -123,6 +123,7 @@ test("logout is POST-only and refuses a cross-origin request without contacting 
   let calls = 0;
   const route = await actual(t, "../../app/auth/signout/route.ts", {
     "@/lib/supabase/server": { createClient: async () => ({ auth: { signOut: async () => { calls++; return {}; } } }) },
+    "@/server/auth": { invalidateIdentityCache: () => {} },
     "next/server": { NextResponse: { redirect: (url, options) => Response.redirect(url, options.status) } },
   });
   assert.equal(route.GET, undefined);

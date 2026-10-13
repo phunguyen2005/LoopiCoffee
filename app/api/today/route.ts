@@ -1,8 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
+import { apiHandler } from "@/platform/http/errors";
 import { requireApiUser } from "@/server/auth";
 import { businessDate } from "@/modules/operations/domain/business-day";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -75,15 +76,18 @@ export async function GET() {
   const monthStats = monthStatsResult.results[0] as { session_count?: number; month_worked_minutes?: number } | undefined;
   const upcomingShifts = upcomingResult.results as Array<{ id: string; starts_at: string; ends_at: string; role_label: string; is_shift_lead: number }>;
 
-  return Response.json({
-    shift: shift ?? null,
-    attendance: session ?? null,
-    checklist,
-    handover: handover ?? null,
-    monthStats: {
-      sessionCount: Number(monthStats?.session_count ?? 0),
-      workedMinutes: Number(monthStats?.month_worked_minutes ?? 0),
+  return Response.json(
+    {
+      shift: shift ?? null,
+      attendance: session ?? null,
+      checklist,
+      handover: handover ?? null,
+      monthStats: {
+        sessionCount: Number(monthStats?.session_count ?? 0),
+        workedMinutes: Number(monthStats?.month_worked_minutes ?? 0),
+      },
+      upcomingShifts: upcomingShifts ?? [],
     },
-    upcomingShifts: upcomingShifts ?? [],
-  });
-}
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});

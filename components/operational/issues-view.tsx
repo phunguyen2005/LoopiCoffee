@@ -4,7 +4,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { AlertCircle, PackageOpen, Plus } from "lucide-react";
 import {
   ApiState,
-  InlineError,
+  AsyncStatePanel,
+  ListSkeleton,
   ViewHeader,
   formatDateTime,
   readJson,
@@ -87,10 +88,10 @@ export function PersistentIssuesView({ canManage = false }: { canManage?: boolea
             <div className="form-actions"><button className="button button-compact" type="submit" disabled={saving}>{saving ? "Đang gửi…" : "Gửi báo cáo"}</button></div>
           </form>
         )}
-        {state === "error" ? <InlineError text="Không tải được danh sách sự cố." /> : (
+        {state === "error" ? <AsyncStatePanel state="error" title="Không thể tải danh sách sự cố" description="Số sự cố cần xử lý chưa được xác nhận." actionLabel="Thử lại" onAction={() => void refresh()} /> : (
           <div className="list">
-            {state === "loading" && <p className="supporting-copy">Đang tải sự cố…</p>}
-            {state === "ready" && !issues.length && <p className="supporting-copy">Chưa có sự cố nào.</p>}
+            {state === "loading" && <ListSkeleton rows={4} />}
+            {state === "ready" && !issues.length && <AsyncStatePanel state="empty" title="Chưa có sự cố được báo cáo" description="Sự cố thiết bị, nguyên liệu và vận hành sẽ xuất hiện tại đây." actionLabel="Báo sự cố" onAction={() => setShowForm(true)} />}
             {issues.map((issue) => (
               <div className="list-row issue-row" key={issue.id}>
                 <div className="person">
@@ -115,7 +116,7 @@ export function PersistentIssuesView({ canManage = false }: { canManage?: boolea
           <p className="supporting-copy">Báo sớm giúp Quản lý phân công kỹ thuật hoặc chủ động điều chuyển nguyên liệu trước giờ cao điểm.</p>
           <div className="attention-card" style={{ marginTop: 12 }}>
             <span className="badge danger"><AlertCircle size={12} /> Cần ưu tiên</span>
-            <h4 style={{ marginTop: 8 }}>{state === "loading" ? "Đang tải…" : `${(issues ?? []).filter((issue) => ["open", "acknowledged"].includes(issue.status)).length} sự cố cần xử lý`}</h4>
+            <h4 style={{ marginTop: 8 }}>{state !== "ready" ? "— sự cố cần xử lý" : `${(issues ?? []).filter((issue) => ["open", "acknowledged"].includes(issue.status)).length} sự cố cần xử lý`}</h4>
             <p style={{ fontSize: 11, margin: "4px 0 0" }}>Bao gồm hỏng hóc máy móc & thiếu hụt bao bì.</p>
           </div>
         </section>

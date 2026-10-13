@@ -4,7 +4,7 @@ import { auditStatement, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -19,8 +19,11 @@ export async function GET() {
      FROM attendance_rules WHERE store_id = ? AND active = 1
      ORDER BY version DESC LIMIT 1`,
   ).bind(auth.actor.storeId).first();
-  return Response.json({ store, rules });
-}
+  return Response.json(
+    { store, rules },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});
 
 export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner"]);

@@ -12,7 +12,7 @@ export const stores = sqliteTable("stores", {
   attendanceEnabled: integer("attendance_enabled", { mode: "boolean" }).notNull().default(false),
   workforceRevision: integer("workforce_revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
+  updatedAt: text("updated_at"),
 });
 
 export const employees = sqliteTable("employees", {
@@ -40,6 +40,7 @@ export const employees = sqliteTable("employees", {
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
   uniqueIndex("employees_email_idx").on(table.email),
+  uniqueIndex("employees_email_lower_idx").on(sql`lower(${table.email})`),
   index("employees_store_status_idx").on(table.storeId, table.status),
 ]);
 
@@ -80,7 +81,7 @@ export const shifts = sqliteTable("shifts", {
   roleLabel: text("role_label").notNull(),
   isShiftLead: integer("is_shift_lead", { mode: "boolean" }).notNull().default(false),
   status: text("status", { enum: ["draft", "published", "cancelled", "completed"] }).notNull(),
-  createdAt: text("created_at").notNull(),
+  createdAt: text("created_at"),
 }, (table) => [
   index("shifts_employee_start_idx").on(table.employeeEmail, table.startsAt),
   index("shifts_store_status_ends_idx").on(table.storeId, table.status, table.endsAt),
@@ -91,7 +92,7 @@ export const attendanceCaptureSessions = sqliteTable("attendance_capture_session
   employeeEmail: text("employee_email").notNull(),
   storeId: text("store_id").notNull().references(() => stores.id),
   action: text("action", { enum: ["check_in", "check_out"] }).notNull(),
-  nonceHash: text("nonce_hash").notNull(),
+  nonceHash: text("nonce_hash"),
   issuedAt: text("issued_at").notNull(),
   expiresAt: text("expires_at").notNull(),
   usedAt: text("used_at"),
@@ -129,7 +130,7 @@ export const attendanceEvents = sqliteTable("attendance_events", {
   idempotencyKey: text("idempotency_key").notNull(),
   verificationResults: text("verification_results").notNull(),
   reviewRequired: integer("review_required", { mode: "boolean" }).notNull(),
-  photoStatus: text("photo_status", { enum: ["stored", "unavailable", "failed"] }).notNull(),
+  photoStatus: text("photo_status", { enum: ["stored", "unavailable", "failed"] }).notNull().default("unavailable"),
   exceptionReason: text("exception_reason"),
 }, (table) => [
   uniqueIndex("attendance_idempotency_idx").on(table.idempotencyKey),
@@ -147,18 +148,22 @@ export const attendanceLocations = sqliteTable("attendance_locations", {
   distanceFromStoreMeters: real("distance_from_store_meters").notNull(),
   expiresAt: text("expires_at").notNull(),
   deletedAt: text("deleted_at"),
-});
+}, (table) => [
+  index("attendance_locations_expires_idx").on(table.expiresAt),
+]);
 
 export const attendancePhotos = sqliteTable("attendance_photos", {
   eventId: text("event_id").primaryKey().references(() => attendanceEvents.id),
   objectKey: text("object_key").notNull(),
   mimeType: text("mime_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
-  sha256: text("sha256").notNull(),
+  sha256: text("sha256").notNull().default(""),
   overlayVersion: text("overlay_version").notNull(),
   expiresAt: text("expires_at").notNull(),
   deletedAt: text("deleted_at"),
-});
+}, (table) => [
+  index("attendance_photos_expires_idx").on(table.expiresAt),
+]);
 
 export const attendanceExceptions = sqliteTable("attendance_exceptions", {
   id: text("id").primaryKey(),
@@ -224,7 +229,7 @@ export const checklistItems = sqliteTable("checklist_items", {
   required: integer("required", { mode: "boolean" }).notNull(),
   completed: integer("completed", { mode: "boolean" }).notNull(),
   completedAt: text("completed_at"),
-  updatedAt: text("updated_at").notNull(),
+  updatedAt: text("updated_at"),
 }, (table) => [index("checklist_items_store_idx").on(table.storeId)]);
 
 export const checklistExecutions = sqliteTable("checklist_executions", {
@@ -245,7 +250,7 @@ export const incidents = sqliteTable("incidents", {
   severity: text("severity", { enum: ["low", "medium", "high"] }).notNull(),
   status: text("status", { enum: ["open", "acknowledged", "resolved", "closed"] }).notNull(),
   createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
+  updatedAt: text("updated_at"),
 }, (table) => [index("incidents_store_status_idx").on(table.storeId, table.status)]);
 
 export const handovers = sqliteTable("handovers", {
@@ -373,6 +378,7 @@ export const customerOrders = sqliteTable("customer_orders", {
   uniqueIndex("customer_orders_store_receipt_idx").on(table.storeId, table.receiptTokenHash),
   uniqueIndex("customer_orders_store_submission_idx").on(table.storeId, table.submissionKey),
   index("customer_orders_store_status_idx").on(table.storeId, table.status, table.createdAt),
+  index("customer_orders_store_created_idx").on(table.storeId, table.createdAt),
   index("customer_orders_customer_phone_idx").on(table.customerPhone),
 ]);
 

@@ -25,6 +25,22 @@ npm run check
 
 See [architecture decisions and remaining work](docs/architecture.md) for the module boundaries and intentionally unfinished integrations.
 
+## Agent guidance
+
+Any coding agent must read [AGENTS.md](AGENTS.md) before inspecting or changing the repository. Supporting guidance:
+
+- [Architecture and verified boundaries](docs/architecture.md)
+- [Business rules to preserve and verify](docs/business-rules.md)
+- [Database and migration guardrails](docs/database.md)
+- [Security and privacy checklist](docs/security.md)
+- [Testing strategy and repository commands](docs/testing.md)
+- [UI/UX guidelines](docs/ui-ux-guidelines.md)
+- [Database operations](docs/database-operations.md)
+- [Production-readiness audit](docs/production-readiness-audit.md)
+- [Acceptance matrix](docs/acceptance-matrix.md)
+
+The guidance distinguishes target rules and audit questions from verified implementation. Repository code, migrations, executed tests, and current environment evidence remain authoritative.
+
 ## Attendance evidence
 
 - Camera and geolocation start only after the employee taps an attendance action.

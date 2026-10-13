@@ -78,6 +78,8 @@ function accountFor(role: Role) {
 
 async function signIn(page: Page, account: LocalAccount) {
   await page.goto(`${APP_ORIGIN}/auth/login`);
+  await expect(page.locator("form[data-auth-ready]"))
+    .toHaveAttribute("data-auth-ready", "true", { timeout: 15_000 });
   await page.locator("#login-email").fill(account.email);
   await page.locator("#login-password").fill(account.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
@@ -111,6 +113,8 @@ test("forgot-password link reaches a real recovery form", async ({ page }) => {
 test("invalid credentials show an error and do not create an app session", async ({ page }) => {
   const account = accountFor("owner");
   await page.goto(`${APP_ORIGIN}/auth/login`);
+  await expect(page.locator("form[data-auth-ready]"))
+    .toHaveAttribute("data-auth-ready", "true", { timeout: 15_000 });
   await page.locator("#login-email").fill(account.email);
   await page.locator("#login-password").fill("Definitely-invalid-local-password-2026!");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();

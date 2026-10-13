@@ -14,9 +14,6 @@ export async function updateEmployeeAccess(
     id: string; store_id: string; role: ActorRole; status: EmployeeStatus; auth_user_id: string | null;
   }>();
   if (!employee) throw new ApplicationError("Không tìm thấy nhân viên.", 404, "employee_not_found");
-  if (!canManageEmployee(actor, employee) || (change.role !== undefined && !canAssignRole(actor, change.role))) {
-    throw new ApplicationError("Bạn không có quyền thay đổi tài khoản này.", 403, "forbidden");
-  }
   if (change.status !== undefined && !["active", "invited", "suspended", "offboarded", "inactive"].includes(change.status)) {
     throw new ApplicationError("Trạng thái không hợp lệ.");
   }
@@ -24,6 +21,9 @@ export async function updateEmployeeAccess(
   const status = change.status ?? employee.status;
   if (actor.id === employeeId && status !== "active") {
     throw new ApplicationError("Bạn không thể tự vô hiệu hóa tài khoản.", 409, "self_deactivation");
+  }
+  if (!canManageEmployee(actor, employee) || (change.role !== undefined && !canAssignRole(actor, change.role))) {
+    throw new ApplicationError("Bạn không có quyền thay đổi tài khoản này.", 403, "forbidden");
   }
   const now = new Date().toISOString();
   const results = await db.batch([

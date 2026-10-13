@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -13,7 +13,7 @@ import {
   Camera,
   ChevronRight,
 } from "lucide-react";
-import { MetricCard, ViewHeader, formatDateTime, readJson } from "./shared";
+import { AsyncStatePanel, ListSkeleton, MetricCard, MetricSkeleton, ViewHeader, formatDateTime, readJson } from "./shared";
 
 type AttendanceEvent = {
   id: string;
@@ -57,18 +57,21 @@ export function AttendanceReviewView() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
+  const [loadingEvents, setLoadingEvents] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/attendance/review", { cache: "no-store" })
-      .then(readJson<{ events: typeof events }>)
-      .then((payload) => setEvents(payload.events ?? []))
-      .catch((cause: unknown) => setReviewError(cause instanceof Error ? cause.message : "Không thể tải chấm công."));
+  const refresh = useCallback(async () => {
+    setLoadingEvents(true); setReviewError("");
+    try {
+      const payload = await readJson<{ events: typeof events }>(await fetch("/api/attendance/review", { cache: "no-store" }));
+      setEvents(payload.events ?? []);
+    } catch (cause) { setReviewError(cause instanceof Error ? cause.message : "Không thể tải chấm công."); }
+    finally { setLoadingEvents(false); }
   }, []);
 
-  async function refresh() {
-    const payload = await readJson<{ events: typeof events }>(await fetch("/api/attendance/review", { cache: "no-store" }));
-    setEvents(payload.events ?? []);
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refresh(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   async function decide(eventId: string, decision: "approved" | "rejected") {
     if (reviewBusy) return;
@@ -184,13 +187,15 @@ export function AttendanceReviewView() {
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      {reviewError && <p role="alert">{reviewError}</p>}
+      {reviewError && !loadingEvents && events.length > 0 && <p role="alert">{reviewError}</p>}
       {/* Top Metric Grid */}
       <section className="metric-grid">
-        <MetricCard icon={AlertCircle} tone="pink" value={String(pendingCount)} label="Cần phê duyệt" />
-        <MetricCard icon={ShieldCheck} tone="mint" value={String((events ?? []).filter((e) => !e.reviewRequired || e.exceptionStatus === "approved").length)} label="Đã hoàn tất" />
-        <MetricCard icon={MapPin} tone="amber" value={String((events ?? []).filter((e) => e.location).length)} label="Có tọa độ GPS" />
-        <MetricCard icon={CheckCircle2} tone="burgundy" value={String((events ?? []).filter((e) => e.photoPresent).length)} label="Có ảnh máy chủ" />
+        {loadingEvents || reviewError ? Array.from({ length: 4 }, (_, index) => <MetricSkeleton key={index} label="chỉ số chấm công" />) : <>
+          <MetricCard icon={AlertCircle} tone="pink" value={String(pendingCount)} label="Cần phê duyệt" />
+          <MetricCard icon={ShieldCheck} tone="mint" value={String((events ?? []).filter((e) => !e.reviewRequired || e.exceptionStatus === "approved").length)} label="Đã hoàn tất" />
+          <MetricCard icon={MapPin} tone="amber" value={String((events ?? []).filter((e) => e.location).length)} label="Có tọa độ GPS" />
+          <MetricCard icon={CheckCircle2} tone="burgundy" value={String((events ?? []).filter((e) => e.photoPresent).length)} label="Có ảnh máy chủ" />
+        </>}
       </section>
 
       {/* Main Review Section */}
@@ -258,10 +263,8 @@ export function AttendanceReviewView() {
 
         {/* Review Cards Grid */}
         <div className="review-grid">
-          {filteredEvents.length === 0 ? (
-            <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
-              Không có bản ghi chấm công nào phù hợp với bộ lọc.
-            </div>
+          {loadingEvents ? <ListSkeleton rows={5} /> : reviewError ? <AsyncStatePanel state="error" title="Không thể tải dữ liệu chấm công" description={reviewError} actionLabel="Thử lại" onAction={() => void refresh()} /> : filteredEvents.length === 0 ? (
+            search.trim() || statusFilter !== "all" ? <AsyncStatePanel state="empty" title="Không có bản ghi khớp bộ lọc" description="Thử từ khóa khác hoặc xóa bộ lọc hiện tại." actionLabel="Xóa bộ lọc" onAction={() => { setSearch(""); setStatusFilter("all"); }} /> : <AsyncStatePanel state="empty" title="Chưa phát sinh chấm công" description="Bản ghi chấm vào/ra của nhân viên sẽ xuất hiện tại đây." />
           ) : (
             filteredEvents.map((event) => {
               const isPending = event.reviewRequired && event.exceptionStatus === "pending";

@@ -21,20 +21,71 @@ const TEST_ACCOUNTS = [
   },
 ];
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 export async function POST(request: Request) {
-  if (process.env.ENABLE_DEMO_SEED !== "true") {
-    return NextResponse.json({ error: "Demo seeding is disabled" }, { status: 403 });
+  // 1. Strict environment check: Never execute in production mode, require local runtime profile, and require ENABLE_DEMO_SEED === "true"
+  const isProduction = process.env.NODE_ENV === "production";
+  const isLocalProfile = process.env.LOOPI_RUNTIME_PROFILE === "local" || process.env.LOOPI_LOCAL_ONLY === "true";
+  const isDemoSeedEnabled = process.env.ENABLE_DEMO_SEED === "true";
+
+  if (isProduction || !isLocalProfile || !isDemoSeedEnabled) {
+    return NextResponse.json(
+      { error: "Endpoint không tồn tại hoặc đã bị vô hiệu hóa trên môi trường này.", code: "not_found" },
+      { status: 404 }
+    );
   }
+
+  // 2. Strict loopback check: Reject remote host and proxy headers
+  let url: URL;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return NextResponse.json(
+      { error: "URL yêu cầu không hợp lệ.", code: "bad_request" },
+      { status: 400 }
+    );
+  }
+
+  if (!LOOPBACK_HOSTS.has(url.hostname)) {
+    return NextResponse.json(
+      { error: "Thao tác chỉ được phép thực hiện từ giao diện mạng loopback cục bộ.", code: "forbidden" },
+      { status: 403 }
+    );
+  }
+
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  if (forwardedHost) {
+    const hostPart = forwardedHost.split(":")[0].toLowerCase();
+    if (!LOOPBACK_HOSTS.has(hostPart)) {
+      return NextResponse.json(
+        { error: "Thao tác chỉ được phép thực hiện từ giao diện mạng loopback cục bộ.", code: "forbidden" },
+        { status: 403 }
+      );
+    }
+  }
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const clientIp = forwardedFor.split(",")[0].trim().toLowerCase();
+    if (!LOOPBACK_HOSTS.has(clientIp)) {
+      return NextResponse.json(
+        { error: "Thao tác chỉ được phép thực hiện từ giao diện mạng loopback cục bộ.", code: "forbidden" },
+        { status: 403 }
+      );
+    }
+  }
+
   const seedSecret = process.env.SEED_SECRET;
   const accountPassword = process.env.TEST_ACCOUNT_PASSWORD;
   const authorization = request.headers.get("authorization");
 
   if (!seedSecret || authorization !== `Bearer ${seedSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized", code: "unauthorized" }, { status: 401 });
   }
   if (!accountPassword) {
     return NextResponse.json(
-      { error: "TEST_ACCOUNT_PASSWORD is not configured" },
+      { error: "Dịch vụ chưa được cấu hình hoàn chỉnh để khởi tạo.", code: "service_unavailable" },
       { status: 503 },
     );
   }
@@ -47,7 +98,10 @@ export async function POST(request: Request) {
     await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
 
   if (listError) {
-    return NextResponse.json({ error: listError.message }, { status: 502 });
+    return NextResponse.json(
+      { error: "Không thể truy vấn dịch vụ xác thực cục bộ.", code: "auth_service_error" },
+      { status: 502 }
+    );
   }
 
   // Ensure Store exists
@@ -74,7 +128,7 @@ export async function POST(request: Request) {
           });
 
         if (createErr) {
-          results.push({ email: acc.email, status: 'error', error: createErr.message });
+          results.push({ email: acc.email, status: 'error' });
           continue;
         }
         userId = newUser.user.id;
@@ -105,11 +159,9 @@ export async function POST(request: Request) {
         email: acc.email,
         role: acc.role,
         status: 'ready',
-        userId,
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      results.push({ email: acc.email, status: 'failed', error: msg });
+    } catch {
+      results.push({ email: acc.email, status: 'failed' });
     }
   }
 

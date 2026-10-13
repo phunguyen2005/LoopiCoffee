@@ -5,7 +5,7 @@ import { readObject } from "@/platform/http/input";
 import { ensureDatabase } from "@/db/runtime";
 import { requireApiUser } from "@/server/auth";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -19,8 +19,11 @@ export async function GET() {
   const result = auth.actor.role === "employee"
     ? await statement.bind(auth.actor.storeId, auth.actor.email).all()
     : await statement.bind(auth.actor.storeId).all();
-  return Response.json({ requests: result.results, actorEmail: auth.actor.email });
-}
+  return Response.json(
+    { requests: result.results, actorEmail: auth.actor.email },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});
 
 export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();

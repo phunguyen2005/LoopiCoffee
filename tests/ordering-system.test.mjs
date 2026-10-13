@@ -157,6 +157,56 @@ test("durable throttling shares counters across calls, expires windows and store
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM order_rate_limits").get().n,2);
 });
 
+test("PERF-002: calling /api/order/track produces exactly 0 write operations into D1 database", async t => {
+  const db = fixture(t);
+  const track = route("app/api/order/track/route.ts", db);
+  const placed = await place(db);
+
+  // Assert failOn immediately trips if any INSERT, UPDATE, or DELETE statement is executed
+  db.failOn(/\b(INSERT|UPDATE|DELETE)\b/i);
+
+  for (let i = 0; i < 20; i++) {
+    const res = await track.GET(new Request("http://localhost/track", {
+      headers: { "x-order-receipt": placed.token },
+    }));
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.order.id, placed.order.id);
+  }
+
+  // Double check that the order_rate_limits table has 0 rows
+  const count = db.sqlite.prepare("SELECT count(*) n FROM order_rate_limits").get().n;
+  assert.equal(count, 0, "Bảng order_rate_limits phải có đúng 0 dòng khi gọi /api/order/track");
+});
+
+test("PERF-002: in-memory rate limiter protects /api/order/track from flooding without D1 writes", async t => {
+  const db = fixture(t);
+  const req = new Request("http://localhost/track", {
+    headers: { "cf-connecting-ip": "203.0.113.99" },
+  });
+
+  // Zero D1 writes allowed during tracking rate checks
+  db.failOn(/\b(INSERT|UPDATE|DELETE)\b/i);
+
+  // 120 calls within same minute bucket succeed
+  for (let i = 0; i < 120; i++) {
+    await limitOrderRequests(db, "store-test", req, "track", 1000);
+  }
+
+  // 121st call within same minute bucket throws 429
+  await assert.rejects(
+    limitOrderRequests(db, "store-test", req, "track", 1000),
+    { status: 429, code: "rate_limited" },
+  );
+
+  // After 60s TTL expires, requests are permitted again
+  await limitOrderRequests(db, "store-test", req, "track", 61001);
+
+  // Verify D1 table still has 0 rows
+  const count = db.sqlite.prepare("SELECT count(*) n FROM order_rate_limits").get().n;
+  assert.equal(count, 0);
+});
+
 test("actual HTTP handlers use receipt header, safe errors, replay, and role guards",async t=>{
   const db=fixture(t);const create=route("app/api/order/create/route.ts",db);const track=route("app/api/order/track/route.ts",db);
   const key=crypto.randomUUID(),token=receipt();const headers={"idempotency-key":key,"x-order-receipt":token};

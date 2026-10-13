@@ -4,7 +4,7 @@ import { auditStatement } from "../../../server/audit.ts";
 import { resolvePayrollPeriod } from "../domain/period.ts";
 
 export async function addPayrollAdjustment(db: D1Database, actor: AccessActor, input: { id?: unknown; period?: unknown; employeeEmail?: unknown; amount?: unknown; reason?: unknown }) {
-  if (!["owner", "manager", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh lương.", 403, "forbidden");
+  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh lương.", 403, "forbidden");
   if (typeof input.id !== "string" || !/^[a-zA-Z0-9-]{16,64}$/.test(input.id) || typeof input.period !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(input.period) || typeof input.employeeEmail !== "string" || typeof input.amount !== "number" || !Number.isSafeInteger(input.amount) || input.amount === 0 || Math.abs(input.amount) > 100000000 || typeof input.reason !== "string" || input.reason.trim().length < 5 || input.reason.length > 1000) throw new ApplicationError("Điều chỉnh cần số tiền nguyên khác 0, kỳ lương và lý do từ 5 đến 1000 ký tự.");
   const email = input.employeeEmail.toLowerCase(), reason = input.reason.trim();
   const existing = await db.prepare("SELECT store_id, period_key, employee_email, amount, reason FROM payroll_adjustments WHERE id = ?").bind(input.id)

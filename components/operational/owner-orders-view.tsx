@@ -21,9 +21,11 @@ import {
   Trash2,
   Plus,
   Calendar,
+  AlertCircle,
 } from "lucide-react";
 import { formatVND } from "../order/menu-card";
 import { DrinkVisual } from "../order/drink-visual";
+import { AsyncStatePanel, ListSkeleton } from "./shared";
 
 interface OrderItem {
   id: string;
@@ -125,17 +127,16 @@ export function OwnerOrdersView() {
 
   // Orders State
   const [orders, setOrders] = useState<OrderRecord[]>([]);
-  const [counts, setCounts] = useState<OrderCounts>({
-    total: 0,
-    pending: 0,
-    accepted: 0,
-    preparing: 0,
-    ready: 0,
-    completed: 0,
-    cancelled: 0,
-  });
-  const [isOrderingOpen, setIsOrderingOpen] = useState(true);
+  const [counts, setCounts] = useState<OrderCounts | null>(null);
+  const [isOrderingOpen, setIsOrderingOpen] = useState<boolean | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState<{ message: string; status?: number; code?: string } | null>(null);
+  const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<Date | null>(null);
+  const [storeStatusLoading, setStoreStatusLoading] = useState(true);
+  const [storeStatusError, setStoreStatusError] = useState("");
+  const ordersRequestIdRef = useRef(0);
+  const isCancelledRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
@@ -236,21 +237,33 @@ export function OwnerOrdersView() {
 
   // Fetch Orders
   const fetchOrders = useCallback(async (isPolling = false) => {
+    const currentReqId = ++ordersRequestIdRef.current;
+    if (!isPolling) setLoadingOrders(true);
     try {
       let url = `/api/owner/orders?`;
       if (statusFilter !== "all") url += `status=${encodeURIComponent(statusFilter)}&`;
       if (searchQuery.trim()) url += `q=${encodeURIComponent(searchQuery.trim())}&`;
       const dateQ = buildDateQuery();
       if (dateQ) url += `${dateQ}&`;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+
       if (res.ok) {
         const data = (await res.json()) as {
           orders?: OrderRecord[];
           counts?: OrderCounts;
           isOrderingOpen?: boolean;
         };
+        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+
         setOrders(data.orders || []);
+        setOrdersError(null);
         const newCounts = data.counts || {
           total: 0,
           pending: 0,
@@ -262,6 +275,9 @@ export function OwnerOrdersView() {
         };
         setCounts(newCounts);
         setIsOrderingOpen(Boolean(data.isOrderingOpen));
+        setStoreStatusLoading(false);
+        setStoreStatusError("");
+        setOrdersUpdatedAt(new Date());
 
         // Sound alert if new pending orders arrived
         if (soundEnabledRef.current && newCounts.pending > previousPendingCount.current) {
@@ -275,11 +291,36 @@ export function OwnerOrdersView() {
           const found = (data.orders || []).find((o: OrderRecord) => o.id === prev.id);
           return found || prev;
         });
+      } else {
+        let errorMsg = "Không thể tải danh sách đơn hàng. Vui lòng thử lại.";
+        let code: string | undefined;
+        try {
+          const errPayload = (await res.json()) as { error?: string; code?: string };
+          if (errPayload.error) errorMsg = errPayload.error;
+          if (errPayload.code) code = errPayload.code;
+        } catch {
+          // ignore parsing error
+        }
+        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+        if (res.status === 401) {
+          errorMsg = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+        } else if (res.status === 403) {
+          errorMsg = "Tài khoản của bạn không có quyền xem đơn hàng của cửa hàng.";
+        } else if (!res.ok) {
+          errorMsg = "Không thể tải danh sách đơn hàng. Vui lòng thử lại.";
+        }
+        setOrdersError({ message: errorMsg, status: res.status, code });
       }
-    } catch {
-      // ignore polling errors
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+      setOrdersError({
+        message: "Không thể tải danh sách đơn hàng. Vui lòng thử lại.",
+      });
     } finally {
-      if (!isPolling) setLoadingOrders(false);
+      if (currentReqId === ordersRequestIdRef.current && !isCancelledRef.current && !isPolling) {
+        setLoadingOrders(false);
+      }
     }
   }, [statusFilter, searchQuery, buildDateQuery]);
 
@@ -304,83 +345,79 @@ export function OwnerOrdersView() {
 
   // Fetch Store Status
   const fetchStoreSettings = useCallback(async () => {
+    setStoreStatusLoading(true);
+    setStoreStatusError("");
     try {
       const res = await fetch("/api/owner/store-status", { cache: "no-store" });
-      if (res.ok) {
-        const data = (await res.json()) as {
-          isOrderingOpen?: boolean;
-          announcement?: string;
-          openingHoursNotice?: string;
-        };
-        setIsOrderingOpen(Boolean(data.isOrderingOpen));
-        setAnnouncement(data.announcement || "");
-        setOpeningHours(data.openingHoursNotice || "08:00 - 22:30");
-      }
-    } catch {
-      // ignore
+      const data = (await res.json()) as {
+        isOrderingOpen?: boolean;
+        announcement?: string;
+        openingHoursNotice?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Không thể tải trạng thái nhận đơn.");
+      setIsOrderingOpen(Boolean(data.isOrderingOpen));
+      setAnnouncement(data.announcement || "");
+      setOpeningHours(data.openingHoursNotice || "08:00 - 22:30");
+    } catch (cause) {
+      setStoreStatusError(cause instanceof Error ? cause.message : "Không thể tải trạng thái nhận đơn.");
+    } finally {
+      setStoreStatusLoading(false);
     }
   }, []);
 
-  // Initial load and polling via standard async microtasks
+  // Initial load and single-flight recursive polling via setTimeout with visibility handling
   useEffect(() => {
+    isCancelledRef.current = false;
     let isCancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const runFetch = (isPolling = false) => {
-      let url = `/api/owner/orders?`;
-      if (statusFilter !== "all") url += `status=${encodeURIComponent(statusFilter)}&`;
-      if (searchQuery.trim()) url += `q=${encodeURIComponent(searchQuery.trim())}&`;
-      const dateQ = buildDateQuery();
-      if (dateQ) url += `${dateQ}&`;
-
-      fetch(url, { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((raw: unknown) => {
-          if (!raw || isCancelled) return;
-          const data = raw as {
-            orders?: OrderRecord[];
-            counts?: OrderCounts;
-            isOrderingOpen?: boolean;
-          };
-          setOrders(data.orders || []);
-          const newCounts = data.counts || {
-            total: 0,
-            pending: 0,
-            accepted: 0,
-            preparing: 0,
-            ready: 0,
-            completed: 0,
-            cancelled: 0,
-          };
-          setCounts(newCounts);
-          setIsOrderingOpen(Boolean(data.isOrderingOpen));
-
-          if (soundEnabledRef.current && newCounts.pending > previousPendingCount.current) {
-            playChimeSound();
-          }
-          previousPendingCount.current = newCounts.pending;
-
-          setSelectedOrder((prev) => {
-            if (!prev) return null;
-            const found = (data.orders || []).find((o: OrderRecord) => o.id === prev.id);
-            return found || prev;
-          });
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!isPolling && !isCancelled) setLoadingOrders(false);
-        });
+    const poll = async () => {
+      if (typeof document !== "undefined" && document.hidden) {
+        if (!isCancelled) {
+          pollTimer = setTimeout(poll, 15000);
+        }
+        return;
+      }
+      await fetchOrders(true);
+      if (!isCancelled) {
+        pollTimer = setTimeout(poll, 4000);
+      }
     };
 
-    runFetch(false);
-    const interval = setInterval(() => {
-      runFetch(true);
-    }, 4000);
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden && !isCancelled) {
+        if (pollTimer) clearTimeout(pollTimer);
+        void fetchOrders(true);
+        pollTimer = setTimeout(poll, 4000);
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    pollTimer = setTimeout(() => {
+      void fetchStoreSettings();
+      void fetchOrders(false).then(() => {
+        if (!isCancelled) {
+          pollTimer = setTimeout(poll, 4000);
+        }
+      });
+    }, 0);
 
     return () => {
       isCancelled = true;
-      clearInterval(interval);
+      isCancelledRef.current = true;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+      if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [statusFilter, searchQuery, buildDateQuery]);
+  }, [fetchOrders, fetchStoreSettings]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -401,26 +438,14 @@ export function OwnerOrdersView() {
           if (!isCancelled) setLoadingMenu(false);
         });
     } else if (activeTab === "settings") {
-      fetch("/api/owner/store-status", { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((raw: unknown) => {
-          if (!raw || isCancelled) return;
-          const data = raw as {
-            isOrderingOpen?: boolean;
-            announcement?: string;
-            openingHoursNotice?: string;
-          };
-          setIsOrderingOpen(Boolean(data.isOrderingOpen));
-          setAnnouncement(data.announcement || "");
-          setOpeningHours(data.openingHoursNotice || "08:00 - 22:30");
-        })
-        .catch(() => {});
+      const timer = window.setTimeout(() => { if (!isCancelled) void fetchStoreSettings(); }, 0);
+      return () => { isCancelled = true; window.clearTimeout(timer); };
     }
 
     return () => {
       isCancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, fetchStoreSettings]);
 
   // Status transition handler
   const handleTransitionStatus = async (order: OrderRecord, newStatus: string) => {
@@ -676,6 +701,7 @@ export function OwnerOrdersView() {
 
   // Toggle online ordering
   const handleToggleStoreOrdering = async (open: boolean) => {
+    if (isOrderingOpen === null) return;
     setIsOrderingOpen(open);
     try {
       const response = await fetch("/api/owner/store-status", {
@@ -693,6 +719,10 @@ export function OwnerOrdersView() {
   // Save store settings
   const handleSaveStoreSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOrderingOpen === null) {
+      setSettingsMessage("Chưa tải được trạng thái nhận đơn. Hãy tải lại trước khi lưu.");
+      return;
+    }
     setSavingSettings(true);
     setSettingsMessage(null);
     try {
@@ -769,14 +799,17 @@ export function OwnerOrdersView() {
             <span className="font-semibold text-stone-600">Nhận đơn:</span>
             <button
               type="button"
-              onClick={() => handleToggleStoreOrdering(!isOrderingOpen)}
+              disabled={storeStatusLoading || isOrderingOpen === null}
+              onClick={() => isOrderingOpen !== null && handleToggleStoreOrdering(!isOrderingOpen)}
               className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                isOrderingOpen
+                isOrderingOpen === null
+                  ? "bg-stone-200 text-stone-500"
+                  : isOrderingOpen
                   ? "bg-emerald-600 text-white shadow-sm"
                   : "bg-red-600 text-white shadow-sm"
               }`}
             >
-              {isOrderingOpen ? "● Đang mở" : "○ Tạm ngưng"}
+              {storeStatusLoading || isOrderingOpen === null ? "Đang xác nhận…" : isOrderingOpen ? "● Đang mở" : "○ Tạm ngưng"}
             </button>
           </div>
 
@@ -804,7 +837,7 @@ export function OwnerOrdersView() {
         >
           <ShoppingBag size={16} />
           <span>Đơn hàng</span>
-          {counts.pending > 0 && (
+          {counts !== null && counts.pending > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-[#C85A32] text-white animate-pulse">
               {counts.pending}
             </span>
@@ -857,22 +890,22 @@ export function OwnerOrdersView() {
           {/* Summary Metric Counters (Horizontal swipe on mobile, grid on sm+) */}
           <div className="flex overflow-x-auto pb-1 gap-2.5 sm:grid sm:grid-cols-4 lg:grid-cols-7 sm:gap-3 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
             {[
-              { key: "all", label: "Tất cả đơn", count: counts.total, color: "bg-stone-100 text-stone-800" },
+              { key: "all", label: "Tất cả đơn", count: counts?.total, color: "bg-stone-100 text-stone-800" },
               {
                 key: "pending",
                 label: "Chờ xác nhận",
-                count: counts.pending,
-                color: counts.pending > 0 ? "bg-amber-500 text-white font-bold animate-pulse shadow-md" : "bg-amber-100 text-amber-800",
+                count: counts?.pending,
+                color: (counts?.pending ?? 0) > 0 ? "bg-amber-500 text-white font-bold animate-pulse shadow-md" : "bg-amber-100 text-amber-800",
               },
-              { key: "accepted", label: "Đã nhận", count: counts.accepted, color: "bg-blue-100 text-blue-800" },
-              { key: "preparing", label: "Đang chuẩn bị", count: counts.preparing, color: "bg-purple-100 text-purple-800" },
-              { key: "ready", label: "Sẵn sàng", count: counts.ready, color: "bg-emerald-100 text-emerald-800" },
-              { key: "completed", label: "Hoàn tất", count: counts.completed, color: "bg-stone-200 text-stone-700" },
+              { key: "accepted", label: "Đã nhận", count: counts?.accepted, color: "bg-blue-100 text-blue-800" },
+              { key: "preparing", label: "Đang chuẩn bị", count: counts?.preparing, color: "bg-purple-100 text-purple-800" },
+              { key: "ready", label: "Sẵn sàng", count: counts?.ready, color: "bg-emerald-100 text-emerald-800" },
+              { key: "completed", label: "Hoàn tất", count: counts?.completed, color: "bg-stone-200 text-stone-700" },
               {
                 key: "cancelled",
                 label: "Đã huỷ",
-                count: counts.cancelled,
-                color: counts.cancelled > 0 ? "bg-red-500 text-white font-bold shadow-md" : "bg-red-100 text-red-700",
+                count: counts?.cancelled,
+                color: (counts?.cancelled ?? 0) > 0 ? "bg-red-500 text-white font-bold shadow-md" : "bg-red-100 text-red-700",
               },
             ].map((stat) => (
               <button
@@ -887,9 +920,9 @@ export function OwnerOrdersView() {
               >
                 <div className="text-[11px] sm:text-xs text-stone-500 font-medium whitespace-nowrap">{stat.label}</div>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-lg sm:text-xl font-black text-stone-900">{stat.count}</span>
+                  <span className="text-lg sm:text-xl font-black text-stone-900">{stat.count ?? "—"}</span>
                   <span className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full ${stat.color}`}>
-                    {stat.count}
+                    {stat.count ?? "—"}
                   </span>
                 </div>
               </button>
@@ -951,26 +984,54 @@ export function OwnerOrdersView() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
               <span className="text-xs text-stone-500">
-                Hiển thị <strong>{orders.length}</strong> đơn hàng
+                {loadingOrders && counts === null ? "Đang xác nhận dữ liệu" : <>Hiển thị <strong>{orders.length}</strong> đơn hàng</>}
                 {statusFilter !== "all" && ` (${statusFilter})`}
               </span>
             </div>
           </div>
 
+          {/* Stale Data Warning Banner */}
+          {orders.length > 0 && ordersError && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 shadow-sm">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Dữ liệu có thể chưa được cập nhật mới nhất</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {ordersError.message}
+                    {ordersUpdatedAt && ` Lần cập nhật thành công: ${ordersUpdatedAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}.`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchOrders(false)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-200/80 hover:bg-amber-200 text-amber-900 rounded-xl text-xs font-semibold shrink-0 transition-colors"
+              >
+                <RefreshCw size={14} />
+                Thử lại ngay
+              </button>
+            </div>
+          )}
+
           {/* Order Cards List */}
           {loadingOrders && orders.length === 0 ? (
-            <div className="py-20 text-center">
-              <RefreshCw size={28} className="animate-spin text-[#3D5A40] mx-auto mb-2" />
-              <p className="text-stone-500 text-sm">Đang nạp danh sách đơn hàng...</p>
-            </div>
+            <div className="bg-white rounded-2xl border border-stone-200"><ListSkeleton rows={5} /></div>
+          ) : orders.length === 0 && ordersError ? (
+            <AsyncStatePanel
+              state="error"
+              title={ordersError.status === 401 ? "Phiên đăng nhập đã hết hạn" : ordersError.status === 403 ? "Không có quyền xem đơn hàng" : "Không thể tải danh sách đơn hàng"}
+              description={ordersError.message}
+              actionLabel={ordersError.status === 401 ? "Đăng nhập lại" : "Thử lại"}
+              actionHref={ordersError.status === 401 ? "/auth/login" : undefined}
+              onAction={ordersError.status === 401 ? undefined : () => void fetchOrders(false)}
+            />
           ) : orders.length === 0 ? (
-            <div className="py-16 text-center bg-white rounded-2xl border border-stone-200 p-6">
-              <ShoppingBag size={36} className="text-stone-300 mx-auto mb-2" />
-              <p className="text-stone-600 font-semibold text-base">Không có đơn hàng nào</p>
-              <p className="text-xs text-stone-400 mt-1">
-                Các đơn đặt từ trang khách hàng sẽ xuất hiện ngay tại đây!
-              </p>
-            </div>
+            statusFilter !== "all" || searchQuery.trim() || datePreset !== "all" ? (
+              <AsyncStatePanel state="empty" title="Không có đơn khớp bộ lọc" description="Thử điều kiện khác hoặc xóa toàn bộ bộ lọc hiện tại." actionLabel="Xóa bộ lọc" onAction={() => { setStatusFilter("all"); setSearchQuery(""); setDatePreset("all"); setCustomDate(""); }} />
+            ) : (
+              <AsyncStatePanel state="empty" title="Chưa phát sinh đơn hàng" description="Đơn đặt thành công từ trang khách hàng sẽ xuất hiện tại đây." />
+            )
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {[...orders]
@@ -1099,34 +1160,34 @@ export function OwnerOrdersView() {
                           {formatVND(ord.totalAmount)}
                         </div>
 
-                        <div className="flex items-center gap-1.5 sm:gap-2">
+                        <div className="flex items-center gap-2.5 sm:gap-3">
                           {ord.status === "cancelled" && (
                             <span className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
                               Đơn đã huỷ
                             </span>
                           )}
 
-                          {/* Cancel Button */}
+                          {/* Cancel Button - Kept separated with gap and confirmation modal */}
                           {ord.status !== "completed" && ord.status !== "cancelled" && (
                             <button
                               type="button"
                               onClick={() => setCancelModalOrder(ord)}
-                              className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors active:scale-95"
+                              className="min-h-[44px] px-3 py-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50/50 hover:bg-red-100 text-xs font-semibold transition-colors active:scale-95"
                             >
                               Huỷ
                             </button>
                           )}
 
-                          {/* Workflow Next Action Buttons */}
+                          {/* Workflow Next Action Buttons - 44px touch targets */}
                           {ord.status === "pending" && (
                             <button
                               type="button"
                               disabled={isUpdatingStatus}
                               onClick={() => handleTransitionStatus(ord, "accepted")}
-                              className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1 transition-all"
+                              className="min-h-[44px] px-3.5 sm:px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
                             >
                               <span>Xác nhận</span>
-                              <ArrowRight size={13} />
+                              <ArrowRight size={14} />
                             </button>
                           )}
 
@@ -1135,10 +1196,10 @@ export function OwnerOrdersView() {
                               type="button"
                               disabled={isUpdatingStatus}
                               onClick={() => handleTransitionStatus(ord, "preparing")}
-                              className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1 transition-all"
+                              className="min-h-[44px] px-3.5 sm:px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
                             >
                               <span>Chuẩn bị</span>
-                              <ArrowRight size={13} />
+                              <ArrowRight size={14} />
                             </button>
                           )}
 
@@ -1147,10 +1208,10 @@ export function OwnerOrdersView() {
                               type="button"
                               disabled={isUpdatingStatus}
                               onClick={() => handleTransitionStatus(ord, "ready")}
-                              className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1 transition-all"
+                              className="min-h-[44px] px-3.5 sm:px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
                             >
                               <span>Sẵn sàng</span>
-                              <ArrowRight size={13} />
+                              <ArrowRight size={14} />
                             </button>
                           )}
 
@@ -1159,17 +1220,17 @@ export function OwnerOrdersView() {
                               type="button"
                               disabled={isUpdatingStatus}
                               onClick={() => handleTransitionStatus(ord, "completed")}
-                              className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1 transition-all"
+                              className="min-h-[44px] px-3.5 sm:px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-black active:scale-95 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
                             >
                               <span>Hoàn tất</span>
-                              <Check size={13} strokeWidth={3} />
+                              <Check size={14} strokeWidth={3} />
                             </button>
                           )}
 
                           <button
                             type="button"
                             onClick={() => setSelectedOrder(ord)}
-                            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-600 active:scale-95"
+                            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-600 active:scale-95"
                             title="Xem chi tiết đơn"
                           >
                             <ChevronRight size={16} />
@@ -1541,6 +1602,10 @@ export function OwnerOrdersView() {
             </div>
           )}
 
+          {storeStatusError && (
+            <AsyncStatePanel compact state="error" title="Không thể tải thiết lập nhận đơn" description={storeStatusError} actionLabel="Thử lại" onAction={() => void fetchStoreSettings()} />
+          )}
+
           <div className="pt-2 space-y-4">
             <div className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-200">
               <div>
@@ -1551,12 +1616,13 @@ export function OwnerOrdersView() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsOrderingOpen(!isOrderingOpen)}
+                disabled={storeStatusLoading || isOrderingOpen === null}
+                onClick={() => isOrderingOpen !== null && setIsOrderingOpen(!isOrderingOpen)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  isOrderingOpen ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                  isOrderingOpen === null ? "bg-stone-200 text-stone-500" : isOrderingOpen ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
                 }`}
               >
-                {isOrderingOpen ? "Đang mở" : "Tạm ngưng"}
+                {storeStatusLoading || isOrderingOpen === null ? "Đang xác nhận…" : isOrderingOpen ? "Đang mở" : "Tạm ngưng"}
               </button>
             </div>
 

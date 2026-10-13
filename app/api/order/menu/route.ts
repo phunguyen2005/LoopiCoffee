@@ -38,17 +38,24 @@ export const GET = apiHandler(async () => {
       address?: string;
     } | undefined;
 
-    return Response.json({
-      store: {
-        id: store?.id ?? STORE_ID,
-        name: store?.name ?? "La Boong - Trà Ô Long Làng La Boong",
-        address: store?.address ?? "Chi nhánh Trung Tâm",
-        isOrderingOpen: Boolean(settings?.is_ordering_open),
-        announcement: settings?.announcement ?? "Chào mừng bạn đến với La Boong!",
-        openingHoursNotice: settings?.opening_hours_notice ?? "08:00 - 22:30",
+    return Response.json(
+      {
+        store: {
+          id: store?.id ?? STORE_ID,
+          name: store?.name ?? "La Boong - Trà Ô Long Làng La Boong",
+          address: store?.address ?? "Chi nhánh Trung Tâm",
+          isOrderingOpen: Boolean(settings?.is_ordering_open),
+          announcement: settings?.announcement ?? "Chào mừng bạn đến với La Boong!",
+          openingHoursNotice: settings?.opening_hours_notice ?? "08:00 - 22:30",
+        },
+        categories: categoriesResult.results ?? [],
+        items: itemsResult.results ?? [],
+        options: optionsResult.results ?? [],
       },
-      categories: categoriesResult.results ?? [],
-      items: itemsResult.results ?? [],
-      options: optionsResult.results ?? [],
-    });
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+        },
+      },
+    );
 });

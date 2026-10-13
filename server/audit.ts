@@ -8,10 +8,11 @@ export function auditStatement(
   createdAt = new Date().toISOString(),
   onlyIfChanged = false,
   id = crypto.randomUUID(),
+  explicitStoreId?: string | null,
 ) {
   return db.prepare(
     `INSERT INTO audit_events (id, actor_email, entity_type, entity_id, action, metadata, created_at, store_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, (SELECT MIN(store_id) FROM employees WHERE lower(email) = lower(?) HAVING COUNT(*) = 1)
+     SELECT ?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT MIN(store_id) FROM employees WHERE lower(email) = lower(?) HAVING COUNT(*) = 1))
      ${onlyIfChanged ? "WHERE changes() = 1" : ""}`,
-  ).bind(id, actorEmail, entityType, entityId, action, JSON.stringify(metadata), createdAt, actorEmail);
+  ).bind(id, actorEmail, entityType, entityId, action, JSON.stringify(metadata), createdAt, explicitStoreId ?? null, actorEmail);
 }

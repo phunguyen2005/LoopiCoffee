@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { ViewHeader, formatDateTime, readJson } from "./shared";
+import { AsyncStatePanel, ListSkeleton, ViewHeader, formatDateTime, readJson } from "./shared";
 
 export function PersistentHandoversView() {
   const [handovers, setHandovers] = useState<Array<{
@@ -74,10 +74,10 @@ export function PersistentHandoversView() {
         </form>
       </section>
       <aside className="card">
-        <ViewHeader title="Bàn giao gần đây" subtitle={loading ? "Đang tải…" : `${(handovers ?? []).length} bản ghi đã lưu`} />
+        <ViewHeader title="Bàn giao gần đây" subtitle={loading || error ? "Chưa xác nhận số bản ghi" : `${(handovers ?? []).length} bản ghi đã lưu`} />
         <div className="list">
-          {!loading && !handovers.length && <p className="supporting-copy">Chưa có bàn giao nào.</p>}
-          {(handovers ?? []).map((handover) => (
+          {loading ? <ListSkeleton rows={3} /> : error && handovers.length === 0 ? <AsyncStatePanel compact state="error" title="Không thể tải bàn giao gần đây" description={error} actionLabel="Thử lại" onAction={() => void refresh()} /> : !handovers.length ? <AsyncStatePanel compact state="empty" title="Chưa có bàn giao" description="Bản bàn giao đầu tiên sẽ xuất hiện sau khi được gửi." /> : null}
+          {!loading && (handovers ?? []).map((handover) => (
             <div className="list-row" key={handover.id} style={{ flexWrap: "wrap" }}>
               <span className="person-copy"><strong>{handover.author_name}</strong><small>{formatDateTime(handover.created_at)}</small></span>
               <span className={`badge ${handover.manager_attention ? "warning" : "success"}`}>{handover.manager_attention ? "Cần chú ý" : "Đã lưu"}</span>

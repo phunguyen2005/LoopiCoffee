@@ -6,7 +6,7 @@ import { Check, Clock3, Plus } from "lucide-react";
 import { MotionLoopySticker } from "../loopy-sticker";
 import { useLoopyToast } from "../loopy-toast";
 import { CelebrationConfetti, TaskSparkleBurst } from "../confetti-sparkles";
-import { ApiState, InlineError, ViewHeader, readJson } from "./shared";
+import { ApiState, AsyncStatePanel, ListSkeleton, ViewHeader, readJson } from "./shared";
 
 export function PersistentChecklistsView({ canManage = false }: { canManage?: boolean }) {
   const { showLoopyToast, playChime } = useLoopyToast();
@@ -113,7 +113,7 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
 
       <section className="card">
         <div className="section-row checklist-heading" style={{ marginBottom: 18 }}>
-          <ViewHeader title="Checklist mở ca & vận hành" subtitle={state === "loading" ? "Đang tải công việc…" : `${done}/${items.length} công việc hoàn tất hôm nay`} />
+          <ViewHeader title="Checklist mở ca & vận hành" subtitle={state !== "ready" ? "Chưa xác nhận tiến độ hôm nay" : `${done}/${items.length} công việc hoàn tất hôm nay`} />
           {canManage && (
             <motion.button
               whileHover={{ scale: 1.04 }}
@@ -165,8 +165,8 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
           </form>
         )}
 
-        <div className="progress"><span style={{ width: items.length ? `${(done / items.length) * 100}%` : "0%" }} /></div>
-        {state === "error" ? <InlineError text="Không tải được checklist. Vui lòng thử lại." /> : (
+        {state === "ready" && <div className="progress"><span style={{ width: items.length ? `${(done / items.length) * 100}%` : "0%" }} /></div>}
+        {state === "loading" ? <ListSkeleton rows={5} /> : state === "error" ? <AsyncStatePanel state="error" title="Không thể tải checklist" description="Tiến độ checklist chưa được xác nhận." actionLabel="Thử lại" onAction={() => void refresh()} /> : !items.length ? <AsyncStatePanel state="empty" title="Chưa có công việc trong checklist" description={canManage ? "Tạo công việc đầu tiên để chuẩn hóa quy trình trong ca." : "Quản lý chưa cấu hình công việc cho ca này."} actionLabel={canManage ? "Thêm công việc" : undefined} onAction={canManage ? () => setShowForm(true) : undefined} /> : (
           <div className="list" style={{ marginTop: 18 }}>
             {items.map((item) => (
               <motion.button

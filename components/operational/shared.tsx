@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Inbox, LoaderCircle, RefreshCw } from "lucide-react";
 
 export type ApiState = "loading" | "ready" | "error";
 export type ShiftPreset = "morning" | "evening" | "full" | "custom";
@@ -45,6 +45,74 @@ export function InlineError({ text }: { text: string }) {
         <AlertCircle size={11} /> Cần thử lại
       </span>
       <p style={{ margin: "9px 0 0" }}>{text}</p>
+    </div>
+  );
+}
+
+export function AsyncStatePanel({
+  state,
+  title,
+  description,
+  actionLabel,
+  onAction,
+  actionHref,
+  compact = false,
+}: {
+  state: "loading" | "empty" | "error";
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  actionHref?: string;
+  compact?: boolean;
+}) {
+  const Icon = state === "loading" ? LoaderCircle : state === "error" ? AlertCircle : Inbox;
+  return (
+    <div
+      className={`async-state-panel ${compact ? "compact" : ""} ${state}`}
+      role={state === "error" ? "alert" : "status"}
+      aria-live={state === "error" ? "assertive" : "polite"}
+    >
+      <Icon className={state === "loading" ? "async-state-spinner" : ""} size={compact ? 22 : 30} aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <p>{description}</p>
+      </div>
+      {actionLabel && actionHref && (
+        <a className="button button-compact" href={actionHref}>{actionLabel}</a>
+      )}
+      {actionLabel && onAction && !actionHref && (
+        <button className="button-secondary button-compact" type="button" onClick={onAction}>
+          {state === "error" && <RefreshCw size={15} aria-hidden="true" />}
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function MetricSkeleton({ label }: { label: string }) {
+  return (
+    <article className="metric-card metric-card-skeleton" aria-label={`Đang tải ${label}`} aria-busy="true">
+      <span className="skeleton-block skeleton-icon" />
+      <span className="skeleton-block skeleton-value" />
+      <span className="skeleton-block skeleton-label" />
+    </article>
+  );
+}
+
+export function ListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="state-list-skeleton" role="status" aria-label="Đang tải dữ liệu" aria-busy="true">
+      {Array.from({ length: rows }, (_, index) => (
+        <div className="state-list-skeleton-row" key={index}>
+          <span className="skeleton-block skeleton-avatar" />
+          <span className="state-list-skeleton-copy">
+            <span className="skeleton-block" />
+            <span className="skeleton-block" />
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

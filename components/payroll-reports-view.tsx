@@ -27,7 +27,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readJson } from "@/platform/http/client";
 import { AttendanceCorrectionForm } from "@/components/attendance-correction-form";
-import type { PayrollReportRow as ReportRow, PayrollException } from "@/modules/payroll/contracts/report";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { AsyncStatePanel, MetricSkeleton } from "@/components/operational/shared";
+import type { PayrollReportRow as ReportRow, PayrollException, PayrollFinalizationEligibility } from "@/modules/payroll/contracts/report";
 type ReportStatus = ReportRow["status"];
 type ReportPayload = {
   period: { key: string; label: string; startDate: string; endDate: string };
@@ -40,6 +42,7 @@ type ReportPayload = {
   canViewPayroll: boolean;
   canManagePayroll: boolean;
   canReviewAttendance: boolean;
+  finalizationEligibility: PayrollFinalizationEligibility;
   rows: ReportRow[];
 };
 type SortKey = "displayName" | "scheduledMinutes" | "recordedMinutes" | "approvedMinutes" | "overtimeMinutes" | "exceptionCount" | "totalSalary" | "status";
@@ -66,6 +69,7 @@ export function PayrollReportsView() {
   const [drawerFocus, setDrawerFocus] = useState<"summary" | "exceptions">("summary");
   const [exportOpen, setExportOpen] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const [periodAction, setPeriodAction] = useState<"finalize" | "reopen" | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
   const [adjustmentReason, setAdjustmentReason] = useState("");
@@ -75,6 +79,8 @@ export function PayrollReportsView() {
   const loadReport = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
+    setReport(null);
+    setSelectedRow(null);
     try {
       const response = await fetch(`/api/reports/attendance?period=${encodeURIComponent(period)}`, { cache: "no-store", signal });
       const payload = await readJson<ReportPayload & { error?: string }>(response);
@@ -146,7 +152,6 @@ export function PayrollReportsView() {
   const payrollRows = useMemo(() => (report?.rows ?? []).filter((row) => row.includeInPayroll && row.hasPayrollData), [report]);
   const totalSalary = payrollRows.reduce((total, row) => total + row.totalSalary, 0);
   const finalizedCount = payrollRows.filter((row) => ["attendance_approved", "payroll_finalized", "paid"].includes(row.status)).length;
-  const unresolvedEmployees = payrollRows.filter((row) => row.pendingExceptionCount > 0).length;
   const unresolvedExceptions = (report?.rows ?? []).reduce((total, row) => total + row.pendingExceptionCount, 0);
 
   function updateSort(key: SortKey) {
@@ -163,10 +168,6 @@ export function PayrollReportsView() {
   }
 
   async function mutatePeriod(action: "finalize" | "reopen") {
-    const confirmed = window.confirm(action === "finalize"
-      ? `Chốt kỳ lương ${report?.period.label}? Sau khi chốt, số liệu sẽ được khóa.`
-      : `Mở lại kỳ lương ${report?.period.label}? Thao tác này sẽ được ghi vào nhật ký.`);
-    if (!confirmed) return;
     setMutating(true);
     setError("");
     try {
@@ -177,6 +178,7 @@ export function PayrollReportsView() {
       });
       const payload = await readJson<{ error?: string }>(response);
       if (!response.ok) throw new Error(payload.error || "Không thể cập nhật kỳ lương.");
+      setPeriodAction(null);
       await loadReport();
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "Không thể cập nhật kỳ lương.");
@@ -292,13 +294,17 @@ export function PayrollReportsView() {
       </section>
 
       <section className="report-metric-grid">
-        {report?.canViewPayroll && <ReportMetric icon={Banknote} tone="pink" value={formatMoney(totalSalary)} label="Tổng lương tạm tính" />}
-        <ReportMetric icon={UserCheck} tone="mint" value={`${finalizedCount}/${payrollRows.length}`} label="Đã chốt công" />
-        <ReportMetric icon={UsersRound} tone="amber" value={String(Math.max(0, payrollRows.length - finalizedCount))} label="Chưa chốt công" />
-        <ReportMetric icon={AlertTriangle} tone="burgundy" value={String(unresolvedExceptions)} label="Ngoại lệ cần xử lý" />
+        {loading ? Array.from({ length: 4 }, (_, index) => <MetricSkeleton key={index} label="chỉ số báo cáo" />) : report ? <>
+          {report.canViewPayroll && <ReportMetric icon={Banknote} tone="pink" value={formatMoney(totalSalary)} label="Tổng lương tạm tính" />}
+          <ReportMetric icon={UserCheck} tone="mint" value={`${finalizedCount}/${payrollRows.length}`} label="Đã chốt công" />
+          <ReportMetric icon={UsersRound} tone="amber" value={String(Math.max(0, payrollRows.length - finalizedCount))} label="Chưa chốt công" />
+          <ReportMetric icon={AlertTriangle} tone="burgundy" value={String(unresolvedExceptions)} label="Ngoại lệ cần xử lý" />
+        </> : null}
       </section>
 
-      <section className="card report-table-card">
+      {!loading && !report && error && <AsyncStatePanel state="error" title="Không thể tải báo cáo kỳ lương" description={error} actionLabel="Thử lại" onAction={() => void loadReport()} />}
+
+      {(loading || report) && <section className="card report-table-card">
         <div className="report-toolbar">
           <label className="report-search">
             <Search size={16} />
@@ -319,12 +325,12 @@ export function PayrollReportsView() {
               )}
             </div>
             {report?.canManagePayroll && report.periodStatus === "reviewing" && (
-              <button className="button button-compact" onClick={() => void mutatePeriod("finalize")} disabled={mutating || unresolvedEmployees > 0} title={unresolvedEmployees > 0 ? "Xử lý hết ngoại lệ trước khi chốt kỳ" : undefined}>
+              <button className="button button-compact" onClick={() => setPeriodAction("finalize")} disabled={mutating || !report.finalizationEligibility.canFinalize} title={report.finalizationEligibility.reasons.map((reason) => reason.message).join(" ") || undefined}>
                 <LockKeyhole size={15} /> Chốt kỳ lương
               </button>
             )}
             {report?.canManagePayroll && report.periodStatus === "finalized" && (
-              <button className="button-secondary button-compact" onClick={() => void mutatePeriod("reopen")} disabled={mutating}>
+              <button className="button-secondary button-compact" onClick={() => setPeriodAction("reopen")} disabled={mutating}>
                 <RotateCcw size={15} /> Mở lại kỳ
               </button>
             )}
@@ -406,7 +412,25 @@ export function PayrollReportsView() {
             <button onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page >= pageCount} aria-label="Trang sau"><ChevronRight size={16} /></button>
           </div>
         </div>
-      </section>
+        {report?.canManagePayroll && report.periodStatus === "reviewing" && !report.finalizationEligibility.canFinalize && (
+          <div className="attention-card" role="status">
+            <strong>Chưa thể chốt kỳ lương</strong>
+            <ul>{report.finalizationEligibility.reasons.map((reason) => <li key={reason.code}>{reason.message}</li>)}</ul>
+          </div>
+        )}
+      </section>}
+
+      <ConfirmDialog
+        open={periodAction !== null}
+        title={periodAction === "reopen" ? "Mở lại kỳ lương?" : "Chốt kỳ lương?"}
+        description={periodAction === "reopen" ? "Kỳ lương sẽ chuyển về trạng thái đối soát và thao tác được ghi vào nhật ký." : "Sau khi chốt, số liệu của kỳ sẽ được khóa thành snapshot."}
+        details={report ? [`Kỳ: ${report.period.label}`, `${report.finalizationEligibility.employeeCount} nhân viên đủ điều kiện`, periodAction === "finalize" ? "Các thay đổi sau đó cần mở lại kỳ theo đúng quyền." : "Chỉ Chủ quán có thể thực hiện thao tác này."] : []}
+        confirmLabel={periodAction === "reopen" ? "Mở lại kỳ" : "Chốt kỳ lương"}
+        tone={periodAction === "reopen" ? "primary" : "danger"}
+        busy={mutating}
+        onClose={() => !mutating && setPeriodAction(null)}
+        onConfirm={() => periodAction && void mutatePeriod(periodAction)}
+      />
 
       {selectedRow && (
         <div className="report-drawer-layer" role="presentation">

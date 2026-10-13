@@ -3,25 +3,35 @@ import type { EmployeeStatus } from "@/modules/people/domain/access";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 import { ensureDatabase } from "@/db/runtime";
-import { requireApiUser, type ActorRole } from "@/server/auth";
+import { requireApiUser } from "@/server/auth";
+import type { ActorRole } from "@/server/auth";
 
-export async function GET() {
-  const auth = await requireApiUser(["owner", "manager"]);
+export const GET = apiHandler(async () => {
+  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
+  if (auth.actor.role === "team_lead") {
+    const result = await db.prepare(
+      `SELECT id, email, display_name, role, status
+       FROM employees
+       WHERE store_id = ? AND status = 'active'
+       ORDER BY display_name ASC`,
+    ).bind(auth.actor.storeId).all();
+    return Response.json({ employees: result.results }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const result = await db.prepare(
     `SELECT id, email, display_name, role, status, created_at
      FROM employees WHERE store_id = ? ORDER BY status, display_name`,
   ).bind(auth.actor.storeId).all();
-  return Response.json({ employees: result.results });
-}
+  return Response.json({ employees: result.results }, { headers: { "Cache-Control": "private, no-store" } });
+});
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner"]);
   if (!auth.actor) return auth.response;
   void request;
   return Response.json({ error: "Hãy tạo tài khoản tại trang Quản trị tài khoản." }, { status: 410 });
-}
+});
 
 export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser(["owner"]);

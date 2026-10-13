@@ -2,11 +2,11 @@ import { ApplicationError } from "../../../platform/http/errors.ts";
 import { object, text } from "./input.ts";
 
 const transitions: Record<string, string[]> = {
-  pending: ["accepted", "cancelled"], accepted: ["preparing", "cancelled"], preparing: ["ready", "cancelled"], ready: ["completed"], completed: [], cancelled: [],
+  pending: ["accepted", "cancelled"], accepted: ["preparing", "cancelled"], preparing: ["ready", "cancelled"], ready: ["completed", "cancelled"], completed: [], cancelled: [],
 };
 
 export async function changeOrderStatus(db: D1Database, actor: { storeId: string; email: string; role: string }, id: string, raw: unknown) {
-  if (!["owner", "manager", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền xử lý đơn.", 403);
+  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền xử lý đơn.", 403);
   const body = object(raw);
   const next = text(body.newStatus, 30, "trạng thái", 1);
   const expected = text(body.expectedStatus, 30, "trạng thái hiện tại", 1);

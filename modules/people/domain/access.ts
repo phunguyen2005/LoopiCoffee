@@ -8,13 +8,12 @@ export type EmployeeAccess = { id: string; store_id: string; role: ActorRole; st
 
 export function canManageEmployee(actor: AccessActor, employee: EmployeeAccess) {
   if (actor.storeId !== employee.store_id) return false;
-  if (actor.role === "system_admin") return true;
   if (employee.role === "system_admin") return false;
   if (actor.role === "owner") return true;
-  return actor.role === "manager" && employee.role !== "owner";
+  return actor.role === "manager" && !["owner", "manager", "system_admin"].includes(employee.role);
 }
 
 export function canAssignRole(actor: AccessActor, role: ActorRole) {
   return assignableRoles.includes(role as typeof assignableRoles[number]) &&
-    (actor.role === "system_admin" || actor.role === "owner" || (actor.role === "manager" && role !== "owner"));
+    (actor.role === "owner" || (actor.role === "manager" && !["owner", "manager", "system_admin"].includes(role)));
 }

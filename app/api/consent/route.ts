@@ -1,16 +1,20 @@
 import { CONSENT_VERSION, ensureDatabase } from "@/db/runtime";
+import { apiHandler } from "@/platform/http/errors";
 import { auditStatement, requireApiUser } from "@/server/auth";
 
-export async function GET() {
+export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  return Response.json({
-    consented: auth.actor.hasAttendanceConsent,
-    noticeVersion: CONSENT_VERSION,
-  });
-}
+  return Response.json(
+    {
+      consented: auth.actor.hasAttendanceConsent,
+      noticeVersion: CONSENT_VERSION,
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});
 
-export async function POST() {
+export const POST = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
@@ -31,5 +35,8 @@ export async function POST() {
       now,
     ),
   ]);
-  return Response.json({ consented: true, noticeVersion: CONSENT_VERSION, consentedAt: now });
-}
+  return Response.json(
+    { consented: true, noticeVersion: CONSENT_VERSION, consentedAt: now },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+});

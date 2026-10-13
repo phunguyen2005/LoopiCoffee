@@ -4,7 +4,7 @@ import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs"
 import { updateEmployeeAccess } from "../modules/people/application/update-access.ts";
 import { completeSignIn } from "../modules/people/application/complete-sign-in.ts";
 import { decideRequest } from "../modules/operations/application/decide-request.ts";
-import { changePayrollPeriod } from "../modules/payroll/application/change-period.ts";
+import { changePayrollPeriod, evaluatePayrollFinalizationEligibility } from "../modules/payroll/application/change-period.ts";
 import { loadPayrollReport } from "../modules/payroll/application/load-report.ts";
 import { expireEvidence } from "../modules/attendance/application/expire-evidence.ts";
 import { loadUnexpiredPhoto } from "../modules/attendance/application/load-photo.ts";
@@ -119,6 +119,24 @@ test("locked payroll survives changed rates, names and offboarding", async (t) =
   assert.equal(after.displayName, before.displayName);
   assert.equal(after.snapshotComplete, true);
   assert.equal((await report(db, employee)).rows.length, 1);
+});
+
+test("payroll finalization eligibility mirrors the server-side finalize guardrails", async (t) => {
+  const { db, owner } = setup(t);
+  const empty = await evaluatePayrollFinalizationEligibility(db, owner, "2026-07");
+  assert.equal(empty.canFinalize, false);
+  assert.deepEqual(empty.reasons.map((reason) => reason.code), ["empty_payroll"]);
+
+  const employee = seedEmployee(db, { id: "eligibility-employee", role: "employee" });
+  attendance(db, employee.email, "eligibility-session");
+  const ready = await evaluatePayrollFinalizationEligibility(db, owner, "2026-07");
+  assert.equal(ready.canFinalize, true);
+  assert.equal(ready.employeeCount, 1);
+
+  await changePayrollPeriod(db, owner, "finalize", "2026-07");
+  const locked = await evaluatePayrollFinalizationEligibility(db, owner, "2026-07");
+  assert.equal(locked.canFinalize, false);
+  assert.ok(locked.reasons.some((reason) => reason.code === "period_locked"));
 });
 
 test("legacy locked entries retain saved totals without inventing historical rates", async (t) => {

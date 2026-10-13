@@ -53,3 +53,14 @@ export type PayrollReportRow = {
   snapshotComplete?: boolean;
   adjustments?: Array<{ id: string; amount: number; reason: string; actorEmail: string; createdAt: string }>;
 };
+
+export type PayrollFinalizationReason = {
+  code: "forbidden" | "period_locked" | "open_session" | "empty_payroll" | "pending_exceptions" | "pay_rate_required";
+  message: string;
+};
+
+export type PayrollFinalizationEligibility = {
+  canFinalize: boolean;
+  employeeCount: number;
+  reasons: PayrollFinalizationReason[];
+};

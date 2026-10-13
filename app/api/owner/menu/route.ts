@@ -5,7 +5,7 @@ import { integer, readOrderBody, text } from "@/modules/ordering/application/inp
 import { auditStatement } from "@/server/audit";
 
 export const dynamic = "force-dynamic";
-const roles = ["owner", "manager", "system_admin"] as const;
+const roles = ["owner", "manager"] as const;
 const fields = {
   name: "name", englishName: "english_name", categoryId: "category_id", description: "description", basePrice: "base_price",
   imageUrl: "image_url", badge: "badge", isAvailable: "is_available", allowsSize: "allows_size", allowsSugar: "allows_sugar",

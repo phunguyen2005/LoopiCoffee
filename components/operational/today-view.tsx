@@ -92,7 +92,7 @@ export function EmployeeTodayView() {
   const monthSessions = data.monthStats?.sessionCount ?? 0;
 
   return (
-    <div className="stack employee-today-view" style={{ gap: 20 }}>
+    <div className="stack employee-today-view has-sticky-primary" style={{ gap: 20 }}>
       {/* Hero Shift Summary Card */}
       <section className="today-summary-card">
         <div className="today-summary-content">
@@ -299,7 +299,7 @@ export function EmployeeTodayView() {
       </section>
 
       {/* Quick Staff Actions for Exceptions & Help */}
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <section className="today-secondary-actions" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Link
           href="/app/requests"
           className="button-secondary"

@@ -1,8 +1,9 @@
 import { ensureDatabase } from "@/db/runtime";
 import { loadPayrollReport } from "@/lib/payroll-report";
+import { apiHandler } from "@/platform/http/errors";
 import { requireApiUser } from "@/server/auth";
 
-export async function GET(request: Request) {
+export const GET = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const url = new URL(request.url);
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
       "cache-control": "private, no-store",
     },
   });
-}
+});
 
 function formatMinutes(minutes: number) {
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
@@ -53,6 +54,16 @@ function statusLabel(status: string) {
   return "Chưa kiểm tra";
 }
 
-function escapeCsv(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+export function sanitizeCsvCell(value: string): string {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trimStart();
+  if (/^[=+\-@\t\r]/.test(value) || /^[=+\-@]/.test(trimmed)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+export function escapeCsv(value: string) {
+  const sanitized = sanitizeCsvCell(value);
+  return `"${sanitized.replaceAll('"', '""')}"`;
 }

@@ -1,4 +1,4 @@
-import { ensureDatabase, STORE_ID } from "@/db/runtime";
+import { ensureDatabase } from "@/db/runtime";
 import { requireApiUser } from "@/server/auth";
 import { type NextRequest } from "next/server";
 import { apiHandler, ApplicationError } from "@/platform/http/errors";
@@ -6,7 +6,7 @@ import { apiHandler, ApplicationError } from "@/platform/http/errors";
 export const dynamic = "force-dynamic";
 
 export const GET = apiHandler(async (request: NextRequest) => {
-  const auth = await requireApiUser(["owner", "manager", "system_admin"]);
+  const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
 
     const { searchParams } = new URL(request.url);
@@ -49,7 +49,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
     FROM customer_orders WHERE store_id = ?`;
-    const countsParams: (string | number)[] = [auth.actor.storeId || STORE_ID];
+    const countsParams: (string | number)[] = [auth.actor.storeId];
 
     if (dateCondition) {
       countsQuery += dateCondition;
@@ -72,7 +72,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
     // Build main query
     let query = `SELECT id, order_code, customer_name, customer_phone, customer_note, total_amount, item_count, status, cancel_reason, created_at, updated_at
                  FROM customer_orders WHERE store_id = ?`;
-    const params: (string | number)[] = [auth.actor.storeId || STORE_ID];
+    const params: (string | number)[] = [auth.actor.storeId];
 
     if (statusFilter && statusFilter !== "all") {
       query += ` AND status = ?`;
@@ -89,7 +89,14 @@ export const GET = apiHandler(async (request: NextRequest) => {
       params.push(...dateParams);
     }
 
-    query += ` ORDER BY created_at DESC LIMIT 150`;
+    const pageParam = parseInt(searchParams.get("page") || "1", 10);
+    const page = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
+    const limitParam = parseInt(searchParams.get("limit") || "150", 10);
+    const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, 150) : 150;
+    const offset = (page - 1) * limit;
+
+    query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
 
     const ordersResult = await db.prepare(query).bind(...params).all<{
       id: string;
@@ -163,7 +170,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
       .prepare(
         `SELECT is_ordering_open, announcement FROM store_ordering_settings WHERE store_id = ? LIMIT 1`,
       )
-      .bind(auth.actor.storeId || STORE_ID)
+      .bind(auth.actor.storeId)
       .first<{ is_ordering_open: number; announcement: string | null }>();
 
     const enrichedOrders = orders.map((o) => ({
@@ -191,6 +198,11 @@ export const GET = apiHandler(async (request: NextRequest) => {
         ready: Number(countsResult?.ready || 0),
         completed: Number(countsResult?.completed || 0),
         cancelled: Number(countsResult?.cancelled || 0),
+      },
+      pagination: {
+        page,
+        limit,
+        total: Number(countsResult?.total || 0),
       },
       isOrderingOpen: Boolean(settings?.is_ordering_open),
     });

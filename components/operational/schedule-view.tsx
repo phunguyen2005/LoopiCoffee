@@ -1,8 +1,8 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, CheckCircle2, Clock3, MapPin, Plus } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, MapPin, Plus } from "lucide-react";
 import {
   ApiState,
   DAY_CHIP_LABELS,
@@ -47,35 +47,65 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   const [busy, setBusy] = useState(false);
   const [editingShift, setEditingShift] = useState<ScheduleShift | null>(null);
 
+  const scheduleSeqRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const loadSchedule = useCallback(async (showLoading = true) => {
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const signal = abortController.signal;
+    const currentSeq = ++scheduleSeqRef.current;
+
     if (showLoading) setLoadState("loading");
     try {
-      const range = new URLSearchParams({ from: storeDateTime(weekStartDate, "00:00").toISOString(), to: storeDateTime(addStoreDays(weekStartDate, 35), "00:00").toISOString() });
+      const range = new URLSearchParams({
+        from: storeDateTime(weekStartDate, "00:00").toISOString(),
+        to: storeDateTime(addStoreDays(weekStartDate, 35), "00:00").toISOString(),
+      });
       const [shiftResponse, teamResponse] = await Promise.all([
-        fetch(`/api/shifts?${range}`, { cache: "no-store" }),
-        canManage ? fetch("/api/team", { cache: "no-store" }) : Promise.resolve(null),
+        fetch(`/api/shifts?${range}`, { cache: "no-store", signal }),
+        canManage ? fetch("/api/team", { cache: "no-store", signal }) : Promise.resolve(null),
       ]);
+      if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
+
       const shiftPayload = await readJson<{ shifts: typeof shifts; error?: string; nextOffset: number | null }>(shiftResponse);
+      if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
       if (!shiftResponse.ok) throw new Error(shiftPayload.error ?? "Không thể tải lịch làm việc.");
-      const teamPayload = teamResponse ? await readJson<{ employees: typeof employees }>(teamResponse).catch(() => ({ employees: [] })) : { employees: [] };
+      const teamPayload = teamResponse
+        ? await readJson<{ employees: typeof employees }>(teamResponse).catch(() => ({ employees: [] }))
+        : { employees: [] };
+      if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
 
       const allShifts = [...(shiftPayload.shifts ?? [])];
       let nextOffset = shiftPayload.nextOffset;
       while (nextOffset !== null && nextOffset !== undefined) {
-        const next = await readJson<{ shifts: typeof shifts; nextOffset: number | null }>(await fetch(`/api/shifts?${range}&offset=${nextOffset}`, { cache: "no-store" }));
-        allShifts.push(...next.shifts); nextOffset = next.nextOffset;
+        const nextRes = await fetch(`/api/shifts?${range}&offset=${nextOffset}`, { cache: "no-store", signal });
+        if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
+        const next = await readJson<{ shifts: typeof shifts; nextOffset: number | null }>(nextRes);
+        if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
+        allShifts.push(...next.shifts);
+        nextOffset = next.nextOffset;
       }
+      if (currentSeq !== scheduleSeqRef.current || signal.aborted) return;
+
       setShifts(allShifts.filter((shift) => shift.status !== "cancelled"));
       setEmployees((teamPayload.employees ?? []).filter((employee: { status: string }) => employee.status === "active"));
       setLoadState("ready");
     } catch {
+      if (signal.aborted || currentSeq !== scheduleSeqRef.current) {
+        return;
+      }
       setLoadState("error");
     }
   }, [canManage, weekStartDate]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void loadSchedule(false), 0);
-    return () => window.clearTimeout(initialLoad);
+    return () => {
+      window.clearTimeout(initialLoad);
+      abortControllerRef.current?.abort();
+    };
   }, [loadSchedule]);
 
   async function refresh() {
@@ -86,6 +116,16 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
     setSelectedDays((prev) =>
       prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex]
     );
+  };
+
+  const openSingleShiftForm = (dateKey: string, email?: string) => {
+    setEditingShift(null);
+    setScheduleMode("single");
+    setStartsAt(`${dateKey}T08:00`);
+    setEndsAt(`${dateKey}T16:00`);
+    if (email) setEmployeeEmail(email);
+    setShowForm(true);
+    setError("");
   };
 
   const conflicts = useMemo(() => {
@@ -255,7 +295,12 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
             </button>
           )}
         </div>
-        <label>Tuần cần xem<input type="date" value={weekStartDate} onChange={(event) => { if (event.target.value) setWeekStartDate(startOfStoreWeek(event.target.value)); }} /></label>
+        <div className="schedule-week-navigation" aria-label="Điều hướng tuần">
+          <button type="button" className="button-secondary button-compact" onClick={() => setWeekStartDate(addStoreDays(weekStartDate, -7))} aria-label="Tuần trước"><ChevronLeft size={16} /> Tuần trước</button>
+          <button type="button" className="button-secondary button-compact" onClick={() => setWeekStartDate(startOfStoreWeek(storeDateKey(new Date())))}>Tuần này</button>
+          <button type="button" className="button-secondary button-compact" onClick={() => setWeekStartDate(addStoreDays(weekStartDate, 7))}>Tuần sau <ChevronRight size={16} /></button>
+          <label>Chọn ngày<input type="date" value={weekStartDate} onChange={(event) => { if (event.target.value) setWeekStartDate(startOfStoreWeek(event.target.value)); }} /></label>
+        </div>
         {error && <p role="alert">{error}</p>}
 
         {successMsg && (
@@ -518,6 +563,11 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
                                 <div>{formatTime(s.starts_at)}–{formatTime(s.ends_at)}</div>
                               </div>
                             ))}
+                            {canManage && emp.email !== "demo" && (
+                              <button type="button" className="schedule-add-day" onClick={() => openSingleShiftForm(dateStr, emp.email)} aria-label={`Thêm ca cho ${emp.display_name} ngày ${dateStr}`}>
+                                <Plus size={13} /> Thêm ca
+                              </button>
+                            )}
                           </div>
                         );
                       })}

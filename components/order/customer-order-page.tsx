@@ -310,7 +310,7 @@ export function CustomerOrderPage() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6">
+      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-[calc(88px+env(safe-area-inset-bottom,0px))] lg:pb-12">
         {pendingOrder && <section className="mb-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-900"><p>Đơn đang gửi trước đó chưa được xác nhận trên thiết bị. Kiểm tra lại sẽ giữ nguyên nội dung, tránh tạo đơn trùng.</p><button type="button" onClick={recoverOrder} disabled={recovering} className="mt-2 min-h-[44px] px-4 rounded-xl bg-[#3D5A40] text-white font-bold disabled:opacity-50">{recovering ? "Đang kiểm tra…" : "Kiểm tra / gửi lại đơn đang chờ"}</button></section>}
         {recoveryError && <p role="alert" className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-sm">{recoveryError}</p>}
         {store?.announcement && <p className="mb-4 p-3 rounded-xl bg-[#EBF1EA] text-sm text-[#3D5A40]">{store.announcement}</p>}

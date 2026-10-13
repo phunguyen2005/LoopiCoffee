@@ -3,7 +3,7 @@ import { ApplicationError } from "../../../platform/http/errors.ts";
 import { auditStatement } from "../../../server/audit.ts";
 
 export async function reviewAttendance(db: D1Database, actor: AccessActor, eventId: string, decision: "approved" | "rejected", note = "") {
-  if (!["owner", "manager", "team_lead", "system_admin"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt công.", 403, "forbidden");
+  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt công.", 403, "forbidden");
   const now = new Date().toISOString();
   const commandId = crypto.randomUUID();
   const result = await db.batch([

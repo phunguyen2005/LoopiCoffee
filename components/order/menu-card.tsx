@@ -85,7 +85,7 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
               onSelect(item);
             }}
             aria-label={`Thêm món ${item.name}`}
-            className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-[#2B3E2D] shadow-md border border-[#E6DFD5] flex items-center justify-center transition-all duration-150 hover:bg-[#3D5A40] hover:text-white active:scale-90"
+            className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 z-20 w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-white text-[#2B3E2D] shadow-md border border-[#E6DFD5] flex items-center justify-center transition-all duration-150 hover:bg-[#3D5A40] hover:text-white active:scale-90"
           >
             <Plus size={18} strokeWidth={2.5} />
           </button>
