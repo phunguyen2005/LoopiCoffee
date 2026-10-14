@@ -10,6 +10,7 @@ import { ensureDatabase, getBindings } from "@/db/runtime";
 import { auditStatement, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
+import { recoverAttendanceWrite } from "@/modules/attendance/application/evidence-cleanup";
 
 type AttendanceBody = {
   captureSessionId?: string;
@@ -20,6 +21,8 @@ type AttendanceBody = {
   cameraError?: string;
   locationError?: string | null;
   exceptionReason?: string;
+  bypassHandover?: boolean;
+  bypassReason?: string;
   location?: {
     latitude?: number;
     longitude?: number;
@@ -44,6 +47,8 @@ export const POST = apiHandler(async (request: Request) => {
       action: "string",
       photo: "string",
       exceptionReason: "string",
+      bypassHandover: "boolean",
+      bypassReason: "string",
     },
     { maxBytes: ATTENDANCE_ACTION_MAX_BYTES },
   )) as AttendanceBody;
@@ -176,6 +181,22 @@ export const POST = apiHandler(async (request: Request) => {
       { error: "Bạn đã có một ca đang mở. Hãy chấm ra ca trước khi bắt đầu ca mới.", code: "duplicate_action" },
       { status: 409 },
     );
+  }
+
+  if (body.action === "check_in") {
+    const { checkHandoverGate } = await import("@/modules/attendance/application/check-handover-gate");
+    const gate = await checkHandoverGate(db, actor.storeId, actor.email, {
+      bypass: Boolean(body.bypassHandover),
+      bypassReason: body.bypassReason,
+      bypassActor: actor,
+      now: recordedAt,
+    });
+    if (!gate.allowed) {
+      return Response.json(
+        { error: gate.message, code: gate.code, handoverId: gate.handoverId },
+        { status: 409 },
+      );
+    }
   }
 
   const shift = body.action === "check_in"
@@ -399,12 +420,14 @@ export const POST = apiHandler(async (request: Request) => {
   try {
     await db.batch(statements);
   } catch (error) {
-    if (objectKey) {
-      const { evidence } = getBindings();
-      await evidence?.delete(objectKey).catch(() => {});
-    }
-    const replay = await db.prepare("SELECT id, session_id, recorded_at, verification_results, review_required, photo_status FROM attendance_events WHERE idempotency_key = ? AND employee_email = ?")
-      .bind(body.idempotencyKey, actor.email).first<{ id: string; session_id: string; recorded_at: string; verification_results: string; review_required: number; photo_status: string }>();
+    const replay = await recoverAttendanceWrite(db, getBindings().evidence, {
+      idempotencyKey: body.idempotencyKey,
+      employeeEmail: actor.email,
+      objectKey,
+      eventId,
+      storeId: actor.storeId,
+      recordedAt,
+    });
     if (replay) return Response.json({ eventId: replay.id, sessionId: replay.session_id, recordedAt: replay.recorded_at, localTime: `${formatStoreTime(replay.recorded_at)} GMT+7`, verification: safeJsonArray(replay.verification_results), reviewRequired: Boolean(replay.review_required), photoStatus: replay.photo_status, evidenceStored: replay.photo_status === "stored", distance: null });
     if (error instanceof Error && /UNIQUE|constraint|attendance_conflict/i.test(error.message)) return Response.json({ error: "Phiên công vừa được ghi nhận hoặc đã thay đổi. Hãy tải lại trước khi thử tiếp.", code: "attendance_conflict" }, { status: 409 });
     throw error;

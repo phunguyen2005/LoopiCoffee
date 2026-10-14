@@ -110,8 +110,9 @@ test("weekly shifts are all-or-nothing, adjacent shifts valid, overlapping concu
 
 test("shift edits and cancellations enforce revision, role and attendance guard", async (t) => {
   const { db, owner, staff } = setup(t);
-  const created = await createShifts(db, owner, staff.email, [shiftInput]); const id = created.shifts[0].id;
-  await changeShift(db, owner, { id, action: "edit", expectedRevision: 0, ...shiftInput, endsAt: "2026-07-03T08:00:00Z" });
+  const futureShift = { ...shiftInput, startsAt: "2027-07-03T01:00:00Z", endsAt: "2027-07-03T09:00:00Z" };
+  const created = await createShifts(db, owner, staff.email, [futureShift]); const id = created.shifts[0].id;
+  await changeShift(db, owner, { id, action: "edit", expectedRevision: 0, ...futureShift, endsAt: "2027-07-03T08:00:00Z" });
   await assert.rejects(changeShift(db, owner, { id, action: "cancel", expectedRevision: 0 }), { code: "shift_conflict" });
   await assert.rejects(changeShift(db, staff, { id, action: "cancel", expectedRevision: 1 }), { status: 403 });
   await changeShift(db, owner, { id, action: "cancel", expectedRevision: 1 });

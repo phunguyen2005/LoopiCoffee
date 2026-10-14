@@ -11,7 +11,7 @@ export const GET = apiHandler(async () => {
   const before = new Date(now.getTime() - 18 * 60 * 60 * 1000).toISOString();
   const after = new Date(now.getTime() + 30 * 60 * 60 * 1000).toISOString();
   const monthStart = new Date(`${businessDate(now).slice(0,7)}-01T00:00:00+07:00`).toISOString();
-  const [shiftResult, sessionResult, checklistResult, handoverResult, monthStatsResult, upcomingResult] = await db.batch([
+  const [shiftResult, sessionResult, checklistResult, outgoingHandoverResult, incomingHandoverResult, monthStatsResult, upcomingResult] = await db.batch([
     db.prepare(
       `SELECT id, starts_at, ends_at, role_label, is_shift_lead
        FROM shifts WHERE store_id = ? AND lower(employee_email) = lower(?)
@@ -19,18 +19,23 @@ export const GET = apiHandler(async () => {
        ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1`,
     ).bind(auth.actor.storeId, auth.actor.email, before, after, now.toISOString()),
     db.prepare(
-      `SELECT id, opened_at, closed_at, worked_minutes, status
-       FROM attendance_sessions WHERE store_id = ? AND lower(employee_email) = lower(?)
+      `SELECT s.id, s.opened_at, s.closed_at, s.worked_minutes, s.status,
+              EXISTS(
+                SELECT 1 FROM attendance_events ev
+                JOIN attendance_exceptions ex ON ex.event_id = ev.id
+                WHERE ev.session_id = s.id AND ex.employee_reason LIKE 'MISSING_CHECKOUT:%'
+              ) AS missing_checkout
+       FROM attendance_sessions s WHERE s.store_id = ? AND lower(s.employee_email) = lower(?)
          AND (
-           shift_id = (
+           s.shift_id = (
              SELECT id FROM shifts
              WHERE store_id = ? AND lower(employee_email) = lower(?)
                AND status IN ('published', 'completed') AND starts_at BETWEEN ? AND ?
              ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1
            )
-           OR (shift_id IS NULL AND COALESCE(opened_at, closed_at) BETWEEN ? AND ?)
+           OR (s.shift_id IS NULL AND COALESCE(s.opened_at, s.closed_at) BETWEEN ? AND ?)
          )
-       ORDER BY COALESCE(opened_at, closed_at) DESC LIMIT 1`,
+       ORDER BY COALESCE(s.opened_at, s.closed_at) DESC LIMIT 1`,
     ).bind(
       auth.actor.storeId,
       auth.actor.email,
@@ -54,10 +59,19 @@ export const GET = apiHandler(async () => {
        ORDER BY created_at DESC LIMIT 1`,
     ).bind(auth.actor.storeId, auth.actor.email, before, after),
     db.prepare(
-      `SELECT COUNT(*) AS session_count, COALESCE(SUM(worked_minutes), 0) AS month_worked_minutes
+      `SELECT h.id, h.summary, h.manager_attention, h.created_at,
+              COALESCE(e.display_name, h.author_email) AS author_name
+       FROM handovers h
+       LEFT JOIN employees e ON lower(e.email) = lower(h.author_email)
+       WHERE h.store_id = ? AND h.acknowledged_at IS NULL
+       ORDER BY h.created_at DESC LIMIT 1`,
+    ).bind(auth.actor.storeId),
+    db.prepare(
+      `SELECT COUNT(*) AS completed_session_count,
+              COALESCE(SUM(CASE WHEN status = 'completed' THEN worked_minutes ELSE 0 END), 0) AS approved_worked_minutes
        FROM attendance_sessions
        WHERE store_id = ? AND lower(employee_email) = lower(?)
-         AND opened_at >= ?`,
+         AND opened_at >= ? AND status = 'completed' AND closed_at IS NOT NULL`,
     ).bind(auth.actor.storeId, auth.actor.email, monthStart),
     db.prepare(
       `SELECT id, starts_at, ends_at, role_label, is_shift_lead
@@ -72,8 +86,9 @@ export const GET = apiHandler(async () => {
   const shift = shiftResult.results[0];
   const session = sessionResult.results[0];
   const checklist = checklistResult.results[0];
-  const handover = handoverResult.results[0];
-  const monthStats = monthStatsResult.results[0] as { session_count?: number; month_worked_minutes?: number } | undefined;
+  const outgoingHandover = outgoingHandoverResult.results[0];
+  const incomingHandover = incomingHandoverResult.results[0];
+  const monthStats = monthStatsResult.results[0] as { completed_session_count?: number; approved_worked_minutes?: number } | undefined;
   const upcomingShifts = upcomingResult.results as Array<{ id: string; starts_at: string; ends_at: string; role_label: string; is_shift_lead: number }>;
 
   return Response.json(
@@ -81,10 +96,11 @@ export const GET = apiHandler(async () => {
       shift: shift ?? null,
       attendance: session ?? null,
       checklist,
-      handover: handover ?? null,
+      handover: outgoingHandover ?? null,
+      incomingHandover: incomingHandover ?? null,
       monthStats: {
-        sessionCount: Number(monthStats?.session_count ?? 0),
-        workedMinutes: Number(monthStats?.month_worked_minutes ?? 0),
+        completedSessionCount: Number(monthStats?.completed_session_count ?? 0),
+        approvedWorkedMinutes: Number(monthStats?.approved_worked_minutes ?? 0),
       },
       upcomingShifts: upcomingShifts ?? [],
     },

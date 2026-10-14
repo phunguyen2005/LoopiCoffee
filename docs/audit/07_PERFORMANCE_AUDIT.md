@@ -1,8 +1,16 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](../README.md), [hiện trạng source](../implementation-status.md) và [đính chính audit](ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # BÁO CÁO AUDIT HIỆU NĂNG & ĐỘ TIN CẬY (PERFORMANCE & RELIABILITY AUDIT)
 ## Dự án: LoopiCafe Management System
-**Baseline Git Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`  
-**Ngày thực hiện:** 12/10/2026  
-**Đơn vị thực hiện:** AGENT 3 — Senior Performance Engineer & System Architect  
+**Baseline Git Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
+**Ngày thực hiện:** 12/10/2026
+**Đơn vị thực hiện:** AGENT 3 — Senior Performance Engineer & System Architect
 **Trạng thái kiểm tra:** AUDIT ONLY (Không thay đổi mã nguồn ứng dụng, chỉ ghi báo cáo)
 
 ---
@@ -53,18 +61,18 @@ Hệ thống sở hữu nền tảng tốt về mặt **Single-flight polling co
 
 | Thành phần | Đường dẫn tệp tin | Vai trò & Đặc điểm hiệu năng | Kích thước / Chi phí ước lượng |
 | :--- | :--- | :--- | :--- |
-| **Worker Entrypoint** | [`worker/index.ts`](file:///d:/College/Practice/loopicafe-management-system/worker/index.ts) | Điểm đón request chính, xử lý image optimization và định tuyến tới App Router | Bundle server: `1.73 MB` (`dist/server/index.js`) |
-| **Owner Orders View** | [`components/operational/owner-orders-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx) | Quản lý live orders, đệ quy `setTimeout` polling mỗi 4 giây | Client chunk: `101 KB` |
-| **Order Tracking View** | [`components/order/order-tracking-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx) | Màn hình theo dõi đơn khách hàng, đệ quy polling mỗi 5 giây | Client chunk: `74 KB` (chung page) |
-| **Customer Order Page** | [`components/order/customer-order-page.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/customer-order-page.tsx) | Màn hình đặt món online của khách, hoàn toàn client-side | Client chunk: `74 KB` |
-| **Attendance Capture** | [`components/attendance-capture.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx) | Chụp ảnh camera, lấy geolocation, gửi base64 JPEG | Kích thước payload ảnh: `200 - 400 KB` |
-| **Schedule View** | [`components/operational/schedule-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/schedule-view.tsx) | Quản lý lịch ca làm việc, hỗ trợ AbortController khi đổi tuần | Client chunk (dynamic) |
-| **App Shell** | [`components/app-shell.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx) | Khung layout phân hệ vận hành, chứa `framer-motion`, auto-fetch trên focus | Client chunk: `48 KB` + `120 KB` motion |
-| **Evidence Processing** | [`lib/evidence.ts`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts) | Parse JPEG bằng `jpeg-js`, tạo server-stamped SVG bọc base64 | Tốn 40-150ms CPU Workers |
-| **Database Schema** | [`db/schema.ts`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts) | Định nghĩa bảng D1, index và constraints | 20 bảng, 30+ indexes |
-| **Auth & Cache** | [`server/auth.ts`](file:///d:/College/Practice/loopicafe-management-system/server/auth.ts) | Identity cache 10s SLA bằng `Map`, Supabase session check | Cache in-memory theo Isolate |
-| **Static Video Asset** | [`public/loopicafe-introduce-vid.mp4`](file:///d:/College/Practice/loopicafe-management-system/public/loopicafe-introduce-vid.mp4) | Video giới thiệu 10s | `2.75 MB` |
-| **Static OG Images** | [`public/og.png`](file:///d:/College/Practice/loopicafe-management-system/public/og.png), [`public/og-mobile.png`](file:///d:/College/Practice/loopicafe-management-system/public/og-mobile.png) | Ảnh OpenGraph mạng xã hội | `1.49 MB` + `1.70 MB` |
+| **Worker Entrypoint** | [`worker/index.ts`](../../worker/index.ts) | Điểm đón request chính, xử lý image optimization và định tuyến tới App Router | Bundle server: `1.73 MB` (`dist/server/index.js`) |
+| **Owner Orders View** | [`components/operational/owner-orders-view.tsx`](../../components/operational/owner-orders-view.tsx) | Quản lý live orders, đệ quy `setTimeout` polling mỗi 4 giây | Client chunk: `101 KB` |
+| **Order Tracking View** | [`components/order/order-tracking-view.tsx`](../../components/order/order-tracking-view.tsx) | Màn hình theo dõi đơn khách hàng, đệ quy polling mỗi 5 giây | Client chunk: `74 KB` (chung page) |
+| **Customer Order Page** | [`components/order/customer-order-page.tsx`](../../components/order/customer-order-page.tsx) | Màn hình đặt món online của khách, hoàn toàn client-side | Client chunk: `74 KB` |
+| **Attendance Capture** | [`components/attendance-capture.tsx`](../../components/attendance-capture.tsx) | Chụp ảnh camera, lấy geolocation, gửi base64 JPEG | Kích thước payload ảnh: `200 - 400 KB` |
+| **Schedule View** | [`components/operational/schedule-view.tsx`](../../components/operational/schedule-view.tsx) | Quản lý lịch ca làm việc, hỗ trợ AbortController khi đổi tuần | Client chunk (dynamic) |
+| **App Shell** | [`components/app-shell.tsx`](../../components/app-shell.tsx) | Khung layout phân hệ vận hành, chứa `framer-motion`, auto-fetch trên focus | Client chunk: `48 KB` + `120 KB` motion |
+| **Evidence Processing** | [`lib/evidence.ts`](../../lib/evidence.ts) | Parse JPEG bằng `jpeg-js`, tạo server-stamped SVG bọc base64 | Tốn 40-150ms CPU Workers |
+| **Database Schema** | [`db/schema.ts`](../../db/schema.ts) | Định nghĩa bảng D1, index và constraints | 20 bảng, 30+ indexes |
+| **Auth & Cache** | [`server/auth.ts`](../../server/auth.ts) | Identity cache 10s SLA bằng `Map`, Supabase session check | Cache in-memory theo Isolate |
+| **Static Video Asset** | [`public/loopicafe-introduce-vid.mp4`](../../public/loopicafe-introduce-vid.mp4) | Video giới thiệu 10s | `2.75 MB` |
+| **Static OG Images** | [`public/og.png`](../../public/og.png), [`public/og-mobile.png`](../../public/og-mobile.png) | Ảnh OpenGraph mạng xã hội | `1.49 MB` + `1.70 MB` |
 
 ---
 
@@ -73,21 +81,21 @@ Hệ thống sở hữu nền tảng tốt về mặt **Single-flight polling co
 | Điều kiện kiểm tra | Trạng thái | Bằng chứng kiểm tra & Ghi chú |
 | :--- | :---: | :--- |
 | **1. Frontend JS & Bundle Size** | | |
-| Tách biệt Client Components và Server Components hợp lý | `FAIL` | [`app/order/page.tsx`](file:///d:/College/Practice/loopicafe-management-system/app/order/page.tsx) là `force-dynamic` nhưng chỉ render Client Component rỗng, không nạp menu trước từ server. |
-| Sử dụng Dynamic Imports cho các component nặng | `PASS` | [`components/operational-views.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational-views.tsx) sử dụng `next/dynamic` cho tất cả các view lớn. |
+| Tách biệt Client Components và Server Components hợp lý | `FAIL` | [`app/order/page.tsx`](../../app/order/page.tsx) là `force-dynamic` nhưng chỉ render Client Component rỗng, không nạp menu trước từ server. |
+| Sử dụng Dynamic Imports cho các component nặng | `PASS` | [`components/operational-views.tsx`](../../components/operational-views.tsx) sử dụng `next/dynamic` cho tất cả các view lớn. |
 | Không chứa dependency thừa hoặc quá nặng trong Critical Path | `FAIL` | `framer-motion` (120 KB JS) nằm trong `app-shell.tsx` chỉ để làm fade/slide cơ bản. `leaflet` được dynamic import nhưng css vẫn import top-level. |
 | Kiểm soát re-renders và useEffect waterfalls | `FAIL` | `AppShell` và `EmployeeTodayView` đồng thời fetch `/api/today` khi mở trang và khi focus. |
 | Tối ưu hóa phông chữ (Font Optimization) | `PASS` | Font Nunito và Be Vietnam Pro được nén WOFF2 nội bộ trong `dist/client/assets/_vinext_fonts/`. |
 | Tối ưu hóa tài nguyên ảnh và video tĩnh | `FAIL` | Tệp video `loopicafe-introduce-vid.mp4` nặng `2.75 MB` và 2 ảnh OG nặng `3.2 MB` được bundle vào worker static assets dù trang chủ redirect ngay lập tức. |
 | **2. Polling & Network Efficiency** | | |
-| Polling sử dụng đệ quy `setTimeout` (Single-flight) thay vì `setInterval` | `PASS` | Cả `OwnerOrdersView` ([dòng 368](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L368)) và `OrderTrackingView` ([dòng 49](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx#L49)) đều dùng đệ quy `setTimeout`. |
+| Polling sử dụng đệ quy `setTimeout` (Single-flight) thay vì `setInterval` | `PASS` | Cả `OwnerOrdersView` ([dòng 368](../../components/operational/owner-orders-view.tsx)) và `OrderTrackingView` ([dòng 49](../../components/order/order-tracking-view.tsx)) đều dùng đệ quy `setTimeout`. |
 | Hủy bỏ request lỗi thời bằng AbortController | `FAIL` | `OwnerOrdersView` không truyền `AbortSignal` vào `fetch()`. Khi đổi bộ lọc, in-flight request cũ vẫn tiếp tục tải qua mạng. |
 | Ngừng hoặc giãn cách polling khi tab ở chế độ nền (Page Visibility) | `FAIL` | `OwnerOrdersView` tiếp tục poll mỗi 4s vô tận ở tab nền. Chỉ có `OrderTrackingView` có giãn cách 10s. |
 | Xử lý race condition khi phản hồi mạng về lộn xộn (Out-of-order) | `PASS` | Đã có `ordersRequestIdRef` và `scheduleSeqRef`, được kiểm chứng qua `concurrency-empirical-stress.test.mjs`. |
 | Cấu hình HTTP Caching Headers chính xác | `FAIL` | Hầu hết API bị gán `Cache-Control: private, no-store, max-age=0` (kể cả `/api/order/menu` và `/api/files/[eventId]`). |
 | **3. Cloudflare Workers Runtime & Cold Start** | | |
 | Kích thước Worker bundle nằm trong giới hạn an toàn | `PASS` | `dist/server/index.js` là `1.73 MB` uncompressed (~450 KB gzip), dưới hạn 10 MB của Cloudflare. |
-| Phục vụ tài nguyên tĩnh qua Edge CDN/Assets | `PASS` | Vinext cấu hình qua `env.ASSETS.fetch` trong [`worker/index.ts`](file:///d:/College/Practice/loopicafe-management-system/worker/index.ts#L39). |
+| Phục vụ tài nguyên tĩnh qua Edge CDN/Assets | `PASS` | Vinext cấu hình qua `env.ASSETS.fetch` trong [`worker/index.ts`](../../worker/index.ts). |
 | Thời gian CPU tiêu thụ tuân thủ hạn mức 50ms | `FAIL` | Hàm `jpeg.decode()` trong `validateJpegDataUrl` tiêu tốn 40-150ms CPU cho ảnh 1280x960, nguy cơ vượt ngưỡng 50ms. |
 | **4. Cloudflare D1 Database Performance** | | |
 | Gom nhóm truy vấn bằng `db.batch()` thay vì roundtrips tuần tự | `FAIL` | `/api/owner/orders` chạy 5 câu D1 tuần tự; `/api/reports/payroll` chạy 7 câu D1 tuần tự; `expireEvidence` chạy vòng lặp tuần tự. |
@@ -96,7 +104,7 @@ Hệ thống sở hữu nền tảng tốt về mặt **Single-flight polling co
 | Tránh ghi đĩa trên các API đọc thường xuyên | `FAIL` | `/api/order/track` ghi vào `order_rate_limits` trên mỗi nhịp polling đọc đơn; `/api/files/[eventId]` ghi audit log trên mỗi nhịp GET. |
 | **5. Cloudflare R2 Bandwidth & Storage** | | |
 | Băng thông truyền tải ảnh tối ưu (Compression) | `FAIL` | Ảnh chụp từ canvas là 1280x960 JPEG chất lượng 0.84, bọc vào Base64 trong file SVG làm tăng 33% dung lượng lưu trữ R2. |
-| Streaming phản hồi trực tiếp từ R2 | `PASS` | [`app/api/files/[eventId]/route.ts`](file:///d:/College/Practice/loopicafe-management-system/app/api/files/%5BeventId%5D/route.ts#L30) stream trực tiếp `object.body`. |
+| Streaming phản hồi trực tiếp từ R2 | `PASS` | [`app/api/files/[eventId]/route.ts`](../../app/api/files/[eventId]/route.ts) stream trực tiếp `object.body`. |
 | Thao tác xóa hàng loạt (Bulk Delete) trên R2 | `FAIL` | `expireEvidence` gọi `await evidence.delete()` tuần tự trong vòng lặp 100 lần thay vì dùng batch/parallel. |
 | **6. Supabase Auth Latency & Session Caching** | | |
 | Cache danh tính để giảm cuộc gọi ra ngoài Supabase | `PASS` | `validatedIdentityCache` cache SHA-256 fingerprint của access token trong 10 giây SLA. |
@@ -137,8 +145,8 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Attendance / Evidence Storage
 - **File & Dòng liên quan:**
-  - [`lib/evidence.ts:57-63`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts#L57-L63)
-  - [`app/api/attendance/actions/route.ts:200-215`](file:///d:/College/Practice/loopicafe-management-system/app/api/attendance/actions/route.ts#L200-L215)
+  - [`lib/evidence.ts:57-63`](../../lib/evidence.ts)
+  - [`app/api/attendance/actions/route.ts:200-215`](../../app/api/attendance/actions/route.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong hàm `validateJpegDataUrl()`:
   ```typescript
@@ -148,9 +156,9 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
     throw new Error("Decoded dimensions do not match");
   }
   ```
-  `jpeg-js` là thư viện giải mã JPEG viết hoàn toàn bằng JavaScript. Việc giải nén một bức ảnh 1280x960 (tương đương 1.228.800 pixel) đòi hỏi hàng triệu phép tính giải mã entropy Huffman, lượng tử hóa ngược (dequantization) và biến đổi cosin rời rạc ngược (IDCT) trực tiếp trong thread JS của isolate. Sau khi giải mã, biến `decoded.data` bị hủy hoàn toàn vì [`createServerStampedSvg`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts#L81) chỉ nhúng chuỗi base64 thô ban đầu vào thẻ `<image href="data:image/jpeg;base64,${photo.base64}">`.
+  `jpeg-js` là thư viện giải mã JPEG viết hoàn toàn bằng JavaScript. Việc giải nén một bức ảnh 1280x960 (tương đương 1.228.800 pixel) đòi hỏi hàng triệu phép tính giải mã entropy Huffman, lượng tử hóa ngược (dequantization) và biến đổi cosin rời rạc ngược (IDCT) trực tiếp trong thread JS của isolate. Sau khi giải mã, biến `decoded.data` bị hủy hoàn toàn vì [`createServerStampedSvg`](../../lib/evidence.ts) chỉ nhúng chuỗi base64 thô ban đầu vào thẻ `<image href="data:image/jpeg;base64,${photo.base64}">`.
 - **Evidence (Bằng chứng cụ thể):**
-  - Kích thước canvas tạo ảnh ở client ([`attendance-capture.tsx:192`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx#L192)) là `1280 x 960` pixels.
+  - Kích thước canvas tạo ảnh ở client ([`attendance-capture.tsx:192`](../../components/attendance-capture.tsx)) là `1280 x 960` pixels.
   - Trên môi trường Node.js / V8 isolate, lệnh `jpeg.decode()` cho ảnh 1280x960 tốn từ **40ms đến 120ms CPU time**.
   - Gói Cloudflare Workers Free và Standard có giới hạn CPU là **50ms** cho mỗi request. Khi thời gian CPU vượt 50ms, Cloudflare Workers sẽ lập tức trả về lỗi `Error 1102: Worker exceeded CPU time limit`.
 - **Expected vs Actual Behavior:**
@@ -171,9 +179,9 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Ordering / Database Performance
 - **File & Dòng liên quan:**
-  - [`app/api/order/track/route.ts:9`](file:///d:/College/Practice/loopicafe-management-system/app/api/order/track/route.ts#L9)
-  - [`modules/ordering/application/rate-limit.ts:11-17`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/rate-limit.ts#L11-L17)
-  - [`components/order/order-tracking-view.tsx:38-50`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx#L38-L50)
+  - [`app/api/order/track/route.ts:9`](../../app/api/order/track/route.ts)
+  - [`modules/ordering/application/rate-limit.ts:11-17`](../../modules/ordering/application/rate-limit.ts)
+  - [`components/order/order-tracking-view.tsx:38-50`](../../components/order/order-tracking-view.tsx)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Mỗi 5 giây, component `OrderTrackingView` gửi request `GET /api/order/track`. Endpoint này gọi:
   ```typescript
@@ -216,9 +224,9 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Operations / Frontend Performance
 - **File & Dòng liên quan:**
-  - [`components/operational/owner-orders-view.tsx:252`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L252)
-  - [`components/operational/owner-orders-view.tsx:365-385`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L365-L385)
-  - [`app/api/owner/orders/route.ts:43-168`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L43-L168)
+  - [`components/operational/owner-orders-view.tsx:252`](../../components/operational/owner-orders-view.tsx)
+  - [`components/operational/owner-orders-view.tsx:365-385`](../../components/operational/owner-orders-view.tsx)
+  - [`app/api/owner/orders/route.ts:43-168`](../../app/api/owner/orders/route.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong `OwnerOrdersView`:
   ```typescript
@@ -262,11 +270,11 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Database / SQL Query Performance
 - **File & Dòng liên quan:**
-  - [`app/api/shifts/route.ts:23`](file:///d:/College/Practice/loopicafe-management-system/app/api/shifts/route.ts#L23)
-  - [`app/api/dashboard/route.ts:40, 67, 73`](file:///d:/College/Practice/loopicafe-management-system/app/api/dashboard/route.ts#L40)
-  - [`app/api/today/route.ts:16-18, 58`](file:///d:/College/Practice/loopicafe-management-system/app/api/today/route.ts#L16-L18)
-  - [`app/api/owner/orders/route.ts:29`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L29)
-  - [`db/schema.ts:42, 85-87`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L42)
+  - [`app/api/shifts/route.ts:23`](../../app/api/shifts/route.ts)
+  - [`app/api/dashboard/route.ts:40, 67, 73`](../../app/api/dashboard/route.ts)
+  - [`app/api/today/route.ts:16-18, 58`](../../app/api/today/route.ts)
+  - [`app/api/owner/orders/route.ts:29`](../../app/api/owner/orders/route.ts)
+  - [`db/schema.ts:42, 85-87`](../../db/schema.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   1. Bảng `employees` có index `uniqueIndex("employees_email_idx").on(table.email)`. Tuy nhiên, trong hầu hết các câu truy vấn JOIN:
      ```sql
@@ -277,11 +285,11 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
   2. Bảng `shifts` chỉ có index:
      - `shifts_employee_start_idx` trên `(employeeEmail, startsAt)`
      - `shifts_store_status_ends_idx` trên `(storeId, status, endsAt)`
-     Trong [`app/api/shifts/route.ts:24`](file:///d:/College/Practice/loopicafe-management-system/app/api/shifts/route.ts#L24):
+     Trong [`app/api/shifts/route.ts:24`](../../app/api/shifts/route.ts):
      `WHERE s.store_id = ? AND s.starts_at < ? AND s.ends_at > ?`
      Câu lệnh không lọc theo `status`, nên không thể dùng tiền tố của `shifts_store_status_ends_idx` để tìm kiếm theo thời gian.
   3. Lọc ngày bằng biểu thức:
-     `date(created_at, '+7 hours') = ?` ([`owner/orders/route.ts:29`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L29)) và `strftime('%Y-%m', opened_at, '+7 hours')` ([`dashboard/route.ts:73`](file:///d:/College/Practice/loopicafe-management-system/app/api/dashboard/route.ts#L73)) triệt tiêu khả năng tìm kiếm nhị phân của B-Tree index trên timestamp.
+     `date(created_at, '+7 hours') = ?` ([`owner/orders/route.ts:29`](../../app/api/owner/orders/route.ts)) và `strftime('%Y-%m', opened_at, '+7 hours')` ([`dashboard/route.ts:73`](../../app/api/dashboard/route.ts)) triệt tiêu khả năng tìm kiếm nhị phân của B-Tree index trên timestamp.
 - **Evidence (Bằng chứng cụ thể):**
   - Kiểm tra `EXPLAIN QUERY PLAN` trong SQLite: biểu thức `ON lower(e.email) = lower(s.employee_email)` hiển thị `SCAN e` thay vì `SEARCH e USING INDEX employees_email_idx`.
   - Với 500 ca làm việc trong lịch tuần, hệ thống thực hiện 500 lần Full Table Scan bảng `employees`.
@@ -305,7 +313,7 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Attendance / Cron Retention
 - **File & Dòng liên quan:**
-  - [`modules/attendance/application/expire-evidence.ts:26-43`](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/expire-evidence.ts#L26-L43)
+  - [`modules/attendance/application/expire-evidence.ts:26-43`](../../modules/attendance/application/expire-evidence.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong hàm `expireEvidence`:
   ```typescript
@@ -344,12 +352,12 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Ordering / Client Performance & LCP
 - **File & Dòng liên quan:**
-  - [`app/order/page.tsx:4-14`](file:///d:/College/Practice/loopicafe-management-system/app/order/page.tsx#L4-L14)
-  - [`components/order/customer-order-page.tsx:66-119`](file:///d:/College/Practice/loopicafe-management-system/components/order/customer-order-page.tsx#L66-L119)
-  - [`app/api/order/menu/route.ts:4-54`](file:///d:/College/Practice/loopicafe-management-system/app/api/order/menu/route.ts#L4-L54)
-  - [`next.config.ts:52-54`](file:///d:/College/Practice/loopicafe-management-system/next.config.ts#L52-L54)
+  - [`app/order/page.tsx:4-14`](../../app/order/page.tsx)
+  - [`components/order/customer-order-page.tsx:66-119`](../../components/order/customer-order-page.tsx)
+  - [`app/api/order/menu/route.ts:4-54`](../../app/api/order/menu/route.ts)
+  - [`next.config.ts:52-54`](../../next.config.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
-  1. Trang [`app/order/page.tsx`](file:///d:/College/Practice/loopicafe-management-system/app/order/page.tsx#L12) khai báo `export const dynamic = "force-dynamic"` và render trực tiếp component `"use client"` `CustomerOrderPage`.
+  1. Trang [`app/order/page.tsx`](../../app/order/page.tsx) khai báo `export const dynamic = "force-dynamic"` và render trực tiếp component `"use client"` `CustomerOrderPage`.
   2. Trình duyệt tải trang HTML ban đầu nhận về trạng thái rỗng (`store: null`, `items: []`).
   3. Trình duyệt phải tải toàn bộ JavaScript bundle, hydrate React, thực thi hook `useEffect` rồi mới bắn một HTTP request `fetch('/api/order/menu', { cache: 'no-store' })`.
   4. Header tại `next.config.ts` thiết lập `/api/(.*)` có `Cache-Control: private, no-store, max-age=0`.
@@ -377,8 +385,8 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Frontend Architecture / Network Deduplication
 - **File & Dòng liên quan:**
-  - [`components/app-shell.tsx:121, 147`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx#L121)
-  - [`components/operational/today-view.tsx:22, 35`](file:///d:/College/Practice/loopicafe-management-system/components/operational/today-view.tsx#L22)
+  - [`components/app-shell.tsx:121, 147`](../../components/app-shell.tsx)
+  - [`components/operational/today-view.tsx:22, 35`](../../components/operational/today-view.tsx)
 - **Root Cause (Nguyên nhân gốc rễ):**
   `AppShell` hiển thị thanh thống kê nhanh trên mobile và subtitle ở header nên lắng nghe:
   ```typescript
@@ -398,7 +406,7 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Evidence (Bằng chứng cụ thể):**
   - Mở trang `/app/today`: Trình duyệt gửi **2 requests song song giống hệt nhau** tới `/api/today` cùng lúc (chênh lệch nhau < 2ms).
   - Khi nhân viên bấm chuyển tab hoặc mở ứng dụng khác rồi quay lại: **tiếp tục gửi 2 requests song song**.
-  - Mỗi request `/api/today` thực thi một batch gồm 6 câu lệnh SQL trên D1 ([`app/api/today/route.ts:13-70`](file:///d:/College/Practice/loopicafe-management-system/app/api/today/route.ts#L13-L70)). Như vậy, mỗi lần vào trang hoặc focus, D1 phải chạy 12 câu SQL thay vì 6.
+  - Mỗi request `/api/today` thực thi một batch gồm 6 câu lệnh SQL trên D1 ([`app/api/today/route.ts:13-70`](../../app/api/today/route.ts)). Như vậy, mỗi lần vào trang hoặc focus, D1 phải chạy 12 câu SQL thay vì 6.
 - **Expected vs Actual Behavior:**
   - *Expected:* Một request duy nhất được gửi và kết quả được chia sẻ cho cả `AppShell` và `EmployeeTodayView`.
   - *Actual:* Gửi kép lãng phí gấp đôi tài nguyên mạng và database.
@@ -417,8 +425,8 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Frontend Bundle & Mobile Performance
 - **File & Dòng liên quan:**
-  - [`components/app-shell.tsx:27, 460-469`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx#L27)
-  - [`package.json:31`](file:///d:/College/Practice/loopicafe-management-system/package.json#L31)
+  - [`components/app-shell.tsx:27, 460-469`](../../components/app-shell.tsx)
+  - [`package.json:31`](../../package.json)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong `components/app-shell.tsx`:
   ```typescript
@@ -460,10 +468,10 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Attendance / R2 Bandwidth & Observability
 - **File & Dòng liên quan:**
-  - [`app/api/files/[eventId]/route.ts:19-38`](file:///d:/College/Practice/loopicafe-management-system/app/api/files/%5BeventId%5D/route.ts#L19-L38)
-  - [`lib/evidence.ts:80-90`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts#L80-L90)
+  - [`app/api/files/[eventId]/route.ts:19-38`](../../app/api/files/[eventId]/route.ts)
+  - [`lib/evidence.ts:80-90`](../../lib/evidence.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
-  1. Trong [`app/api/files/[eventId]/route.ts`](file:///d:/College/Practice/loopicafe-management-system/app/api/files/%5BeventId%5D/route.ts#L33), phản hồi trả về header:
+  1. Trong [`app/api/files/[eventId]/route.ts`](../../app/api/files/[eventId]/route.ts), phản hồi trả về header:
      `"cache-control": "private, no-store, max-age=0"`
   2. Mỗi lần trình duyệt tải ảnh bằng chứng qua GET request, server thực hiện ghi vào database:
      ```typescript
@@ -497,19 +505,19 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `CONFIRMED`
 - **Mã module:** Build & Static Assets
 - **File & Dòng liên quan:**
-  - [`app/page.tsx:36`](file:///d:/College/Practice/loopicafe-management-system/app/page.tsx#L36)
-  - [`public/loopicafe-introduce-vid.mp4`](file:///d:/College/Practice/loopicafe-management-system/public/loopicafe-introduce-vid.mp4) (2.757.208 bytes)
-  - [`public/og-mobile.png`](file:///d:/College/Practice/loopicafe-management-system/public/og-mobile.png) (1.698.892 bytes)
-  - [`public/og.png`](file:///d:/College/Practice/loopicafe-management-system/public/og.png) (1.486.527 bytes)
+  - [`app/page.tsx:36`](../../app/page.tsx)
+  - [`public/loopicafe-introduce-vid.mp4`](../../public/loopicafe-introduce-vid.mp4) (2.757.208 bytes)
+  - [`public/og-mobile.png`](../../public/og-mobile.png) (1.698.892 bytes)
+  - [`public/og.png`](../../public/og.png) (1.486.527 bytes)
 - **Root Cause (Nguyên nhân gốc rễ):**
-  Tại trang chủ [`app/page.tsx:36`](file:///d:/College/Practice/loopicafe-management-system/app/page.tsx#L36):
+  Tại trang chủ [`app/page.tsx:36`](../../app/page.tsx):
   ```typescript
   export default function Home() {
     redirect("/auth/login");
     ...
   }
   ```
-  Lệnh `redirect("/auth/login")` chạy vô điều kiện ngay đầu component. Toàn bộ phần render video phía dưới ([`app/page.tsx:66-77`](file:///d:/College/Practice/loopicafe-management-system/app/page.tsx#L66-L77)) là dead code ở runtime. Tuy nhiên, file video `loopicafe-introduce-vid.mp4` nặng gần 3 MB cùng 2 file ảnh OG nặng tổng cộng 3.2 MB vẫn nằm trong thư mục `public/` và được đóng gói vào toàn bộ artifact `dist/client/`.
+  Lệnh `redirect("/auth/login")` chạy vô điều kiện ngay đầu component. Toàn bộ phần render video phía dưới ([`app/page.tsx:66-77`](../../app/page.tsx)) là dead code ở runtime. Tuy nhiên, file video `loopicafe-introduce-vid.mp4` nặng gần 3 MB cùng 2 file ảnh OG nặng tổng cộng 3.2 MB vẫn nằm trong thư mục `public/` và được đóng gói vào toàn bộ artifact `dist/client/`.
 - **Evidence (Bằng chứng cụ thể):**
   - Đo đạc thực tế dung lượng file:
     - `public/loopicafe-introduce-vid.mp4`: `2.75 MB`
@@ -535,7 +543,7 @@ PERF-011 | P3 | PROBABLE  | Auth / Cloudflare    | In-Memory Session Cache bị 
 - **Độ tin cậy:** `PROBABLE`
 - **Mã module:** Auth / Multi-Isolate Session Management
 - **File & Dòng liên quan:**
-  - [`server/auth.ts:24-32, 122-149`](file:///d:/College/Practice/loopicafe-management-system/server/auth.ts#L24-L32)
+  - [`server/auth.ts:24-32, 122-149`](../../server/auth.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong `server/auth.ts`:
   ```typescript
@@ -585,21 +593,21 @@ Dưới đây là kế hoạch chi tiết cho các bước tiếp theo, chia th�
 
 ### Giai đoạn 1: Khắc phục sự cố khẩn cấp (P0 - Immediate Stability)
 - **Task 1.1 (Sửa PERF-001):**
-  - Chỉnh sửa [`lib/evidence.ts`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts): Bỏ lời gọi `jpeg.decode()`. Dựa hoàn toàn vào `readJpegDimensions()` để validate dimensions và magic markers.
+  - Chỉnh sửa [`lib/evidence.ts`](../../lib/evidence.ts): Bỏ lời gọi `jpeg.decode()`. Dựa hoàn toàn vào `readJpegDimensions()` để validate dimensions và magic markers.
   - *Tiêu chí nghiệm thu:* `npm test` vượt qua test suite `tests/evidence.test.mjs`, thời gian thực thi xác thực ảnh giảm xuống < 1ms.
 - **Task 1.2 (Sửa PERF-002):**
-  - Chỉnh sửa [`app/api/order/track/route.ts`](file:///d:/College/Practice/loopicafe-management-system/app/api/order/track/route.ts): Bỏ rate limit ghi đĩa D1 trên thao tác tra cứu GET. Thêm header `ETag` dựa trên `order.updated_at`.
+  - Chỉnh sửa [`app/api/order/track/route.ts`](../../app/api/order/track/route.ts): Bỏ rate limit ghi đĩa D1 trên thao tác tra cứu GET. Thêm header `ETag` dựa trên `order.updated_at`.
   - *Tiêu chí nghiệm thu:* Request tra cứu đơn hàng trả về HTTP 304 khi không đổi dữ liệu; không có câu lệnh INSERT/DELETE nào vào bảng `order_rate_limits`.
 
 ### Giai đoạn 2: Tối ưu hóa Database & Polling Efficiency (P1 - Scalability)
 - **Task 2.1 (Sửa PERF-003):**
-  - Cập nhật [`components/operational/owner-orders-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx): Thêm `document.visibilityState` check, thêm `AbortController` khi fetch orders.
-  - Gom 5 câu truy vấn trong [`app/api/owner/orders/route.ts`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts) thành `db.batch()`.
+  - Cập nhật [`components/operational/owner-orders-view.tsx`](../../components/operational/owner-orders-view.tsx): Thêm `document.visibilityState` check, thêm `AbortController` khi fetch orders.
+  - Gom 5 câu truy vấn trong [`app/api/owner/orders/route.ts`](../../app/api/owner/orders/route.ts) thành `db.batch()`.
 - **Task 2.2 (Sửa PERF-004):**
   - Cập nhật schema D1 / migrations: Thêm index hỗ trợ tìm kiếm không phân biệt hoa thường và index thời gian cho bảng `shifts`.
   - Thay thế các biểu thức `date(col, '+7 hours')` bằng điều kiện lọc khoảng thời gian UTC `col >= ? AND col < ?`.
 - **Task 2.3 (Sửa PERF-005):**
-  - Tối ưu [`modules/attendance/application/expire-evidence.ts`](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/expire-evidence.ts): Gom các file R2 cần xóa chạy song song; xóa các dòng trong `attendance_photos` bằng một câu lệnh `DELETE ... WHERE event_id IN (...)`.
+  - Tối ưu [`modules/attendance/application/expire-evidence.ts`](../../modules/attendance/application/expire-evidence.ts): Gom các file R2 cần xóa chạy song song; xóa các dòng trong `attendance_photos` bằng một câu lệnh `DELETE ... WHERE event_id IN (...)`.
 - **Task 2.4 (Sửa PERF-006):**
   - Thêm cấu hình caching header `Cache-Control: public, s-maxage=60, stale-while-revalidate=300` cho `/api/order/menu`.
 

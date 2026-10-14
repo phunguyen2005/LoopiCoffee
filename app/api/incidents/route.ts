@@ -3,6 +3,8 @@ import { auditStatement, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const GET = apiHandler(async () => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
@@ -21,10 +23,12 @@ export const POST = apiHandler(async (request: Request) => {
     title: "string",
     category: "string",
     severity: "string",
+    idempotencyKey: "string",
   })) as {
     title?: string;
     category?: string;
     severity?: "low" | "medium" | "high";
+    idempotencyKey?: string;
   };
   const title = body.title?.trim();
   const category = body.category?.trim();
@@ -38,10 +42,25 @@ export const POST = apiHandler(async (request: Request) => {
   ) {
     return Response.json({ error: "Thông tin sự cố không hợp lệ." }, { status: 400 });
   }
-  const id = crypto.randomUUID();
+  if (body.idempotencyKey && !UUID_PATTERN.test(body.idempotencyKey)) {
+    return Response.json({ error: "Thiếu mã gửi báo cáo hợp lệ." }, { status: 400 });
+  }
+  const id = body.idempotencyKey || crypto.randomUUID();
   const now = new Date().toISOString();
   const db = await ensureDatabase();
   const finalCategory = category || "Khác";
+  const replay = await db.prepare(
+    `SELECT id, title, category, severity, status, created_at
+     FROM incidents WHERE id = ? AND store_id = ? AND lower(reporter_email) = lower(?)`,
+  ).bind(id, auth.actor.storeId, auth.actor.email).first<{
+    id: string; title: string; category: string; severity: string; status: string; created_at: string;
+  }>();
+  if (replay) {
+    if (replay.title !== title || replay.category !== finalCategory || replay.severity !== body.severity) {
+      return Response.json({ error: "Mã gửi báo cáo đã được dùng cho nội dung khác.", code: "idempotency_conflict" }, { status: 409 });
+    }
+    return Response.json({ incident: replay, replayed: true });
+  }
   const statements = [
     db.prepare(
       `INSERT INTO incidents
@@ -62,8 +81,16 @@ export const POST = apiHandler(async (request: Request) => {
          VALUES (?, ?, 'high_incident', ?, '/app/issues', ?)`,
       ).bind(crypto.randomUUID(), reviewer.email, `Sự cố mức cao: ${title.slice(0, 120)}`, now)));
   }
-  await db.batch(statements);
-  return Response.json({ incident: { id, title, category: finalCategory, severity: body.severity, status: "open", created_at: now } });
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    const racedReplay = await db.prepare(
+      "SELECT id, title, category, severity, status, created_at FROM incidents WHERE id = ? AND store_id = ? AND lower(reporter_email) = lower(?)",
+    ).bind(id, auth.actor.storeId, auth.actor.email).first();
+    if (racedReplay) return Response.json({ incident: racedReplay, replayed: true });
+    throw error;
+  }
+  return Response.json({ incident: { id, title, category: finalCategory, severity: body.severity, status: "open", created_at: now }, replayed: false });
 });
 
 const ALLOWED_PREVIOUS_STATUS: Record<string, string[]> = {

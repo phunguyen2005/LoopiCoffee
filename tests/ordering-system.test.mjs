@@ -12,7 +12,7 @@ import * as errors from "../platform/http/errors.ts";
 import * as audit from "../server/audit.ts";
 
 const receipt = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
-const payload = (item = {}) => ({ customerName: "Test Customer", customerPhone: "0901234567", customerNote: "Private note",
+const payload = (item = {}) => ({ customerName: "Test Customer", customerPhone: "0901234567", customerNote: "Private note", expectedTotal: 112000,
   items: [{ itemId: "tea", quantity: 2, sizeId: "large", sugarId: "half", iceId: "normal", toppingIds: ["pearl"], note: "Less ice", ...item }] });
 const actor = { storeId: "store-test", email: "manager@example.test", role: "manager" };
 function fixture(t) {
@@ -55,6 +55,15 @@ test("actual checkout derives names, base price, size and topping amounts from c
   assert.deepEqual(JSON.parse(item.toppings_json),[{name:"pearl",price:5000}]);
 });
 
+test("checkout rejects a stale displayed total and reports the current server total", async t => {
+  const db = fixture(t);
+  await assert.rejects(
+    place(db, { ...payload(), expectedTotal: 1 }),
+    (error) => error?.code === "price_changed" && error?.details?.currentTotal === 112000,
+  );
+  assert.equal(db.sqlite.prepare("SELECT count(*) n FROM customer_orders").get().n, 0);
+});
+
 test("rejects unknown/sold-out/inactive-category items and invalid or unavailable options",async t=>{
   const db=fixture(t);
   for(const change of [{itemId:"unknown"},{sizeId:"pearl"},{toppingIds:["foreign"]},{toppingIds:["pearl","pearl"]}]) await assert.rejects(place(db,payload(change)));
@@ -90,6 +99,7 @@ test("lost-response retry recovers the same order after prices change and orderi
   const retry=await place(db,payload(),a.key,a.token);
   assert.equal(retry.replayed,true);assert.equal(retry.order.id,a.order.id);assert.equal(retry.order.totalAmount,112000);
   await assert.rejects(place(db,payload({quantity:3}),a.key,a.token),{code:"idempotency_conflict"});
+  await assert.rejects(place(db,{...payload(),expectedTotal:113000},a.key,a.token),{code:"idempotency_conflict"});
   await assert.rejects(place(db,payload(),a.key,receipt()),{code:"idempotency_conflict"});
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM customer_orders").get().n,1);
 });
@@ -246,8 +256,13 @@ test("owner menu handlers create and update valid items with audit and reject cr
   const created=await menu.POST(request({name:"Fresh Tea",basePrice:39000,categoryId:"cat",allowsToppings:false}));
   assert.equal(created.status,201);const {item}=await created.json();
   assert.equal(db.sqlite.prepare("SELECT allows_toppings FROM menu_items WHERE id=?").get(item.id).allows_toppings,0);
-  const edited=await menu.PATCH(request({itemId:item.id,name:"Fresh Tea New",basePrice:42000,isAvailable:false}));assert.equal(edited.status,200);
+  const originalVersion=db.sqlite.prepare("SELECT updated_at FROM menu_items WHERE id=?").get(item.id).updated_at;
+  const edited=await menu.PATCH(request({itemId:item.id,name:"Fresh Tea New",basePrice:42000,isAvailable:false,expectedUpdatedAt:originalVersion}));assert.equal(edited.status,200);
   assert.equal(db.sqlite.prepare("SELECT base_price FROM menu_items WHERE id=?").get(item.id).base_price,42000);
+  const stale=await menu.PATCH(request({itemId:item.id,isAvailable:true,expectedUpdatedAt:originalVersion}));
+  assert.equal(stale.status,409);
+  assert.equal((await stale.json()).code,"menu_conflict");
+  assert.equal(db.sqlite.prepare("SELECT is_available FROM menu_items WHERE id=?").get(item.id).is_available,0);
   const foreign=route("app/api/owner/menu/route.ts",db,{...actor,storeId:"store-other"});
   assert.equal((await foreign.PATCH(request({itemId:item.id,basePrice:1}))).status,404);
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM audit_events").get().n,2);

@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 const origin = "http://127.0.0.1:4173";
 const orderPayload = {
   customerName: "Local Order QA", customerPhone: "0901234567", customerNote: "Local test only",
+  expectedTotal: 92000,
   items: [{ itemId: "local-coffee", quantity: 2, sizeId: "local-size-l", sugarId: "local-sugar", iceId: "local-ice", toppingIds: ["local-topping"], note: "" }],
 };
 
@@ -54,7 +55,7 @@ test("local HTTP checkout calculates canonical prices, replays safely and hides 
 
 async function fillCheckout(page: Page) {
   await page.goto("/order");
-  await page.getByRole("button", { name: "Thêm món Cà phê sữa", exact: true }).click();
+  await page.getByRole("button", { name: /^Chọn món Cà phê sữa,/ }).click();
   await page.getByRole("button", { name: /^L\s/ }).first().click();
   await page.getByRole("button", { name: /Trân châu/ }).first().click();
   await page.getByRole("button", { name: /Thêm vào giỏ/ }).first().click();

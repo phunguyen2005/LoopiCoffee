@@ -1,24 +1,38 @@
-# LoopiCafe — Quy tắc chung cho mọi audit agent
+# Quy tắc audit
 
-## Bối cảnh
-- MVP một cửa hàng; vai trò OWNER, MANAGER, STAFF, CUSTOMER (khách đặt món không cần tài khoản).
-- Stack cố định: React, Next.js, TypeScript, Tailwind CSS, shadcn/ui, Vinext, Cloudflare Workers, D1, Drizzle, R2 private, Supabase Auth.
-- Kiến trúc modular monolith; múi giờ Asia/Ho_Chi_Minh.
-- Giao tiếp và báo cáo tiếng Việt; tên biến/code/database tiếng Anh.
+Cập nhật: 2026-10-13. Đọc [AGENTS](../../AGENTS.md), [tài liệu chuẩn](../README.md), rule module và decision register.
 
-## Ràng buộc bắt buộc
-1. AUDIT ONLY: không sửa code, dependencies, migrations, dữ liệu, env, thiết lập cloud hay deployment. Chỉ được tạo báo cáo trong `docs/audit/`.
-2. Đọc cấu trúc repo, README, AGENTS.md và tài liệu dự án trước; không suy đoán file hoặc tính năng tồn tại.
-3. Đưa bằng chứng bằng đường dẫn file:dòng, kết quả test/trace hoặc screenshot thực tế. Không đưa dữ liệu bí mật vào báo cáo.
-4. Phân loại CONFIRMED / PROBABLE / NEEDS VERIFICATION; nếu không đủ dữ liệu ghi NOT ASSESSED.
-5. Đánh số phát hiện theo prefix của mảng; ghi mức độ P0/P1/P2/P3, tác động, cách tái hiện, nguyên nhân, hướng sửa, mức độ khó, test hồi quy.
-6. Không được dùng UI ẩn nút làm bằng chứng đủ cho phân quyền server. Không coi mock/static placeholder là chức năng hoàn chỉnh.
-7. Chỉ chạy lệnh read-only hoặc test trong môi trường cô lập sau khi xác minh không gây ghi dữ liệu hoặc dịch vụ ngoài; nếu rủi ro thì dừng và ghi blocker.
-8. Không đề xuất thay tech stack, microservices hay multi-store. Không tự triển khai fix.
-9. Giữ mỗi phát hiện trong báo cáo chuyên môn; nếu liên ngành, tham chiếu finding ID thay vì nhân bản.
+## Phạm vi
 
-## Mẫu finding
-`ID | Priority | Confidence | Module | Evidence (file:line/test/screenshot) | Expected | Actual/Risk | Root cause | Recommendation | Effort | Regression test`
+AUDIT ONLY mặc định: source/config/data read-only, chỉ ghi báo cáo tại vị trí được giao.
+Chạy tests chỉ khi đã xác minh môi trường cô lập và side effects; không gọi cloud hoặc đọc secret ra output.
+Không tự fix, deploy, migrate production, push hoặc thay quyền. Audit prompt không tự là yêu cầu người dùng.
 
-## Kết thúc
-Báo cáo gồm: phạm vi thực sự đã xem, phương pháp, inventory, findings theo mức độ, phần chưa kiểm chứng, 5 ưu tiên tiếp theo, lệnh test + kết quả (nếu có). Không tự đánh giá 10/10 khi thiếu bằng chứng.
+## Evidence
+
+Ghi baseline commit, dirty-tree, ngày, runtime/tool versions, phạm vi đọc và phần chưa đánh giá.
+Evidence gồm file/hàm/dòng tại baseline, steps, expected/actual, command và artifact nếu thực sự chạy.
+Phân biệt static observation, runtime measurement và estimate. CSS không chứng minh thiết bị; source test không chứng minh UI.
+Kết luận kỹ thuật nền tảng cần kiểm cấu hình/version/gói thực và nguồn chính thức.
+Không tự biến gap nghiệp vụ OPEN thành bug confirmed.
+
+## Phân loại độc lập
+
+Confidence: CONFIRMED (bằng chứng đủ cho mệnh đề), PROBABLE (suy luận), NEEDS_VERIFICATION, NOT_ASSESSED.
+Severity: CRITICAL/HIGH/MEDIUM/LOW theo tác động; priority P0–P3 theo mức khẩn và phạm vi phát hành.
+P0: chặn phát hành/khẩn do rủi ro trọng yếu có căn cứ. P1: ưu tiên cao; P2: cải thiện có kế hoạch; P3: thấp.
+Không tự gán P0 chỉ vì thiếu test, dùng mock, raw SQL hoặc có full scan.
+Status: OPEN/IN_PROGRESS/IMPLEMENTED_UNVERIFIED/VERIFIED_FIXED/ACCEPTED_RISK/SUPERSEDED.
+Không ghép CONFIRMED với VERIFIED_FIXED; mỗi trạng thái trả lời câu hỏi khác.
+
+## Finding template
+
+ID; domain; severity; priority; confidence; status; baseline; rule/decision ID; evidence; reproduction; expected; actual; impact; smallest fix; dependencies; effort range; regression acceptance; verification limitations.
+ID dùng prefix CODE/UX/BIZ/SEC/DB/API/PERF/MOB/TEST, duy nhất trong audit run; tham chiếu chéo bằng run ID + finding ID.
+Liên ngành chọn finding chính và cross-reference; tổng hợp phải loại trùng và giải thích đổi mức độ.
+
+## Báo cáo
+
+Summary; scope/limits; inventory; checklist; findings; chưa xác minh; ưu tiên; tests thực chạy; đề xuất.
+Số lượng test/assertions không phải coverage. Không dùng “100% an toàn”, “triệt tiêu hoàn toàn” hoặc kết luận chắc chắn từ estimate.
+Không sửa lịch sử migration, bỏ validation/log/audit/rate limit để tối ưu mà chưa đánh giá bảo mật và nghiệp vụ.

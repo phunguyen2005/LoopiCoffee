@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { X, Minus, Plus, Check } from "lucide-react";
 import { DrinkVisual } from "./drink-visual";
 import { type MenuItemData, formatVND } from "./menu-card";
+import { useModalDialog } from "./use-modal-dialog";
 
 export interface MenuOptionItem {
   id: string;
@@ -46,6 +47,7 @@ export function ItemDetailModal({
   onClose,
   onAddToCart,
 }: ItemDetailModalProps) {
+  const dialogRef = useModalDialog(Boolean(item), onClose);
   // Available options filtered by group
   const sizeOptions = options.filter((o) => o.group_type === "size" && o.is_available && item?.allows_size);
   const sugarOptions = options.filter((o) => o.group_type === "sugar" && o.is_available && item?.allows_sugar);
@@ -118,6 +120,10 @@ export function ItemDetailModal({
 
       {/* Modal Dialog Container */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="item-detail-title"
         className="relative z-10 w-full max-w-lg bg-[#FAF7F2] rounded-t-[28px] sm:rounded-[24px] shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] overflow-hidden border border-[#E8DFD5] animate-in slide-in-from-bottom duration-200"
       >
         {/* Mobile Drag Indicator Bar */}
@@ -128,7 +134,7 @@ export function ItemDetailModal({
           type="button"
           onClick={onClose}
           aria-label="Đóng bảng tùy chọn"
-          className="absolute top-3.5 right-3.5 z-30 w-10 h-10 rounded-full bg-white/95 text-stone-700 shadow-md border border-stone-200 flex items-center justify-center hover:bg-white active:scale-90 transition-all"
+          className="absolute top-3.5 right-3.5 z-30 w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-white/95 text-stone-700 shadow-md border border-stone-200 flex items-center justify-center hover:bg-white active:scale-90 transition-all"
         >
           <X size={18} />
         </button>
@@ -147,7 +153,7 @@ export function ItemDetailModal({
             <div className="text-[12px] font-bold tracking-wider text-[#C85A32] uppercase mb-1">
               Thương hiệu La Boong
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#231F1D] leading-tight">
+            <h2 id="item-detail-title" className="text-xl sm:text-2xl font-bold text-[#231F1D] leading-tight">
               {item.name}
             </h2>
             {item.english_name && (

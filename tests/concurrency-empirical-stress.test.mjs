@@ -4,6 +4,7 @@ import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs"
 import { loadModule } from "./helpers/load-module.mjs";
 import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
 import { readObject } from "../platform/http/input.ts";
+import { LatestRequestGate } from "../platform/http/latest-request.ts";
 
 // =============================================================================
 // SUITE 1: EMPIRICAL STRESS TEST - OWNER ORDERS VIEW ASYNC POLLING CONCURRENCY
@@ -14,20 +15,19 @@ function createOrdersPollingHarness(fetchFn) {
   let counts = { total: 0, pending: 0 };
   let loadingOrders = false;
   let ordersError = null;
-  const ordersRequestIdRef = { current: 0 };
-  const isCancelledRef = { current: false };
+  const gate = new LatestRequestGate();
 
   const fetchOrders = async (isPolling = false) => {
-    const currentReqId = ++ordersRequestIdRef.current;
+    const currentReqId = gate.begin();
     if (!isPolling) loadingOrders = true;
 
     try {
       const res = await fetchFn(currentReqId);
-      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+      if (!gate.isCurrent(currentReqId)) return;
 
       if (res.ok) {
         const data = await res.json();
-        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+        if (!gate.isCurrent(currentReqId)) return;
 
         orders = data.orders || [];
         ordersError = null;
@@ -42,14 +42,14 @@ function createOrdersPollingHarness(fetchFn) {
         } catch {
           // ignore
         }
-        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+        if (!gate.isCurrent(currentReqId)) return;
         ordersError = { message: errorMsg, status: res.status, code };
       }
     } catch {
-      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+      if (!gate.isCurrent(currentReqId)) return;
       ordersError = { message: "Không thể tải danh sách đơn hàng. Vui lòng thử lại." };
     } finally {
-      if (currentReqId === ordersRequestIdRef.current && !isCancelledRef.current && !isPolling) {
+      if (gate.isCurrent(currentReqId) && !isPolling) {
         loadingOrders = false;
       }
     }
@@ -59,7 +59,7 @@ function createOrdersPollingHarness(fetchFn) {
     fetchOrders,
     getState: () => ({ orders, counts, loadingOrders, ordersError }),
     unmount: () => {
-      isCancelledRef.current = true;
+      gate.cancel();
     },
   };
 }

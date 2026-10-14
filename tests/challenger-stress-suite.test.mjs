@@ -119,7 +119,7 @@ test("DIMENSION 2: Incident status state machine strict unidirectional transitio
   const loaded = await loadModule("../../app/api/incidents/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor: manager }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loaded.dispose);
@@ -257,7 +257,7 @@ test("DIMENSION 3: Fuzzing /api/incidents and /api/handovers with malformed and 
   const loadedHnd = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor: manager }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loadedHnd.dispose);
@@ -304,10 +304,10 @@ test("DIMENSION 3: Fuzzing /api/incidents and /api/handovers with malformed and 
   const sum9 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "123456789", managerAttention: false }));
   assert.equal(sum9.status, 400);
 
-  const sum10 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "1234567890", managerAttention: false }));
+  const sum10 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "1234567890", managerAttention: false, idempotencyKey: crypto.randomUUID() }));
   assert.equal(sum10.status, 200);
 
-  const sum2000 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2000), managerAttention: false }));
+  const sum2000 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2000), managerAttention: false, idempotencyKey: crypto.randomUUID() }));
   assert.equal(sum2000.status, 200);
 
   const sum2001 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2001), managerAttention: false }));

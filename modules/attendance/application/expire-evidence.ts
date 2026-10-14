@@ -1,6 +1,8 @@
 import { auditStatement } from "../../../server/audit.ts";
+import { processPendingEvidenceCleanup } from "./evidence-cleanup.ts";
 
 export async function expireEvidence(db: D1Database, evidence: Pick<R2Bucket, "delete"> | undefined, now = new Date().toISOString()) {
+  const pendingCleanup = await processPendingEvidenceCleanup(db, evidence, now);
   // Include legacy tombstones: earlier versions marked rows without erasing them.
   const photos = await db.prepare(
     `SELECT p.event_id, p.object_key, s.store_id
@@ -22,7 +24,7 @@ export async function expireEvidence(db: D1Database, evidence: Pick<R2Bucket, "d
   }
 
   let photosDeleted = 0;
-  let failures = 0;
+  let failures = pendingCleanup.failures;
   const successfulPhotoIds: string[] = [];
   const chunkSize = 10;
 
@@ -131,5 +133,11 @@ export async function expireEvidence(db: D1Database, evidence: Pick<R2Bucket, "d
       (SELECT COUNT(*) FROM attendance_locations WHERE expires_at <= ? OR deleted_at IS NOT NULL) AS locations`,
   ).bind(now, now).first<{ photos: number; locations: number }>();
 
-  return { photosDeleted, locationsDeleted: locations.meta.changes, failures, remaining };
+  return {
+    photosDeleted,
+    orphanObjectsDeleted: pendingCleanup.deleted,
+    locationsDeleted: locations.meta.changes,
+    failures,
+    remaining,
+  };
 }

@@ -13,6 +13,7 @@ import { loadModule } from "./helpers/load-module.mjs";
 import { apiHandler } from "../platform/http/errors.ts";
 import { readObject } from "../platform/http/input.ts";
 import { evaluateShiftWindow } from "../modules/attendance/domain/policy.ts";
+import { recoverAttendanceWrite } from "../modules/attendance/application/evidence-cleanup.ts";
 
 function structuredJpegDataUrl(width = 640, height = 480) {
   const bytes = Uint8Array.from([
@@ -148,6 +149,7 @@ test("rejects malformed and truncated JPEGs with HTTP 400 at attendance actions 
     },
     "@/platform/http/errors": { apiHandler },
     "@/platform/http/input": { readObject },
+    "@/modules/attendance/application/evidence-cleanup": { recoverAttendanceWrite },
     "@/lib/evidence": {
       createServerStampedSvg,
       evidenceObjectKey,

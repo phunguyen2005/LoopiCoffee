@@ -1,7 +1,7 @@
 import { PersistedProfileView } from "@/components/operational-views";
-import { getLoopiUser } from "@/app/loopi-user";
+import { getLoopiUser, requireBusinessUser } from "@/app/loopi-user";
 
 export default async function ProfilePage() {
-  const user = await getLoopiUser("/app/profile");
+  const user = requireBusinessUser(await getLoopiUser("/app/profile"));
   return <PersistedProfileView initialUser={user} />;
 }

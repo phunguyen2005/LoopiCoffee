@@ -5,6 +5,7 @@ import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, AlertCircle, Loader2 }
 import { type CartItemOption } from "./item-detail-modal";
 import { formatVND } from "./menu-card";
 import { prepareOrderAttempt, submitOrderAttempt, rememberReceipt, clearPendingOrder } from "./receipt-storage";
+import { useModalDialog } from "./use-modal-dialog";
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -42,29 +43,46 @@ export function CartDrawer({
   const [customerNote, setCustomerNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; phone?: string }>({});
+  const [priceConfirmation, setPriceConfirmation] = useState<{
+    cartTotal: number;
+    currentTotal: number;
+  } | null>(null);
 
   const submitLock = useRef(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useModalDialog(isOpen, onClose);
 
   if (!isOpen) return null;
 
   const totalAmount = items.reduce((sum, it) => sum + it.subtotal, 0);
   const totalQuantity = items.reduce((sum, it) => sum + it.quantity, 0);
+  const activePriceConfirmation = priceConfirmation?.cartTotal === totalAmount
+    ? priceConfirmation
+    : null;
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitLock.current) return;
     setErrorMessage(null);
+    setFieldErrors({});
+    const confirmedTotal = activePriceConfirmation
+      ? activePriceConfirmation.currentTotal
+      : totalAmount;
 
     const name = customerName.trim();
     const phone = customerPhone.trim().replace(/[\s.-]/g, "");
 
     if (!name || name.length < 2) {
-      setErrorMessage("Vui lòng nhập họ và tên của bạn (tối thiểu 2 ký tự).");
+      setFieldErrors({ name: "Vui lòng nhập họ và tên (tối thiểu 2 ký tự)." });
+      nameRef.current?.focus();
       return;
     }
 
     if (!phone || !VN_PHONE_REGEX.test(phone)) {
-      setErrorMessage("Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 chữ số (ví dụ: 0908123456).");
+      setFieldErrors({ phone: "Nhập số di động Việt Nam gồm 10 chữ số, ví dụ 0908123456." });
+      phoneRef.current?.focus();
       return;
     }
 
@@ -78,6 +96,7 @@ export function CartDrawer({
     try {
       const attempt = prepareOrderAttempt(JSON.stringify({
         customerName: name, customerPhone: phone, customerNote: customerNote.trim(),
+        expectedTotal: confirmedTotal,
         items: items.map(it => ({ itemId: it.itemId, quantity: it.quantity,
           sizeId: it.sizeId, sugarId: it.sugarId, iceId: it.iceId,
           toppingIds: it.toppings.map(t => t.id), note: it.note })),
@@ -96,16 +115,21 @@ export function CartDrawer({
         };
         error?: string;
         code?: string;
+        currentTotal?: number;
         unavailableItemId?: string;
       };
 
       if (!response.ok || !data.success || !data.order) {
         if (response.status < 500 && response.status !== 429 && data.code !== "idempotency_conflict") clearPendingOrder();
+        if (data.code === "price_changed" && Number.isSafeInteger(data.currentTotal)) {
+          setPriceConfirmation({ cartTotal: totalAmount, currentTotal: data.currentTotal! });
+        }
         setErrorMessage(data.error || "Không thể đặt hàng lúc này. Vui lòng kiểm tra lại!");
         return;
       }
 
       rememberReceipt(attempt.receipt);
+      setPriceConfirmation(null);
       onClearCart();
       onOrderSuccess({ ...data.order, receiptToken: attempt.receipt });
       onClose();
@@ -128,6 +152,10 @@ export function CartDrawer({
 
       {/* Cart Panel (Slide over from right on desktop, bottom sheet on mobile) */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cart-title"
         className="relative z-10 w-full sm:max-w-md bg-[#FAF7F2] h-full shadow-2xl flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-250 border-l border-[#E2D8CC]"
       >
         {/* Header */}
@@ -137,7 +165,7 @@ export function CartDrawer({
               <ShoppingBag size={18} />
             </div>
             <div>
-              <h2 className="font-bold text-base sm:text-lg text-[#231F1D]">Giỏ hàng của bạn</h2>
+              <h2 id="cart-title" className="font-bold text-base sm:text-lg text-[#231F1D]">Giỏ hàng của bạn</h2>
               <span className="text-xs text-stone-500">{totalQuantity} món đã chọn</span>
             </div>
           </div>
@@ -145,7 +173,7 @@ export function CartDrawer({
             type="button"
             onClick={onClose}
             aria-label="Đóng giỏ hàng"
-            className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors"
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors"
           >
             <X size={16} />
           </button>
@@ -271,6 +299,7 @@ export function CartDrawer({
                     Họ và tên <span className="text-red-500">*</span>
                   </label>
                   <input
+                    ref={nameRef}
                     id="customer-name"
                     maxLength={100}
                     type="text"
@@ -278,10 +307,13 @@ export function CartDrawer({
                     autoComplete="name"
                     enterKeyHint="next"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    onChange={(e) => { setCustomerName(e.target.value); if (fieldErrors.name) setFieldErrors((current) => ({ ...current, name: undefined })); }}
+                    aria-invalid={Boolean(fieldErrors.name)}
+                    aria-describedby={fieldErrors.name ? "customer-name-error" : undefined}
                     placeholder="Ví dụ: Nguyễn Văn A"
                     className="w-full text-base py-3 px-3.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#3D5A40] text-stone-900 placeholder:text-stone-400 min-h-[44px]"
                   />
+                  {fieldErrors.name && <p id="customer-name-error" className="mt-1.5 text-xs text-red-700" role="alert">{fieldErrors.name}</p>}
                 </div>
 
                 <div>
@@ -289,6 +321,7 @@ export function CartDrawer({
                     Số điện thoại <span className="text-red-500">*</span>
                   </label>
                   <input
+                    ref={phoneRef}
                     id="customer-phone"
                     maxLength={24}
                     type="tel"
@@ -297,10 +330,13 @@ export function CartDrawer({
                     enterKeyHint="next"
                     required
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={(e) => { setCustomerPhone(e.target.value); if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: undefined })); }}
+                    aria-invalid={Boolean(fieldErrors.phone)}
+                    aria-describedby={fieldErrors.phone ? "customer-phone-error" : undefined}
                     placeholder="090xxxxxxx (10 số)"
                     className="w-full text-base py-3 px-3.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#3D5A40] text-stone-900 placeholder:text-stone-400 min-h-[44px]"
                   />
+                  {fieldErrors.phone && <p id="customer-phone-error" className="mt-1.5 text-xs text-red-700" role="alert">{fieldErrors.phone}</p>}
                 </div>
 
                 <div>
@@ -328,8 +364,13 @@ export function CartDrawer({
           <div className="p-4 bg-white border-t border-[#EAE3D9] space-y-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
             <div className="flex items-center justify-between text-sm">
               <span className="text-stone-600 font-medium">Tổng thanh toán ({totalQuantity} món):</span>
-              <span className="font-extrabold text-lg text-[#C85A32]">
-                {formatVND(totalAmount)}
+              <span className="text-right">
+                {activePriceConfirmation && (
+                  <span className="block text-[11px] font-semibold text-amber-700">Giá mới cần xác nhận</span>
+                )}
+                <span className="block font-extrabold text-lg text-[#C85A32]">
+                  {formatVND(activePriceConfirmation?.currentTotal ?? totalAmount)}
+                </span>
               </span>
             </div>
 
@@ -346,7 +387,7 @@ export function CartDrawer({
                 </>
               ) : (
                 <>
-                  <span>Xác nhận đặt hàng</span>
+                  <span>{activePriceConfirmation ? `Xác nhận ${formatVND(activePriceConfirmation.currentTotal)} và đặt hàng` : "Xác nhận đặt hàng"}</span>
                   <ArrowRight size={16} />
                 </>
               )}

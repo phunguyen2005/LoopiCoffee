@@ -188,6 +188,20 @@ export function formatTime(value: string) {
   }).format(new Date(value));
 }
 
+export function formatShiftRange(startsAt: string, endsAt: string) {
+  const startDate = storeDateKey(startsAt);
+  const endDate = storeDateKey(endsAt);
+  const timeRange = `${formatTime(startsAt)} — ${formatTime(endsAt)}`;
+  if (startDate === endDate) return timeRange;
+
+  const endLabel = new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(endsAt));
+  return `${timeRange} ngày ${endLabel}`;
+}
+
 export const storeDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Ho_Chi_Minh",
   year: "numeric",

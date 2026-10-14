@@ -75,14 +75,20 @@ export const PATCH = apiHandler(async (request: Request) => {
   const db = await ensureDatabase();
   const body = await readOrderBody(request);
   const id = text(body.itemId ?? body.id, 100, "mã món", 1);
+  const expectedUpdatedAt = body.expectedUpdatedAt === undefined
+    ? null
+    : text(body.expectedUpdatedAt, 100, "phiên bản món", 1);
   const values = await parseItem(db, auth.actor.storeId, body);
   const now = new Date().toISOString();
   const writes = await db.batch([
-    db.prepare(`UPDATE menu_items SET ${Object.keys(values).map(column => `${column} = ?`).join(",")}, updated_at = ? WHERE id = ? AND store_id = ?`)
-      .bind(...Object.values(values), now, id, auth.actor.storeId),
+    db.prepare(`UPDATE menu_items SET ${Object.keys(values).map(column => `${column} = ?`).join(",")}, updated_at = ? WHERE id = ? AND store_id = ?${expectedUpdatedAt ? " AND updated_at = ?" : ""}`)
+      .bind(...Object.values(values), now, id, auth.actor.storeId, ...(expectedUpdatedAt ? [expectedUpdatedAt] : [])),
     auditStatement(db, auth.actor.email, "menu_item", id, "menu.updated", { fields: Object.keys(values) }, now, true),
   ]);
-  if (!writes[0].meta.changes) throw new ApplicationError("Không tìm thấy món.", 404);
+  if (!writes[0].meta.changes) {
+    if (expectedUpdatedAt) throw new ApplicationError("Món vừa được người khác cập nhật. Danh sách sẽ được tải lại.", 409, "menu_conflict");
+    throw new ApplicationError("Không tìm thấy món.", 404);
+  }
   return Response.json({ success: true, itemId: id, updatedAt: now });
 });
 

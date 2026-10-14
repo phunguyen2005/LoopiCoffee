@@ -149,7 +149,8 @@ test("owner-orders-view implements error handling, retry state, stale warning ba
 
   // Error state and request sequencing ref
   assert.match(source, /ordersError,\s*setOrdersError/);
-  assert.match(source, /ordersRequestIdRef\s*=\s*useRef\(0\)/);
+  assert.match(source, /LatestRequestGate/);
+  assert.match(source, /ordersRequestGateRef\.current\.isCurrent/);
 
   // Single-flight polling with recursive setTimeout instead of setInterval
   assert.doesNotMatch(source, /setInterval\s*\(/, "setInterval should be replaced with recursive setTimeout single-flight polling");

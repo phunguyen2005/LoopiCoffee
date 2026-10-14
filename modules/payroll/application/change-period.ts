@@ -39,6 +39,24 @@ export async function evaluatePayrollFinalizationEligibility(
   if (!rows.length) reasons.push({ code: "empty_payroll", message: "Kỳ này chưa có nhân viên đủ điều kiện tính lương." });
   if (rows.some((row) => row.pendingExceptionCount > 0)) reasons.push({ code: "pending_exceptions", message: "Còn ngoại lệ chấm công chưa xử lý." });
   if (rows.some((row) => row.compensationType !== "hourly" || row.hourlyRate <= 0)) reasons.push({ code: "pay_rate_required", message: "Hãy cấu hình đơn giá giờ cho từng nhân viên trước khi chốt kỳ." });
+  const employeeEmailsWithWork = rows.filter((row) => row.approvedMinutes > 0).map((row) => row.email.toLowerCase());
+  if (employeeEmailsWithWork.length > 0) {
+    try {
+      const rateCheck = await db.prepare(
+        "SELECT DISTINCT lower(employee_email) AS email FROM employee_rate_history WHERE store_id = ?"
+      ).bind(actor.storeId).all<{ email: string }>();
+      const emailsWithRates = new Set(rateCheck.results.map((r) => r.email));
+      const missingRates = employeeEmailsWithWork.filter((e) => !emailsWithRates.has(e));
+      if (missingRates.length > 0) {
+        reasons.push({
+          code: "pay_rate_required",
+          message: "Hãy cấu hình lịch sử đơn giá cho nhân viên trước khi chốt kỳ.",
+        });
+      }
+    } catch {
+      // Table may not exist yet in early environments
+    }
+  }
   return { canFinalize: reasons.length === 0, employeeCount: rows.length, reasons };
 }
 

@@ -201,6 +201,72 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
     exceptionMap.set(key, [...(exceptionMap.get(key) ?? []), exception]);
   }
 
+  let rateHistories: Array<{
+    employee_email: string;
+    compensation_type: string;
+    hourly_rate: number | null;
+    monthly_salary: number | null;
+    effective_from: string;
+    effective_to: string | null;
+  }> = [];
+  try {
+    const rhResult = await db.prepare(
+      `SELECT employee_email, compensation_type, hourly_rate, monthly_salary, effective_from, effective_to
+       FROM employee_rate_history WHERE store_id = ? ORDER BY effective_from ASC`
+    ).bind(options.storeId).all<{
+      employee_email: string;
+      compensation_type: string;
+      hourly_rate: number | null;
+      monthly_salary: number | null;
+      effective_from: string;
+      effective_to: string | null;
+    }>();
+    rateHistories = rhResult.results;
+  } catch {
+    // Ignore if table not present in early schema
+  }
+
+  let sessionIntervals: Array<{
+    employee_email: string;
+    opened_at: string;
+    closed_at: string;
+    clipped_minutes: number;
+  }> = [];
+  try {
+    const sessResult = await db.prepare(
+      `WITH period_window AS (SELECT ? AS start_at, ? AS end_at),
+       session_data AS (
+         SELECT s.*, CAST(MAX(0, (julianday(MIN(s.closed_at, p.end_at)) - julianday(MAX(s.opened_at, p.start_at))) * 1440 + 0.000001) AS INTEGER) AS clipped_minutes
+         FROM attendance_sessions s CROSS JOIN period_window p
+       )
+       SELECT lower(s.employee_email) AS employee_email, s.opened_at, s.closed_at, s.clipped_minutes
+       FROM session_data s
+       WHERE s.store_id = ?
+         AND s.closed_at IS NOT NULL
+         AND s.worked_minutes BETWEEN 0 AND 720
+         AND s.status = 'completed'
+         AND NOT EXISTS (
+           SELECT 1 FROM attendance_events ev
+           JOIN attendance_exceptions ex ON ex.event_id = ev.id
+           WHERE ev.session_id = s.id AND (ex.status = 'pending' OR ex.status = 'rejected')
+         )
+         AND COALESCE(s.opened_at, s.closed_at) < ?
+         AND COALESCE(s.closed_at, '9999-12-31T23:59:59.999Z') >= ?
+       ORDER BY s.opened_at ASC`
+    ).bind(
+      period.startIso, period.endExclusiveIso,
+      options.storeId, period.endExclusiveIso, period.startIso
+    ).all<{
+      employee_email: string;
+      opened_at: string;
+      closed_at: string;
+      clipped_minutes: number;
+    }>();
+    sessionIntervals = sessResult.results;
+  } catch {
+    // Fallback if needed
+  }
+
   const rows: PayrollReportRow[] = aggregate.results.map((row: AggregateRow) => {
     const entry = entryMap.get(row.email.toLowerCase());
     const approvedMinutes = row.approved_minutes;
@@ -222,10 +288,45 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
       }
     }
 
-    const baseSalary = row.compensation_type === "hourly" ? Math.round((approvedMinutes / 60) * effectiveHourlyRate) : 0;
+    const empRateHistory = rateHistories.filter(
+      (r) => r.employee_email.toLowerCase() === row.email.toLowerCase() && r.compensation_type === "hourly"
+    );
+
+    let baseSalary = 0;
+    if (row.compensation_type === "hourly") {
+      if (entry?.row_snapshot) {
+        const snapMinutes = Math.floor(approvedMinutes / 15) * 15;
+        baseSalary = Math.round((snapMinutes / 60) * effectiveHourlyRate);
+      } else if (empRateHistory.length > 0) {
+        const empSessions = sessionIntervals.filter((s) => s.employee_email === row.email.toLowerCase());
+        if (empSessions.length > 0) {
+          let calculatedBase = 0;
+          for (const sess of empSessions) {
+            const applicableRate = empRateHistory.find((rh) => {
+              const fromMatch = rh.effective_from <= sess.opened_at;
+              const toMatch = !rh.effective_to || sess.opened_at < rh.effective_to;
+              return fromMatch && toMatch;
+            }) ?? empRateHistory[empRateHistory.length - 1];
+
+            const rate = applicableRate?.hourly_rate ?? effectiveHourlyRate;
+            const sessionFloorMinutes = Math.floor(sess.clipped_minutes / 15) * 15;
+            calculatedBase += (sessionFloorMinutes / 60) * rate;
+          }
+          baseSalary = Math.round(calculatedBase);
+        } else {
+          const flooredMinutes = Math.floor(approvedMinutes / 15) * 15;
+          baseSalary = Math.round((flooredMinutes / 60) * effectiveHourlyRate);
+        }
+      } else {
+        const flooredMinutes = Math.floor(approvedMinutes / 15) * 15;
+        baseSalary = Math.round((flooredMinutes / 60) * effectiveHourlyRate);
+      }
+    }
+
     // Basic hourly payroll only. Any additional payment needs an explicit reasoned adjustment.
     const overtimePay = 0;
-    const calculatedTotal = Math.max(0, baseSalary + overtimePay + allowanceAmount + bonusAmount - deductionAmount);
+    const rawTotal = Math.max(0, baseSalary + overtimePay + allowanceAmount + bonusAmount - deductionAmount);
+    const calculatedTotal = Math.round(rawTotal / 1000) * 1000;
     const status: PayrollReportRow["status"] = row.pending_exception_count > 0
       ? "exception" : approvedMinutes > 0 ? "attendance_approved" : "unchecked";
     return {

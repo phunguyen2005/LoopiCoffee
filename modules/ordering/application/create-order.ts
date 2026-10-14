@@ -27,6 +27,7 @@ export async function createOrder(db: D1Database, storeId: string, raw: unknown,
   const customerPhone = text(body.customerPhone, 24, "số điện thoại", 1).replace(/[\s.-]/g, "");
   if (!/^(0[35789])[0-9]{8}$/.test(customerPhone)) throw new ApplicationError("Số điện thoại phải là số di động Việt Nam 10 chữ số.");
   const customerNote = text(body.customerNote, 500, "ghi chú");
+  const expectedTotal = integer(body.expectedTotal, 0, 50000000, "Tổng tiền đã xác nhận");
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 30) throw new ApplicationError("Đơn hàng cần từ 1 đến 30 dòng món.");
   const items = body.items.map(value => {
     const item = object(value);
@@ -40,7 +41,7 @@ export async function createOrder(db: D1Database, storeId: string, raw: unknown,
       toppingIds, note: text(item.note, 300, "ghi chú món"),
     };
   });
-  const payloadHash = await hash(JSON.stringify({ customerName, customerPhone, customerNote, items }));
+  const payloadHash = await hash(JSON.stringify({ customerName, customerPhone, customerNote, expectedTotal, items }));
   const replay = async () => {
     const prior = await db.prepare("SELECT * FROM customer_orders WHERE store_id = ? AND submission_key = ?").bind(storeId, key).first<OrderRow>();
     if (!prior) return null;
@@ -87,6 +88,14 @@ export async function createOrder(db: D1Database, storeId: string, raw: unknown,
   });
   const total = lines.reduce((sum, item) => sum + item.subtotal, 0);
   if (!Number.isSafeInteger(total) || total > 50000000) throw new ApplicationError("Giá trị đơn hàng quá lớn.");
+  if (expectedTotal !== total) {
+    throw new ApplicationError(
+      "Giá trong giỏ vừa thay đổi. Vui lòng xác nhận tổng tiền mới trước khi gửi đơn.",
+      409,
+      "price_changed",
+      { expectedTotal, currentTotal: total },
+    );
+  }
   const count = lines.reduce((sum, item) => sum + item.quantity, 0);
   // Revalidate menu versions within the write transaction after competing edits.
   const itemVersions = JSON.stringify([...menu.values()].map(item => ({ id: item.id, version: item.updated_at })));

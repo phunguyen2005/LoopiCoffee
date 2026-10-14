@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
 import { loadModule } from "./helpers/load-module.mjs";
 import { auditStatement } from "../server/audit.ts";
-import { apiHandler } from "../platform/http/errors.ts";
+import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
 import { readObject } from "../platform/http/input.ts";
 import { decideRequest } from "../modules/operations/application/decide-request.ts";
 
@@ -24,7 +24,7 @@ test("BIZ-001: incident state machine enforces open -> acknowledged -> resolved 
   const loaded = await loadModule("../../app/api/incidents/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loaded.dispose);
@@ -303,7 +303,7 @@ test("BIZ-004: handover maintains store-level scope, validates input length, and
   const loaded = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loaded.dispose);
@@ -320,6 +320,7 @@ test("BIZ-004: handover maintains store-level scope, validates input length, and
   const postRes = await route.POST(request("http://localhost/api/handovers", "POST", {
     summary: "Ca tối đã dọn dẹp sạch sẽ, máy xay đã xả bột cũ, sữa tươi còn 3 hộp.",
     managerAttention: true,
+    idempotencyKey: crypto.randomUUID(),
   }));
   assert.equal(postRes.status, 200);
   const postJson = await postRes.json();

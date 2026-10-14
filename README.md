@@ -1,75 +1,54 @@
-# LoopiCafe
+# LoopiCafe Management System
 
-LoopiCafe is a Vietnamese, mobile-first operations pilot for a single coffee shop. It connects scheduling, photo-and-location attendance, checklists, incident reporting, handovers, requests, staff review, and attendance exports.
+Web app mobile-first quản lý vận hành một quán cà phê: phân ca, chấm công, xử lý yêu cầu, checklist, sự cố, bàn giao, tổng hợp công/lương giờ và đặt món không cần tài khoản.
 
-## Run locally
+**Trạng thái:** MVP/pilot đang kiểm chứng. Tài liệu hoặc build thành công không chứng nhận production-ready.
 
-Requirements: Node.js 22.13 or newer.
+## Bắt đầu đọc
+
+- [AGENTS](AGENTS.md): quy trình dành cho coding agents.
+- [Bộ tài liệu chuẩn](docs/README.md): căn cứ hiện hành, quyết định đã chốt, khoảng cách triển khai và lịch sử.
+- [Nghiệp vụ](docs/business-rules.md), [phân quyền](docs/permissions.md), [thiết kế](docs/design.md).
+- [Kiến trúc](docs/architecture.md), [kiểm thử](docs/testing.md), [nghiệm thu](docs/acceptance-matrix.md).
+- [Quy chuẩn commit](docs/commit-conventions.md).
+
+## Công nghệ
+
+React, Next.js-compatible routing, TypeScript, Tailwind CSS; Vinext chạy trên Cloudflare Workers.
+D1 lưu dữ liệu nghiệp vụ, Drizzle khai báo schema/migrations, R2 private lưu bằng chứng và Supabase Auth xác thực.
+Phiên bản chính xác nằm trong package.json/package-lock.json. Không coi đây là deployment Next.js Node mặc định.
+
+## Chạy cục bộ
+
+Yêu cầu Node >=22.13, npm và Docker cho Supabase Auth local. Cài dependency có thể tải từ Internet.
+Theo [hướng dẫn môi trường và dữ liệu](docs/database-operations.md) để kiểm tra đích local trước provisioning.
 
 ```bash
 npm ci
+npm run local:doctor
+npm run local:auth:start
+npm run local:auth:configure
+npm run local:provision
 npm run dev
 ```
 
-Open the address printed by the development server. Local development uses project-local Cloudflare D1/R2 bindings. Copy `.env.example` to an ignored local environment file and configure the required authentication values. Demo authentication is opt-in; startup no longer creates tables, staff memberships, or demo records.
+Doctor ban đầu có thể báo thiếu Auth/config; chạy lại sau cấu hình. Các lệnh auth/provision tạo dữ liệu thử cục bộ, không phải bước khởi tạo production.
+Ứng dụng local dùng http://127.0.0.1:4173. Thông tin tài khoản test nằm trong file ignored do provision tạo; không đưa credential vào Git hoặc báo cáo.
+Startup không tự cấp OWNER cho người đăng nhập đầu tiên.
 
-Before using an existing local database, follow [database preflight and rollout](docs/database-operations.md). New databases require the versioned D1 migrations and explicit store/owner provisioning. Never use the demo seeder with real staff data.
-
-## Verify
+## Kiểm chứng
 
 ```bash
 npm run check
+npm run test:e2e
 ```
 
-`npm run check` runs type generation/checking, lint, behavioral/schema/boundary tests, and the production build. `npm test` runs tests only, using temporary in-memory databases without credentials or live writes. Source/asset tests are not browser-rendering tests.
+check gồm typecheck, lint, Node tests và build; E2E chạy riêng và cần fixture/runtime phù hợp.
+Chưa có kết quả chạy mới trong đợt chuẩn hóa tài liệu này. Xem [hiện trạng đối chiếu source](docs/implementation-status.md).
 
-See [architecture decisions and remaining work](docs/architecture.md) for the module boundaries and intentionally unfinished integrations.
+## Dữ liệu và giới hạn
 
-## Agent guidance
-
-Any coding agent must read [AGENTS.md](AGENTS.md) before inspecting or changing the repository. Supporting guidance:
-
-- [Architecture and verified boundaries](docs/architecture.md)
-- [Business rules to preserve and verify](docs/business-rules.md)
-- [Database and migration guardrails](docs/database.md)
-- [Security and privacy checklist](docs/security.md)
-- [Testing strategy and repository commands](docs/testing.md)
-- [UI/UX guidelines](docs/ui-ux-guidelines.md)
-- [Database operations](docs/database-operations.md)
-- [Production-readiness audit](docs/production-readiness-audit.md)
-- [Acceptance matrix](docs/acceptance-matrix.md)
-
-The guidance distinguishes target rules and audit questions from verified implementation. Repository code, migrations, executed tests, and current environment evidence remain authoritative.
-
-## Attendance evidence
-
-- Camera and geolocation start only after the employee taps an attendance action.
-- The browser asks for a fresh one-shot location (`maximumAge: 0`) with a 10-second timeout.
-- The server creates a 60-second, single-use capture session and supplies the authoritative time.
-- The photo, location, capture token, and idempotency key are submitted in one attendance action.
-- The server decodes the JPEG, generates the stamped evidence image, writes it to private storage, and then commits its immutable event records.
-- The submitted evidence includes coordinates, device-reported accuracy, and calculated distance from the configured store.
-- Distance is review evidence only; it never automatically declares an employee onsite or blocks attendance.
-- Missing camera or location evidence requires an employee explanation, still records server time, and creates a manager-review exception.
-- Photos and precise coordinates use the configured retention period (90 days by default). An approved scheduler must invoke the protected cleanup endpoint; see the operations guide.
-
-The browser preview is not attendance proof. Completed evidence is rendered by the server with an opaque footer containing the action, server time, coordinates, reported accuracy, distance from the configured store, and attendance event ID. Only managers and owners assigned to the store can retrieve the private stamped image.
-
-Attendance remains disabled until the owner saves the store coordinates and threshold settings. New employees must accept the current camera-and-location notice before starting a capture.
-
-## Platform
-
-- Next.js-compatible UI powered by vinext
-- Cloudflare D1 for structured operational data
-- Cloudflare R2 for private attendance evidence
-- Sites/ChatGPT sign-in headers for deployed identity
-- Persisted role-aware operations and versioned attendance settings
-- Drizzle schema and generated migrations under `drizzle/`
-
-Bindings are declared in `.openai/hosting.json`:
-
-```json
-{"d1":"DB","r2":"EVIDENCE"}
-```
-
-The protected application is under `/app`; privacy and camera/location notices remain publicly accessible.
+Thời gian chính thức từ server; ngày nghiệp vụ Asia/Ho_Chi_Minh. Camera/location chỉ lấy sau thao tác chủ động; ảnh/GPS không chứng minh tuyệt đối việc có mặt.
+Thiếu bằng chứng có luồng giải trình. Ảnh riêng tư có kiểm tra quyền và thời hạn truy cập; cần vận hành scheduler để xóa thực tế.
+Đặt món và hoàn tất giao món không đồng nghĩa đã xác minh thanh toán.
+Không dùng dữ liệu nhân viên/khách thật trong demo hoặc test.

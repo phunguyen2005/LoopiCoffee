@@ -6,7 +6,7 @@ import * as schema from "../db/schema.ts";
 
 test("drizzle migrations preflight parses all 29 statements in 0011 and recognizes breakpoints", () => {
   const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
-  assert.equal(migrations.length, 15, "Expected 15 migration files registered in _journal.json");
+  assert.equal(migrations.length, 17, "Expected 17 migration files registered in _journal.json");
 
   const m11 = migrations.find((m) => m.folderMillis === 1789640575611);
   assert.ok(m11, "Migration 0011_workforce_integrity must be present");
@@ -40,15 +40,16 @@ test("drizzle migrations execute statement-by-statement creating 31 tables and 1
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all()
     .map((r) => r.name);
-  assert.equal(tables.length, 31, "All 31 physical tables must be created");
+  assert.equal(tables.length, 32, "All 32 physical tables must be created");
   assert.ok(tables.includes("attendance_corrections"), "attendance_corrections table must exist");
   assert.ok(tables.includes("payroll_adjustments"), "payroll_adjustments table must exist");
+  assert.ok(tables.includes("employee_rate_history"), "employee_rate_history table must exist");
 
   const triggers = db
     .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")
     .all()
     .map((r) => r.name);
-  assert.equal(triggers.length, 15, "All 15 triggers must be created");
+  assert.equal(triggers.length, 16, "All 16 triggers must be created");
 
   const expectedTriggers = [
     "attendance_session_revision_guard",

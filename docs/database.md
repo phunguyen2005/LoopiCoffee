@@ -1,53 +1,52 @@
-# Database — Cloudflare D1 + Drizzle
+# Database — D1 và Drizzle
 
-**Hiện trạng đã xác minh:** schema khai báo nằm tại `db/schema.ts`; migration D1 có phiên bản nằm trong `drizzle/`. Danh sách entity khái niệm dưới đây vẫn không được coi là tên bảng thực tế nếu chưa đối chiếu hai nguồn này. Quy trình vận hành chi tiết xem tại [`database-operations.md`](database-operations.md).
+Cập nhật: 2026-10-13. Model: db/schema.ts; migration SQL và metadata: drizzle/.
+Luồng apply local: tooling/local.mjs dùng Wrangler D1 migrations. Không suy ra mọi môi trường dùng Drizzle SDK migrator.
 
-## Nguyên tắc bắt buộc
+## Mô hình nghiệp vụ
 
-- D1 là nguồn dữ liệu nghiệp vụ; thay đổi schema qua Drizzle migrations được review.
-- Không sửa migration đã áp dụng ở môi trường dùng chung; tạo migration mới.
-- Dùng foreign key/unique/check/index phù hợp, kiểm tra hỗ trợ thực tế của D1/SQLite.
-- Tách user identity của Supabase khỏi hồ sơ nhân viên; lưu mapping ID và role phía server.
-- Tiền dùng đơn vị nguyên nhỏ nhất (VND) hoặc biểu diễn decimal được xác định rõ; không dùng float để tính tiền.
-- Dữ liệu thời gian phải có định dạng chuẩn và cách chuyển timezone nhất quán.
-
-## Nhóm dữ liệu cần đối chiếu
-
-| Nhóm | Entity khái niệm |
+| Nhóm | Bảng hiện có tiêu biểu |
 |---|---|
-| Identity | users, roles/memberships, account status |
-| Scheduling | shifts, assignments, leave/adjustment requests |
-| Attendance | sessions, check events, evidence metadata, review decisions |
-| Operations | checklists, checklist completions, incidents, handovers |
-| Payroll | hourly rates/history, periods, immutable snapshots, versions |
-| Commerce | categories, menu items, orders, order items, status history |
-| Governance | audit logs, notifications, retention/deletion records |
+| Nhân sự/cấu hình | stores, employees, employee_consents, attendance_rules |
+| Ca/yêu cầu | shifts, requests, notifications |
+| Công/bằng chứng | attendance_capture_sessions, attendance_sessions, attendance_events, attendance_locations, attendance_photos, attendance_exceptions, attendance_corrections |
+| Lương | payroll_periods, payroll_entries, payroll_adjustments |
+| Vận hành | checklist_items, checklist_executions, incidents, handovers, audit_events |
+| Đặt món | menu_categories, menu_items, menu_options, customer_orders, order_items, order_status_history, store_ordering_settings, order_rate_limits |
 
-## Constraints quan trọng
+## Mô hình đích theo quyết định đã chốt
 
-- Ngăn duplicate active attendance khi không hợp lệ theo chính sách.
-- Đảm bảo idempotency cho create order và check-in/out khi retry.
-- Lưu order item snapshot (`name`, `unit_price`, `quantity`, `line_total`) để bảo toàn lịch sử.
-- Lưu người thao tác, thời gian, old/new state phù hợp cho audit, tránh log PII quá mức.
-- Tính nhất quán cho việc khóa kỳ lương và ghi snapshot; ngăn cập nhật bản khóa trái phép.
-- Đặt index theo truy vấn thực tế, không tự tạo index hàng loạt.
+Các tên dưới đây là contract dữ liệu tối thiểu; migration cụ thể phải được review riêng và không sửa migration đã áp dụng:
 
-## Quy trình migration an toàn
+- `shifts.status` hỗ trợ `draft`, `published`, `completed`, `cancelled`; draft không được tham gia truy vấn lịch cá nhân/chấm công.
+- Requests cần trạng thái `approved_pending_apply`, `applied`, `withdrawn`, liên kết hai shift khi swap và revision/actor cho thao tác áp dụng.
+- Attendance cần biểu diễn overtime được duyệt, `MISSING_CHECKOUT`, approved minutes và sole-owner self-correction audit metadata.
+- Checklist item/execution cần `routine_type` (`daily_routine`/`shift_routine`) và nullable `shift_id` với constraint phù hợp loại.
+- Handover cần `receiver_employee_id` hoặc `next_shift_id`, `acknowledged_by`, `acknowledged_at` và audit cho bypass.
+- Bổ sung rate history có employee ID, compensation type/rate integer VND, khoảng hiệu lực nửa mở `[effective_from,effective_to)`, actor/audit và guard chống overlap.
+- Order cancellation cần reason code chuẩn hóa và dữ liệu hao hụt truy vết được; PII order cần mốc/anonymization state cho job 180 ngày.
+- Retention metadata phải tách expiry của ảnh/GPS, trạng thái xóa/retry và không buộc xóa attendance event.
 
-1. Đọc schema và migrations hiện hữu, kiểm tra trạng thái môi trường.
-2. Thiết kế thay đổi backward-compatible nếu có thể; backup trước thao tác dữ liệu rủi ro.
-3. Tạo migration và test trên D1/SQLite emulator với dữ liệu mẫu không nhạy cảm.
-4. Kiểm tra constraint, index, foreign key và truy vấn liên quan.
-5. Triển khai theo kế hoạch; xác minh sau migration; có phương án khôi phục dữ liệu.
+Quan hệ khái niệm: store → employee/shift; shift → session → event → evidence; period → payroll entry; order → item/status history.
+Đây không phải khẳng định mọi liên kết có FK vật lý. Kiểm tra schema và PRAGMA trên chuỗi migrations.
 
-Không chạy reset, migration phá hủy hoặc migration production chỉ dựa trên tài liệu này. Luôn dùng preflight và quy trình môi trường tương ứng trong `database-operations.md`.
+## Bất biến
 
-## Audit checklist
+- Tiền lưu integer VND. Thời lượng lương làm tròn xuống block 15 phút sau clip/approved overtime; tổng lương cuối kỳ theo nhân viên làm tròn số học đến 1.000 VND, dư từ 500 làm tròn lên.
+- Timestamp dùng biểu diễn UTC nhất quán; ngày nghiệp vụ Asia/Ho_Chi_Minh. Dùng khoảng nửa mở [start,end) khi chia kỳ.
+- Lưu mapping Supabase subject với nhân viên; không coi email mutable là ID ổn định lâu dài.
+- Một phiên mở/nhân viên theo policy; event/capture/request key có constraint tương ứng.
+- Snapshot đơn/lương giữ lịch sử; correction append-only.
+- Rate history cùng loại của một nhân viên không chồng khoảng hiệu lực; legacy thiếu rate chặn finalize thay vì fallback im lặng.
+- FK/unique/check bảo vệ invariant thực; không áp mục tiêu “mọi bảng đều phải có CHECK”.
+- Index theo query plan và tải thực; không kết luận full scan luôn là lỗi hiệu năng.
+- Khóa kỳ và revision phải bảo vệ cả các ghi liên quan, không chỉ nút UI.
+- Retention: ảnh/GPS 90 ngày; công/lương/audit/vận hành tối thiểu 3 năm; PII đơn hàng ẩn danh sau 180 ngày. Backup/restore phải chạy lại expiry/anonymization trước khi mở truy cập.
 
-- [ ] Rà soát thiếu unique/FK/check và orphan records.
-- [ ] Kiểm tra truy vấn N+1, full scans và indexes.
-- [ ] Kiểm tra concurrency/race condition tại thao tác trạng thái.
-- [ ] Kiểm tra mapping Supabase subject → user nội bộ.
-- [ ] Kiểm tra retention và xóa dữ liệu/ảnh liên quan.
-- [ ] Kiểm tra migration drift giữa local/staging/production.
+## Migration
 
+Chuỗi source quan sát đến 0014_indexes_and_perf.sql. Đây không phải xác nhận môi trường nào đã áp dụng.
+Không sửa/xóa migration đã áp dụng trong môi trường dùng chung. Không tự ghi ledger để che drift.
+Test fresh install và upgrade dữ liệu đại diện bằng runner triển khai thực; so cột/type/null/default, unique/FK/check/index/trigger và journal.
+Rebuild bảng phải bảo toàn data, FK, index, trigger và có kiểm tra trước/sau.
+Xem [database operations](database-operations.md).

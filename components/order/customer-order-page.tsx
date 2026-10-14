@@ -229,7 +229,7 @@ export function CustomerOrderPage() {
           <button
             type="button"
             onClick={handleBackToMenu}
-            className="min-h-[40px] px-3.5 sm:px-4 py-2 rounded-full border border-stone-300 text-xs font-semibold text-stone-700 hover:bg-stone-100 transition-colors flex items-center"
+            className="min-h-[44px] px-3.5 sm:px-4 py-2 rounded-full border border-stone-300 text-xs font-semibold text-stone-700 hover:bg-stone-100 transition-colors flex items-center"
           >
             Quay lại thực đơn
           </button>
@@ -285,7 +285,7 @@ export function CustomerOrderPage() {
             type="button"
             onClick={() => setIsLookupOpen(true)}
             title="Tra cứu đơn hàng của bạn"
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-full bg-white border border-[#E6DFD5] text-xs font-semibold text-stone-700 hover:border-stone-400 hover:bg-stone-50 transition-all shadow-sm active:scale-95"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-full bg-white border border-[#E6DFD5] text-xs font-semibold text-stone-700 hover:border-stone-400 hover:bg-stone-50 transition-all shadow-sm active:scale-95"
           >
             <Search size={15} className="text-[#3D5A40]" />
             <span className="hidden sm:inline">Tra cứu đơn</span>
@@ -296,7 +296,7 @@ export function CustomerOrderPage() {
             type="button"
             onClick={() => setIsCartOpen(true)}
             aria-label="Xem giỏ hàng"
-            className="relative min-h-[40px] flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full bg-[#3D5A40] hover:bg-[#2B3E2D] active:scale-95 text-white text-xs sm:text-sm font-bold shadow-md transition-all"
+            className="relative min-h-[44px] min-w-[44px] flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full bg-[#3D5A40] hover:bg-[#2B3E2D] active:scale-95 text-white text-xs sm:text-sm font-bold shadow-md transition-all"
           >
             <ShoppingBag size={16} />
             <span className="hidden xs:inline">Giỏ hàng</span>

@@ -1,3 +1,11 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](README.md), [hiện trạng source](implementation-status.md) và [đính chính audit](audit/ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # LoopiCafe: internship portfolio improvement plan
 
 Reviewed: 15 September 2026. Audience: an IT student applying for software engineering internships.

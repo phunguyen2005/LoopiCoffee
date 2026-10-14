@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Check, Copy, RefreshCw, ArrowLeft, Search, X, AlertCircle } from "lucide-react";
 import { formatVND } from "./menu-card";
 import { lastReceipt, parseReceipt } from "./receipt-storage";
+import { useModalDialog } from "./use-modal-dialog";
 
 type TrackedOrderData = {
   order: { id: string; orderCode: string; customerName: string; customerPhone: string; customerNote?: string | null;
@@ -104,6 +105,7 @@ export function OrderLookupModal({ isOpen, onClose, onFound }: { isOpen: boolean
   const [link, setLink] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useModalDialog<HTMLElement>(isOpen, onClose);
   if (!isOpen) return null;
   async function lookup(event: React.FormEvent) {
     event.preventDefault();
@@ -121,7 +123,7 @@ export function OrderLookupModal({ isOpen, onClose, onFound }: { isOpen: boolean
   }
   return <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-    <section className="relative z-10 w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl border border-stone-200">
+    <section ref={dialogRef} className="relative z-10 w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl border border-stone-200">
       <div className="flex justify-between items-center mb-4"><h2 id="receipt-title" className="font-bold flex gap-2 items-center"><Search size={18} /> Xem lại đơn hàng</h2><button type="button" onClick={onClose} aria-label="Đóng tra cứu" className="min-h-[44px] min-w-[44px] flex items-center justify-center"><X size={20} /></button></div>
       <p className="text-sm text-stone-500 mb-4">Dán liên kết riêng của đơn hàng. Với đơn cũ chưa có liên kết, vui lòng liên hệ quán.</p>
       {error && <p role="alert" className="text-sm text-red-700 mb-3 flex gap-2"><AlertCircle size={16} />{error}</p>}

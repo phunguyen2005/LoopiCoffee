@@ -265,6 +265,7 @@ test("M1-ADV-03: Concurrency & D1 Zero Write Invariant on /api/order/track (30 c
     {
       customerName: "Stress Customer",
       customerPhone: "0901234567",
+      expectedTotal: 51000,
       items: [{ itemId: "tea", quantity: 1, sizeId: "large" }],
     },
     crypto.randomUUID(),
@@ -349,7 +350,7 @@ test("M1-ADV-03: Concurrency & D1 Zero Write Invariant on /api/order/track (30 c
 // =============================================================================
 test("M2-ADV-01: Drizzle migration preflight parses 29 statements in 0011, creates 31 tables & 15 triggers with 0 FK errors", (t) => {
   const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
-  assert.equal(migrations.length, 15, "Expected exactly 15 registered migrations");
+  assert.equal(migrations.length, 17, "Expected exactly 17 registered migrations");
 
   const m11 = migrations.find((m) => m.folderMillis === 1789640575611);
   assert.ok(m11, "Migration 0011_workforce_integrity must be present");
@@ -375,19 +376,19 @@ test("M2-ADV-01: Drizzle migration preflight parses 29 statements in 0011, creat
     }
   }
 
-  // Verify 31 physical tables
+  // Verify 32 physical tables
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all()
     .map((r) => r.name);
-  assert.equal(tables.length, 31, "Catalog must contain exactly 31 physical tables");
+  assert.equal(tables.length, 32, "Catalog must contain exactly 32 physical tables");
 
-  // Verify 15 triggers
+  // Verify 16 triggers
   const triggers = db
     .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")
     .all()
     .map((r) => r.name);
-  assert.equal(triggers.length, 15, "Catalog must contain exactly 15 active triggers");
+  assert.equal(triggers.length, 16, "Catalog must contain exactly 16 active triggers");
 
   // Verify zero foreign key violations
   const fkViolations = db.prepare("PRAGMA foreign_key_check").all();

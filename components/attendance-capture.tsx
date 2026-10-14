@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useLoopyToast } from "./loopy-toast";
 import { CelebrationConfetti } from "./confetti-sparkles";
+import Link from "next/link";
 
 type LocationEvidence = {
   latitude: number;
@@ -71,6 +72,8 @@ export function AttendanceCapture() {
   const [session, setSession] = useState<CaptureSession | null>(null);
   const [result, setResult] = useState<AttendanceResult | null>(null);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
+  const [outcomeUncertain, setOutcomeUncertain] = useState(false);
   const [explanation, setExplanation] = useState("");
   const [preview, setPreview] = useState("");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -115,6 +118,8 @@ export function AttendanceCapture() {
   async function beginCapture() {
     setStep("preparing");
     setError("");
+    setErrorCode("");
+    setOutcomeUncertain(false);
     setPreview("");
     setResult(null);
     setShowCelebration(false);
@@ -223,8 +228,11 @@ export function AttendanceCapture() {
           photo: preview,
         }),
       });
-      const payload = (await actionResponse.json()) as AttendanceResult & { error?: string };
-      if (!actionResponse.ok) throw new Error(payload.error || "Không thể ghi nhận chấm công.");
+      const payload = (await actionResponse.json()) as AttendanceResult & { error?: string; code?: string };
+      if (!actionResponse.ok) {
+        setErrorCode(payload.code ?? "");
+        throw new Error(payload.error || "Không thể ghi nhận chấm công.");
+      }
 
       setResult(payload);
       stopStream();
@@ -246,6 +254,7 @@ export function AttendanceCapture() {
       );
     } catch (caught) {
       stopStream();
+      if (!errorCode && caught instanceof TypeError) setOutcomeUncertain(true);
       setError(caught instanceof Error ? caught.message : "Không thể hoàn tất chấm công.");
       setStep("error");
     }
@@ -298,6 +307,8 @@ export function AttendanceCapture() {
     setResult(null);
     setPreview("");
     setError("");
+    setErrorCode("");
+    setOutcomeUncertain(false);
     setExplanation("");
     idempotencyKeyRef.current = "";
     setCameraReadiness("unchecked");
@@ -525,11 +536,17 @@ export function AttendanceCapture() {
           )}
 
           {step === "error" && (
-            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 8 }}>
-              {preview && session && location && <button className="button-secondary button-compact" onClick={confirmSubmit}>Gửi lại lần chấm này</button>}
-              <button className="button-secondary button-compact" onClick={reset}>
-                <RefreshCw size={15} /> Thử lại
-              </button>
+            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 8, flexWrap: "wrap" }}>
+              {errorCode === "handover_acknowledgment_required" ? (
+                <Link className="button button-compact" href="/app/handovers">Đọc và nhận bàn giao</Link>
+              ) : preview && session && location ? (
+                <button className="button-secondary button-compact" onClick={confirmSubmit}>
+                  {outcomeUncertain ? "Đối chiếu / gửi lại cùng mã" : "Gửi lại lần chấm này"}
+                </button>
+              ) : null}
+              {!outcomeUncertain && errorCode !== "handover_acknowledgment_required" && <button className="button-secondary button-compact" onClick={reset}>
+                <RefreshCw size={15} /> Bắt đầu lại
+              </button>}
               <button
                 className="button button-compact"
                 onClick={submitException}
@@ -537,6 +554,9 @@ export function AttendanceCapture() {
               >
                 Gửi yêu cầu duyệt
               </button>
+              {outcomeUncertain && <p role="status" style={{ width: "100%", margin: 0, fontSize: 12 }}>
+                Kết quả chưa rõ do mất kết nối. Hệ thống giữ nguyên mã lần chấm này; không bắt đầu thao tác mới cho đến khi đối chiếu xong.
+              </p>}
             </div>
           )}
 

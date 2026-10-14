@@ -3,7 +3,7 @@
 import React, { useSyncExternalStore, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { LoopySticker } from '@/components/loopy-sticker';
+import { InteractiveLoopyMascot } from '@/components/loopy-sticker';
 import { LoopyPreloader } from '@/components/loopy-preloader';
 import { Mail, Lock, Sparkles, ArrowRight, ShieldCheck, Eye, EyeOff, Coffee } from 'lucide-react';
 
@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isMagicLink, setIsMagicLink] = useState(false);
   const [preloaderVisible, setPreloaderVisible] = useState(false);
+  const [loginProgress, setLoginProgress] = useState(0);
+  const [loginProgressMessage, setLoginProgressMessage] = useState('Đang kiểm tra quyền truy cập...');
   const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
   const supabase = createClient();
 
@@ -56,21 +58,30 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
+        const transitionStartedAt = performance.now();
+        setLoginProgress(36);
+        setLoginProgressMessage('Đang kiểm tra quyền truy cập...');
+        setPreloaderVisible(true);
+
         const activation = await fetch("/api/auth/activate", { method: "POST" });
         if (!activation.ok) {
           window.location.replace("/auth/access");
           return;
         }
-        const membership = await activation.json() as { mustChangePassword?: boolean };
-        // Start one fresh authenticated request with single clean preloader
-        setPreloaderVisible(true);
-        await new Promise<void>((resolve) => setTimeout(resolve, 650));
-        window.location.replace(membership.mustChangePassword ? '/auth/change-password' : '/app/today');
+        setLoginProgress(78);
+        setLoginProgressMessage('Đang tải dữ liệu hệ thống...');
+        const membership = await activation.json() as { mustChangePassword?: boolean; landingPath?: string };
+        await waitFor(Math.max(0, 960 - (performance.now() - transitionStartedAt)));
+        setLoginProgress(100);
+        setLoginProgressMessage('Đăng nhập thành công, đang mở không gian làm việc...');
+        await waitFor(480);
+        window.location.replace(membership.mustChangePassword ? '/auth/change-password' : membership.landingPath ?? '/app');
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.';
       setErrorMsg(message);
       setPreloaderVisible(false);
+      setLoginProgress(0);
     } finally {
       setLoading(false);
     }
@@ -78,7 +89,12 @@ export default function LoginPage() {
 
   return (
     <>
-      <LoopyPreloader visible={preloaderVisible} />
+      <LoopyPreloader
+        visible={preloaderVisible}
+        variant={loginProgress === 100 ? 'success' : 'welcome'}
+        progress={loginProgress}
+        message={loginProgressMessage}
+      />
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#fffaf4] relative">
         {/* Top Left Navigation to Order Page */}
         <div className="absolute top-6 left-6 hidden sm:block">
@@ -101,10 +117,10 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {/* Mascot & Brand Header */}
+        {/* Interactive mascot & brand header */}
         <div className="text-center mb-6">
           <div className="flex items-center justify-center mx-auto mb-2">
-            <LoopySticker mood="checkin" size={92} />
+            <InteractiveLoopyMascot size={104} />
           </div>
           <h1 className="text-xl font-bold text-[#6f2939] flex items-center justify-center gap-1.5">
             LoopiCafe <Sparkles className="w-4 h-4 text-[#f4b85f]" />
@@ -142,6 +158,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 type="email"
                 required
+                disabled={!hydrated}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nhanvien@loopicafe.com"
@@ -171,6 +188,7 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  disabled={!hydrated}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -178,6 +196,7 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
+                  disabled={!hydrated}
                   onClick={() => setShowPassword((prev) => !prev)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70] hover:text-[#6f2939] p-1 transition cursor-pointer"
                   title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
@@ -194,6 +213,7 @@ export default function LoginPage() {
             <label className="flex items-center gap-2 text-xs font-semibold text-[#6b4b3e] cursor-pointer select-none">
               <input
                 type="checkbox"
+                disabled={!hydrated}
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] accent-[#6f2939] cursor-pointer"
@@ -207,7 +227,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={!hydrated || loading}
             className="w-full py-3.5 bg-[#6f2939] hover:bg-[#4c1d29] text-white font-bold rounded-2xl transition shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 mt-1 cursor-pointer"
           >
             {loading ? 'Đang xác thực...' : isMagicLink ? 'Gửi liên kết đăng nhập' : 'Đăng nhập'}
@@ -219,6 +239,7 @@ export default function LoginPage() {
         <div className="mt-5 pt-4 border-t border-[#eee3df] text-center">
           <button
             type="button"
+            disabled={!hydrated}
             onClick={() => setIsMagicLink(!isMagicLink)}
             className="text-xs text-[#7b6f70] hover:text-[#6f2939] hover:underline font-medium"
           >
@@ -257,4 +278,9 @@ function subscribeHydration() {
 function readRememberedEmail() {
   try { return localStorage.getItem('loopicafe_remembered_email') ?? ''; }
   catch { return ''; }
+}
+
+function waitFor(milliseconds: number) {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 }

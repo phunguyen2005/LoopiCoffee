@@ -19,8 +19,9 @@ export async function generateMetadata(): Promise<Metadata> {
     description:
       "Quản lý ca làm, chấm công có ảnh và vị trí, checklist, sự cố và bàn giao cho quán cà phê.",
     icons: {
-      icon: "/favicon.svg",
-      shortcut: "/favicon.svg",
+      icon: [{ url: "/brand/loopicafe-icon.png", type: "image/png", sizes: "192x192" }],
+      shortcut: "/brand/loopicafe-icon.png",
+      apple: "/brand/loopicafe-icon.png",
     },
     openGraph: {
       title: "LoopiCafe — Vận hành quán trong một nhịp",

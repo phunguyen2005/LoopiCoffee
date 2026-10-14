@@ -528,8 +528,20 @@ select:focus-visible {
 
 .loopy {
   position: relative;
-  display: inline-block;
+  display: inline-grid;
+  place-items: center;
   flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 28%;
+  background: #f8c4d1;
+  box-shadow: 0 5px 14px rgba(111, 41, 57, 0.14);
+  line-height: 0;
+}
+
+.loopy-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .loopy-small {
@@ -540,6 +552,11 @@ select:focus-visible {
 .loopy-medium {
   width: 64px;
   height: 64px;
+}
+
+.loopy-login {
+  width: 104px;
+  height: 104px;
 }
 
 .loopy-hero {
@@ -646,6 +663,17 @@ select:focus-visible {
   object-fit: contain;
   pointer-events: none;
   user-select: none;
+}
+
+.loopy-interactive-mascot {
+  filter: drop-shadow(0 14px 18px rgba(82, 43, 48, 0.13));
+  touch-action: manipulation;
+}
+
+.loopy-interactive-mascot:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.92) !important;
+  outline-offset: 4px;
+  border-radius: 28px;
 }
 
 /* App shell */
@@ -4483,6 +4511,137 @@ select:focus-visible {
     scroll-behavior: auto !important;
   }
   .loopy-preloader--minimal .loopy-preloader__ring-detail {
+    animation: none;
+  }
+}
+
+/* Screenshot-aligned authentication transition */
+.loopy-preloader--minimal {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, .96) 0, rgba(255, 252, 247, .72) 24%, transparent 55%),
+    #fffaf4;
+  color: var(--burgundy);
+}
+
+.loopy-preloader--minimal .loopy-preloader__soft-glow {
+  width: min(90vw, 580px);
+  background: radial-gradient(circle, rgba(244, 169, 183, .1), transparent 68%);
+  transform: translate(-50%, -50%);
+}
+
+.loopy-preloader--minimal .loopy-preloader__content {
+  width: min(calc(100% - 48px), 390px);
+  transform: translateY(-2vh);
+}
+
+.loopy-preloader__logo-card {
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(111, 41, 57, .06);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 10px 28px rgba(82, 43, 48, .12);
+}
+
+.loopy-preloader__logo-card .loopy {
+  box-shadow: 0 4px 12px rgba(111, 41, 57, .1);
+}
+
+.loopy-preloader--minimal .loopy-preloader__content h1 {
+  margin: 18px 0 30px;
+  color: var(--burgundy-dark);
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(36px, 5vw, 44px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.loopy-preloader--minimal .loopy-preloader__progress {
+  width: min(100%, 312px);
+  height: 12px;
+  margin-top: 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eadfce;
+  box-shadow: inset 0 1px 2px rgba(111, 41, 57, .05);
+}
+
+.loopy-preloader--minimal .loopy-preloader__progress span {
+  width: 100%;
+  height: 6px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5f1d2d, #792f42);
+  box-shadow: 0 1px 4px rgba(95, 29, 45, .24);
+  animation: none;
+  transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+}
+
+.loopy-preloader--minimal .loopy-preloader__progress.is-indeterminate span {
+  width: 42%;
+  animation: loopyPreloaderTrack 1.45s ease-in-out infinite;
+}
+
+.loopy-preloader--minimal .loopy-preloader__status {
+  display: block;
+  min-height: 18px;
+  margin: 10px 0 0;
+  color: #715e57;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.loopy-preloader--minimal .loopy-preloader__footer {
+  bottom: max(24px, env(safe-area-inset-bottom));
+  gap: 6px;
+  margin: 0;
+  color: #9a8175;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+
+@keyframes loopyPreloaderTrack {
+  0% { transform: translateX(-115%); }
+  55%, 100% { transform: translateX(245%); }
+}
+
+@media (max-width: 520px) {
+  .loopy-preloader--minimal .loopy-preloader__content {
+    width: min(calc(100% - 40px), 340px);
+  }
+
+  .loopy-preloader__logo-card {
+    width: 80px;
+    height: 80px;
+    border-radius: 18px;
+  }
+
+  .loopy-preloader--minimal .loopy-preloader__content h1 {
+    margin: 16px 0 27px;
+    font-size: 36px;
+  }
+
+  .loopy-preloader--minimal .loopy-preloader__footer {
+    padding-inline: 20px;
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loopy-preloader--minimal .loopy-preloader__progress span {
+    transition: none;
+  }
+
+  .loopy-preloader--minimal .loopy-preloader__progress.is-indeterminate span {
+    width: 62%;
+    transform: none;
     animation: none;
   }
 }

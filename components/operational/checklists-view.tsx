@@ -87,7 +87,7 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
       if (items.length > 0 && newDoneCount === items.length) {
         setTriggerCelebration(true);
         showLoopyToast("Xuất sắc 100%! 🎉", {
-          message: "Tất cả công việc mở ca đã hoàn thành xuất sắc!",
+          message: "Tất cả công việc hôm nay đã hoàn thành xuất sắc!",
           mood: "cheer",
           type: "success",
         });
@@ -113,7 +113,7 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
 
       <section className="card">
         <div className="section-row checklist-heading" style={{ marginBottom: 18 }}>
-          <ViewHeader title="Checklist mở ca & vận hành" subtitle={state !== "ready" ? "Chưa xác nhận tiến độ hôm nay" : `${done}/${items.length} công việc hoàn tất hôm nay`} />
+          <ViewHeader title="Checklist vận hành hôm nay" subtitle={state !== "ready" ? "Chưa xác nhận tiến độ hôm nay" : `${done}/${items.length} công việc hoàn tất hôm nay`} />
           {canManage && (
             <motion.button
               whileHover={{ scale: 1.04 }}
@@ -141,12 +141,12 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
               />
             </div>
             <div className="field">
-              <label htmlFor="checklist-assignee">Giai đoạn / Ca</label>
+              <label htmlFor="checklist-assignee">Giai đoạn trong ngày</label>
               <select id="checklist-assignee" value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)}>
                 <option value="Ca sáng (Mở cửa)">Ca sáng (Mở cửa)</option>
                 <option value="Ca giữa (Giữa ngày)">Ca giữa (Giữa ngày)</option>
                 <option value="Ca tối (Đóng cửa)">Ca tối (Đóng cửa)</option>
-                <option value="Toàn bộ ca làm">Toàn bộ ca làm</option>
+                <option value="Toàn bộ ca làm">Toàn bộ ngày vận hành</option>
               </select>
             </div>
             <div className="field" style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 28 }}>
@@ -166,7 +166,7 @@ export function PersistentChecklistsView({ canManage = false }: { canManage?: bo
         )}
 
         {state === "ready" && <div className="progress"><span style={{ width: items.length ? `${(done / items.length) * 100}%` : "0%" }} /></div>}
-        {state === "loading" ? <ListSkeleton rows={5} /> : state === "error" ? <AsyncStatePanel state="error" title="Không thể tải checklist" description="Tiến độ checklist chưa được xác nhận." actionLabel="Thử lại" onAction={() => void refresh()} /> : !items.length ? <AsyncStatePanel state="empty" title="Chưa có công việc trong checklist" description={canManage ? "Tạo công việc đầu tiên để chuẩn hóa quy trình trong ca." : "Quản lý chưa cấu hình công việc cho ca này."} actionLabel={canManage ? "Thêm công việc" : undefined} onAction={canManage ? () => setShowForm(true) : undefined} /> : (
+        {state === "loading" ? <ListSkeleton rows={5} /> : state === "error" ? <AsyncStatePanel state="error" title="Không thể tải checklist" description="Tiến độ checklist chưa được xác nhận." actionLabel="Thử lại" onAction={() => void refresh()} /> : !items.length ? <AsyncStatePanel state="empty" title="Chưa có công việc trong checklist" description={canManage ? "Tạo công việc đầu tiên cho quy trình vận hành hôm nay." : "Quản lý chưa cấu hình checklist hôm nay."} actionLabel={canManage ? "Thêm công việc" : undefined} onAction={canManage ? () => setShowForm(true) : undefined} /> : (
           <div className="list" style={{ marginTop: 18 }}>
             {items.map((item) => (
               <motion.button

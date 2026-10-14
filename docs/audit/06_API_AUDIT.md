@@ -1,11 +1,19 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](../README.md), [hiện trạng source](../implementation-status.md) và [đính chính audit](ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # BÁO CÁO AUDIT CHUYÊN SÂU: API, SERVER ACTIONS & CONTRACTS (AUDIT ONLY)
 
-> **Mã báo cáo:** `AUDIT-06-API`  
-> **Dự án:** LoopiCafe Management System  
-> **Chuyên gia thực hiện:** Agent 2 — API Auditor  
-> **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`  
-> **Chế độ:** AUDIT ONLY (Read-only, không can thiệp code ứng dụng, không gửi mutation tới production)  
-> **Thời điểm hoàn thành:** 12/10/2026  
+> **Mã báo cáo:** `AUDIT-06-API`
+> **Dự án:** LoopiCafe Management System
+> **Chuyên gia thực hiện:** Agent 2 — API Auditor
+> **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
+> **Chế độ:** AUDIT ONLY (Read-only, không can thiệp code ứng dụng, không gửi mutation tới production)
+> **Thời điểm hoàn thành:** 12/10/2026
 
 ---
 
@@ -127,39 +135,39 @@ Bảng dưới đây thống kê đầy đủ 57 HTTP endpoint handlers được
 ## 4. Checklist kiểm tra chi tiết (Audit Checklist)
 
 ### 4.1. Server-side RBAC & IDOR
-- [x] **PASS — Kiểm tra xác thực tại Server:** Mọi endpoint nội bộ đều gọi `requireApiUser()` hoặc `getVerifiedIdentity()` tại server ([server/auth.ts#L81](file:///d:/College/Practice/loopicafe-management-system/server/auth.ts#L81)). Không dựa vào client-side role hay ẩn nút.
-- [x] **PASS — Ngăn ngừa IDOR đa cửa hàng:** Mọi truy vấn đọc/ghi đều ràng buộc với `auth.actor.storeId` lấy từ hồ sơ nhân viên trong database ([server/auth.ts#L72](file:///d:/College/Practice/loopicafe-management-system/server/auth.ts#L72)), không cho phép truyền `storeId` từ client body/query để thao túng cửa hàng khác.
+- [x] **PASS — Kiểm tra xác thực tại Server:** Mọi endpoint nội bộ đều gọi `requireApiUser()` hoặc `getVerifiedIdentity()` tại server ([server/auth.ts#L81](../../server/auth.ts)). Không dựa vào client-side role hay ẩn nút.
+- [x] **PASS — Ngăn ngừa IDOR đa cửa hàng:** Mọi truy vấn đọc/ghi đều ràng buộc với `auth.actor.storeId` lấy từ hồ sơ nhân viên trong database ([server/auth.ts#L72](../../server/auth.ts)), không cho phép truyền `storeId` từ client body/query để thao túng cửa hàng khác.
 - [x] **PASS — Bảo vệ Owner cuối cùng:** Logic tại `modules/people/application/update-access.ts#L33-L44` kiểm tra điều kiện `EXISTS` đảm bảo luôn còn ít nhất 1 tài khoản `owner` có `status = 'active'`. Nếu thao tác làm mất Owner cuối cùng, câu lệnh cập nhật bị rollback và trả về mã lỗi 409 `access_conflict`.
-- [x] **PASS — Chặn tự vô hiệu hóa tài khoản:** [modules/people/application/update-access.ts#L25-L27](file:///d:/College/Practice/loopicafe-management-system/modules/people/application/update-access.ts#L25-L27) ngăn cản người dùng tự đổi `status != 'active'` cho chính mình (`self_deactivation`).
-- [ ] **FAIL — Phân quyền ngang Manager (Peer Manager Protection):** [modules/people/domain/access.ts#L13](file:///d:/College/Practice/loopicafe-management-system/modules/people/domain/access.ts#L13) cho phép Manager sửa thông tin, tạm khóa, đổi vai trò và reset mật khẩu của một Manager khác. *(Xem chi tiết: `API-001`)*.
-- [ ] **FAIL — Phân cấp quyền ca làm việc của Team Lead:** [modules/operations/application/manage-shifts.ts#L53-L57](file:///d:/College/Practice/loopicafe-management-system/modules/operations/application/manage-shifts.ts#L53-L57) cho phép Team Lead sửa hoặc hủy ca làm của Manager và Owner. *(Xem chi tiết: `API-006`)*.
+- [x] **PASS — Chặn tự vô hiệu hóa tài khoản:** [modules/people/application/update-access.ts#L25-L27](../../modules/people/application/update-access.ts) ngăn cản người dùng tự đổi `status != 'active'` cho chính mình (`self_deactivation`).
+- [ ] **FAIL — Phân quyền ngang Manager (Peer Manager Protection):** [modules/people/domain/access.ts#L13](../../modules/people/domain/access.ts) cho phép Manager sửa thông tin, tạm khóa, đổi vai trò và reset mật khẩu của một Manager khác. *(Xem chi tiết: `API-001`)*.
+- [ ] **FAIL — Phân cấp quyền ca làm việc của Team Lead:** [modules/operations/application/manage-shifts.ts#L53-L57](../../modules/operations/application/manage-shifts.ts) cho phép Team Lead sửa hoặc hủy ca làm của Manager và Owner. *(Xem chi tiết: `API-006`)*.
 
 ### 4.2. API Contracts & Giới hạn Input (Body Bounds & Validation)
 - [x] **PASS — Giới hạn kích thước Body (Body Size Bounds):**
-  - Mặc định các endpoint JSON thông thường bị chặn nếu vượt quá 64 KiB (`DEFAULT_JSON_MAX_BYTES = 65_536` tại [platform/http/input.ts#L5](file:///d:/College/Practice/loopicafe-management-system/platform/http/input.ts#L5)).
-  - Endpoint đặt món giới hạn nghiêm ngặt ở mức 32 KiB (`length > 32768` tại [modules/ordering/application/input.ts#L49](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/input.ts#L49)).
-  - Riêng endpoint chấm công có ảnh đính kèm cho phép tối đa 3 MiB (`ATTENDANCE_ACTION_MAX_BYTES = 3_145_728` tại [platform/http/input.ts#L6](file:///d:/College/Practice/loopicafe-management-system/platform/http/input.ts#L6)).
+  - Mặc định các endpoint JSON thông thường bị chặn nếu vượt quá 64 KiB (`DEFAULT_JSON_MAX_BYTES = 65_536` tại [platform/http/input.ts#L5](../../platform/http/input.ts)).
+  - Endpoint đặt món giới hạn nghiêm ngặt ở mức 32 KiB (`length > 32768` tại [modules/ordering/application/input.ts#L49](../../modules/ordering/application/input.ts)).
+  - Riêng endpoint chấm công có ảnh đính kèm cho phép tối đa 3 MiB (`ATTENDANCE_ACTION_MAX_BYTES = 3_145_728` tại [platform/http/input.ts#L6](../../platform/http/input.ts)).
   - Mọi trường hợp vượt ngưỡng đều trả về HTTP 413 `body_too_large`.
 - [x] **PASS — Từ chối payload sai định dạng:** `readObject` và `readOrderBody` kiểm tra chặt chẽ `content-type: application/json`, parse stream nhị phân an toàn với `TextDecoder("utf-8", { fatal: true })`, trả về 400 `invalid_json` hoặc `invalid_body` khi payload rỗng hoặc là JSON Array không hợp lệ.
-- [x] **PASS — Tính lại giá bán tại Server (Server Price Recalculation):** Trong `createOrder` ([modules/ordering/application/create-order.ts#L80-L88](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/create-order.ts#L80-L88)), toàn bộ đơn giá món, kích cỡ, topping và tổng tiền được tính toán lại 100% từ bảng `menu_items` và `menu_options` trên cơ sở dữ liệu. Không tin cậy bất kỳ trường đơn giá nào do client gửi lên.
+- [x] **PASS — Tính lại giá bán tại Server (Server Price Recalculation):** Trong `createOrder` ([modules/ordering/application/create-order.ts#L80-L88](../../modules/ordering/application/create-order.ts)), toàn bộ đơn giá món, kích cỡ, topping và tổng tiền được tính toán lại 100% từ bảng `menu_items` và `menu_options` trên cơ sở dữ liệu. Không tin cậy bất kỳ trường đơn giá nào do client gửi lên.
 - [ ] **FAIL — Bọc Error Handler thống nhất (`apiHandler`):** Có tới 14 route handlers không sử dụng middleware bọc `apiHandler`, dẫn đến việc các lỗi ngoại lệ không được chuyển đổi sang chuẩn JSON `{ error, code, requestId }` và có thể trả về lỗi 500 mặc định của framework. *(Xem chi tiết: `API-002`)*.
 
 ### 4.3. Chuyển trạng thái nghiệp vụ (State Transitions)
-- [x] **PASS — Tính toàn vẹn đơn hàng:** Kiểm tra snapshot version thực đơn và trạng thái mở cửa của quán ngay trong write transaction ([modules/ordering/application/create-order.ts#L103-L110](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/create-order.ts#L103-L110)). Chống việc đặt món khi quán vừa tắt nhận đơn hoặc đổi giá.
+- [x] **PASS — Tính toàn vẹn đơn hàng:** Kiểm tra snapshot version thực đơn và trạng thái mở cửa của quán ngay trong write transaction ([modules/ordering/application/create-order.ts#L103-L110](../../modules/ordering/application/create-order.ts)). Chống việc đặt món khi quán vừa tắt nhận đơn hoặc đổi giá.
 - [x] **PASS — Máy trạng thái đơn hàng (Order State Machine):** Chuyển trạng thái đơn hàng tuân theo đồ thị: `pending -> [accepted, cancelled]`, `accepted -> [preparing, cancelled]`, `preparing -> [ready, cancelled]`, `ready -> [completed]`. Có lưu vết chi tiết người thao tác vào `order_status_history`.
-- [x] **PASS — Máy trạng thái sự cố (Incident State Machine):** Unidirectional chuyển tiếp nghiêm ngặt: `open -> acknowledged -> resolved -> closed` ([app/api/incidents/route.ts#L69-L74](file:///d:/College/Practice/loopicafe-management-system/app/api/incidents/route.ts#L69-L74)), ngăn chặn hoàn toàn việc nhảy trạng thái hoặc mở lại sự cố đã đóng mà không qua quy trình.
-- [x] **PASS — Tính bất biến của kỳ lương đã chốt (Payroll Immutability):** Bảng lương khi `finalized` sẽ khóa toàn bộ phiên công, không cho phép thêm ca mới, không cho phép điều chỉnh giờ công ([modules/attendance/application/correct-attendance.ts#L50](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/correct-attendance.ts#L50)) hay thêm phụ cấp/khấu trừ ([modules/payroll/application/add-adjustment.ts#L22](file:///d:/College/Practice/loopicafe-management-system/modules/payroll/application/add-adjustment.ts#L22)). Chỉ duy nhất `owner` mới có quyền `reopen` kỳ lương ([modules/payroll/application/change-period.ts#L15](file:///d:/College/Practice/loopicafe-management-system/modules/payroll/application/change-period.ts#L15)).
-- [ ] **FAIL — Khả năng hủy đơn khi khách bỏ lấy tại quầy (`ready` -> `cancelled`):** Đồ thị trạng thái đơn hàng hiện chặn không cho hủy đơn khi đơn đã ở trạng thái `ready` ([modules/ordering/application/change-status.ts#L5](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/change-status.ts#L5)). *(Xem chi tiết: `API-007`)*.
+- [x] **PASS — Máy trạng thái sự cố (Incident State Machine):** Unidirectional chuyển tiếp nghiêm ngặt: `open -> acknowledged -> resolved -> closed` ([app/api/incidents/route.ts#L69-L74](../../app/api/incidents/route.ts)), ngăn chặn hoàn toàn việc nhảy trạng thái hoặc mở lại sự cố đã đóng mà không qua quy trình.
+- [x] **PASS — Tính bất biến của kỳ lương đã chốt (Payroll Immutability):** Bảng lương khi `finalized` sẽ khóa toàn bộ phiên công, không cho phép thêm ca mới, không cho phép điều chỉnh giờ công ([modules/attendance/application/correct-attendance.ts#L50](../../modules/attendance/application/correct-attendance.ts)) hay thêm phụ cấp/khấu trừ ([modules/payroll/application/add-adjustment.ts#L22](../../modules/payroll/application/add-adjustment.ts)). Chỉ duy nhất `owner` mới có quyền `reopen` kỳ lương ([modules/payroll/application/change-period.ts#L15](../../modules/payroll/application/change-period.ts)).
+- [ ] **FAIL — Khả năng hủy đơn khi khách bỏ lấy tại quầy (`ready` -> `cancelled`):** Đồ thị trạng thái đơn hàng hiện chặn không cho hủy đơn khi đơn đã ở trạng thái `ready` ([modules/ordering/application/change-status.ts#L5](../../modules/ordering/application/change-status.ts)). *(Xem chi tiết: `API-007`)*.
 
 ### 4.4. Bảo mật đơn hàng khách vãng lai (Guest Order Security)
-- [x] **PASS — Không thể đoán ID đơn hàng (Anti-enumeration):** Order tracking chỉ chấp nhận `X-Order-Receipt` token bí mật gồm 64 ký tự hex ngẫu nhiên ([modules/ordering/application/input.ts#L31-L36](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/input.ts#L31-L36)). Không thể tra cứu đơn thông qua số điện thoại, ID tuần tự hay mã đơn hiển thị `order_code`.
-- [x] **PASS — Bảo vệ bí mật trên URL:** Token đặt món được lưu giữ ở URL Fragment `#receipt=...` ([components/order/order-tracking-view.tsx#L58](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx#L58)), ngăn ngừa tuyệt đối việc gửi token lên header HTTP Referer hoặc lưu vào nhật ký web proxy.
-- [x] **PASS — Tỷ lệ giới hạn (Rate Limiting):** Có giới hạn tần suất tạo đơn (10 đơn/phút theo IP, 300 đơn/phút toàn quán) và tra cứu đơn (120 lần/phút theo IP, 5000 lần/phút toàn quán) tại [modules/ordering/application/rate-limit.ts#L9](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/rate-limit.ts#L9).
+- [x] **PASS — Không thể đoán ID đơn hàng (Anti-enumeration):** Order tracking chỉ chấp nhận `X-Order-Receipt` token bí mật gồm 64 ký tự hex ngẫu nhiên ([modules/ordering/application/input.ts#L31-L36](../../modules/ordering/application/input.ts)). Không thể tra cứu đơn thông qua số điện thoại, ID tuần tự hay mã đơn hiển thị `order_code`.
+- [x] **PASS — Bảo vệ bí mật trên URL:** Token đặt món được lưu giữ ở URL Fragment `#receipt=...` ([components/order/order-tracking-view.tsx#L58](../../components/order/order-tracking-view.tsx)), ngăn ngừa tuyệt đối việc gửi token lên header HTTP Referer hoặc lưu vào nhật ký web proxy.
+- [x] **PASS — Tỷ lệ giới hạn (Rate Limiting):** Có giới hạn tần suất tạo đơn (10 đơn/phút theo IP, 300 đơn/phút toàn quán) và tra cứu đơn (120 lần/phút theo IP, 5000 lần/phút toàn quán) tại [modules/ordering/application/rate-limit.ts#L9](../../modules/ordering/application/rate-limit.ts).
 - [ ] **FAIL — Hiệu năng dọn dẹp Rate-limit trong D1:** Câu lệnh `DELETE FROM order_rate_limits WHERE expires_at < ?` chạy đồng bộ trên từng request tra cứu đơn gây tải ghi không cần thiết lên D1. *(Xem chi tiết: `API-005`)*.
 
 ### 4.5. Bảo vệ Nguồn gốc, CORS, CSRF & Cache Policy
-- [x] **PASS — Chặn CSRF Cross-Origin Mutation:** [platform/http/request-origin.ts#L2-L13](file:///d:/College/Practice/loopicafe-management-system/platform/http/request-origin.ts#L2-L13) từ chối toàn bộ mutation (POST, PATCH, DELETE) có `origin !== url.origin` hoặc `sec-fetch-site === 'cross-site'`.
-- [x] **PASS — Sandbox CSP cho ảnh chấm công:** [app/api/files/[eventId]/route.ts#L34](file:///d:/College/Practice/loopicafe-management-system/app/api/files/[eventId]/route.ts#L34) áp dụng CSP chặt chẽ `default-src 'none'; sandbox` ngăn ngừa mã độc thực thi từ file ảnh SVG.
+- [x] **PASS — Chặn CSRF Cross-Origin Mutation:** [platform/http/request-origin.ts#L2-L13](../../platform/http/request-origin.ts) từ chối toàn bộ mutation (POST, PATCH, DELETE) có `origin !== url.origin` hoặc `sec-fetch-site === 'cross-site'`.
+- [x] **PASS — Sandbox CSP cho ảnh chấm công:** [app/api/files/[eventId]/route.ts#L34](../../app/api/files/[eventId]/route.ts) áp dụng CSP chặt chẽ `default-src 'none'; sandbox` ngăn ngừa mã độc thực thi từ file ảnh SVG.
 - [ ] **FAIL — Thiếu header `Cache-Control` riêng tư:** Đa số các endpoint trả về dữ liệu cá nhân (PII), thông tin lương, nhật ký kiểm toán không khai báo `Cache-Control: private, no-store`. *(Xem chi tiết: `API-003`)*.
 - [ ] **FAIL — Thiếu kiểm tra nguồn gốc tại middleware:** `middleware.ts` bỏ qua các đường dẫn `/api/:path*`, khiến việc bảo vệ CSRF phụ thuộc hoàn toàn vào Cloudflare Worker fetch pipeline và không hoạt động trong các môi trường Next.js độc lập. *(Xem chi tiết: `API-008`)*.
 
@@ -174,8 +182,8 @@ MÔ TẢ: Leo thang đặc quyền ngang giữa các Quản lý (Manager Horizon
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`modules/people/domain/access.ts#L9-L14`](file:///d:/College/Practice/loopicafe-management-system/modules/people/domain/access.ts#L9-L14)
-  - [`app/api/admin/accounts/route.ts#L258-L364`](file:///d:/College/Practice/loopicafe-management-system/app/api/admin/accounts/route.ts#L258-L364)
+  - [`modules/people/domain/access.ts#L9-L14`](../../modules/people/domain/access.ts)
+  - [`app/api/admin/accounts/route.ts#L258-L364`](../../app/api/admin/accounts/route.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong hàm kiểm tra quyền quản lý nhân viên:
   ```ts
@@ -189,8 +197,8 @@ MÔ TẢ: Leo thang đặc quyền ngang giữa các Quản lý (Manager Horizon
   Điều kiện `employee.role !== "owner"` vô tình cho phép `actor` có vai trò `manager` thao tác trên một tài khoản khác cũng có vai trò `manager`.
 - **Evidence (Bằng chứng):**
   1. Trong `PATCH /api/admin/accounts`:
-     - Nếu Manager A gửi request với `id` của Manager B và `action: "reset_password"`, hàm `resetPassword()` sẽ được thực thi, tạo mật khẩu tạm mới và trả về cho Manager A ([app/api/admin/accounts/route.ts#L355-L363](file:///d:/College/Practice/loopicafe-management-system/app/api/admin/accounts/route.ts#L355-L363)). Manager A có thể chiếm đoạt hoàn toàn tài khoản của Manager B.
-     - Nếu Manager A gửi `action: "update_status"` với `status: "suspended"`, Manager B sẽ bị đình chỉ và tài khoản Supabase bị ban 100 năm (`ban_duration: '876000h'`) ([app/api/admin/accounts/route.ts#L330-L343](file:///d:/College/Practice/loopicafe-management-system/app/api/admin/accounts/route.ts#L330-L343)).
+     - Nếu Manager A gửi request với `id` của Manager B và `action: "reset_password"`, hàm `resetPassword()` sẽ được thực thi, tạo mật khẩu tạm mới và trả về cho Manager A ([app/api/admin/accounts/route.ts#L355-L363](../../app/api/admin/accounts/route.ts)). Manager A có thể chiếm đoạt hoàn toàn tài khoản của Manager B.
+     - Nếu Manager A gửi `action: "update_status"` với `status: "suspended"`, Manager B sẽ bị đình chỉ và tài khoản Supabase bị ban 100 năm (`ban_duration: '876000h'`) ([app/api/admin/accounts/route.ts#L330-L343](../../app/api/admin/accounts/route.ts)).
      - Nếu Manager A gửi `action: "change_role"` với `role: "employee"`, Manager B sẽ bị giáng chức thành nhân viên thông thường.
   2. Trong `POST /api/admin/accounts`:
      - Manager có thể tự ý tạo thêm tài khoản mới với vai trò `role: "manager"` mà không cần sự đồng thuận của Owner.
@@ -234,19 +242,19 @@ MÔ TẢ: Thiếu wrapper `apiHandler` tại 14 Route Handlers làm phá vỡ En
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`app/api/reports/attendance/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/reports/attendance/route.ts#L5)
-  - [`app/api/reports/attendance.csv/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/reports/attendance.csv/route.ts#L5)
-  - [`app/api/reports/payroll.xls/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/reports/payroll.xls/route.ts#L5)
-  - [`app/api/dashboard/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/dashboard/route.ts#L5)
-  - [`app/api/today/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/today/route.ts#L5)
-  - [`app/api/audit/route.ts#L4`](file:///d:/College/Practice/loopicafe-management-system/app/api/audit/route.ts#L4)
-  - [`app/api/files/[eventId]/route.ts#L5`](file:///d:/College/Practice/loopicafe-management-system/app/api/files/[eventId]/route.ts#L5)
-  - [`app/api/consent/route.ts#L4-L13`](file:///d:/College/Practice/loopicafe-management-system/app/api/consent/route.ts#L4-L13) (Cả GET và POST)
-  - [`app/api/checklists/route.ts#L7`](file:///d:/College/Practice/loopicafe-management-system/app/api/checklists/route.ts#L7) (Phương thức GET)
-  - [`app/api/profile/route.ts#L7`](file:///d:/College/Practice/loopicafe-management-system/app/api/profile/route.ts#L7) (Phương thức GET)
-  - [`app/api/requests/route.ts#L8`](file:///d:/College/Practice/loopicafe-management-system/app/api/requests/route.ts#L8) (Phương thức GET)
-  - [`app/api/store/route.ts#L7`](file:///d:/College/Practice/loopicafe-management-system/app/api/store/route.ts#L7) (Phương thức GET)
-  - [`app/api/team/route.ts#L29`](file:///d:/College/Practice/loopicafe-management-system/app/api/team/route.ts#L29) (Phương thức POST)
+  - [`app/api/reports/attendance/route.ts#L5`](../../app/api/reports/attendance/route.ts)
+  - [`app/api/reports/attendance.csv/route.ts#L5`](../../app/api/reports/attendance.csv/route.ts)
+  - [`app/api/reports/payroll.xls/route.ts#L5`](../../app/api/reports/payroll.xls/route.ts)
+  - [`app/api/dashboard/route.ts#L5`](../../app/api/dashboard/route.ts)
+  - [`app/api/today/route.ts#L5`](../../app/api/today/route.ts)
+  - [`app/api/audit/route.ts#L4`](../../app/api/audit/route.ts)
+  - [`app/api/files/[eventId]/route.ts#L5`](../../app/api/files/[eventId]/route.ts)
+  - [`app/api/consent/route.ts#L4-L13`](../../app/api/consent/route.ts) (Cả GET và POST)
+  - [`app/api/checklists/route.ts#L7`](../../app/api/checklists/route.ts) (Phương thức GET)
+  - [`app/api/profile/route.ts#L7`](../../app/api/profile/route.ts) (Phương thức GET)
+  - [`app/api/requests/route.ts#L8`](../../app/api/requests/route.ts) (Phương thức GET)
+  - [`app/api/store/route.ts#L7`](../../app/api/store/route.ts) (Phương thức GET)
+  - [`app/api/team/route.ts#L29`](../../app/api/team/route.ts) (Phương thức POST)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong kiến trúc dự án, `platform/http/errors.ts` cung cấp `apiHandler` nhằm chuẩn hóa việc bắt các ngoại lệ `ApplicationError` để trả về JSON chuẩn `{ error, code }` kèm HTTP status tương ứng, đồng thời gom mọi lỗi không mong muốn thành HTTP 500 `{ error, requestId }` kèm mã định danh ẩn vết lỗi máy chủ.
   Tuy nhiên, có 14 handler function được khai báo thô dưới dạng `export async function GET/POST(...)` mà không bọc qua `apiHandler`.
@@ -284,14 +292,14 @@ MÔ TẢ: Thiếu Header `Cache-Control: private, no-store` trên các Endpoint 
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`app/api/admin/accounts/route.ts#L12`](file:///d:/College/Practice/loopicafe-management-system/app/api/admin/accounts/route.ts#L12)
-  - [`app/api/reports/attendance/route.ts#L19`](file:///d:/College/Practice/loopicafe-management-system/app/api/reports/attendance/route.ts#L19)
-  - [`app/api/owner/orders/route.ts#L184`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L184)
-  - [`app/api/attendance/review/route.ts#L76`](file:///d:/College/Practice/loopicafe-management-system/app/api/attendance/review/route.ts#L76)
-  - [`app/api/dashboard/route.ts#L85`](file:///d:/College/Practice/loopicafe-management-system/app/api/dashboard/route.ts#L85)
-  - [`app/api/today/route.ts#L78`](file:///d:/College/Practice/loopicafe-management-system/app/api/today/route.ts#L78)
-  - [`app/api/profile/route.ts#L11`](file:///d:/College/Practice/loopicafe-management-system/app/api/profile/route.ts#L11)
-  - [`app/api/audit/route.ts#L12`](file:///d:/College/Practice/loopicafe-management-system/app/api/audit/route.ts#L12)
+  - [`app/api/admin/accounts/route.ts#L12`](../../app/api/admin/accounts/route.ts)
+  - [`app/api/reports/attendance/route.ts#L19`](../../app/api/reports/attendance/route.ts)
+  - [`app/api/owner/orders/route.ts#L184`](../../app/api/owner/orders/route.ts)
+  - [`app/api/attendance/review/route.ts#L76`](../../app/api/attendance/review/route.ts)
+  - [`app/api/dashboard/route.ts#L85`](../../app/api/dashboard/route.ts)
+  - [`app/api/today/route.ts#L78`](../../app/api/today/route.ts)
+  - [`app/api/profile/route.ts#L11`](../../app/api/profile/route.ts)
+  - [`app/api/audit/route.ts#L12`](../../app/api/audit/route.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong toàn bộ 34 route files, chỉ có 7 endpoint khai báo rõ ràng header `Cache-Control: private, no-store`. Các endpoint GET còn lại trả về phản hồi qua `Response.json(...)` mà không kèm theo chỉ thị bộ nhớ đệm.
 - **Evidence (Bằng chứng):**
@@ -317,7 +325,7 @@ MÔ TẢ: Endpoint Danh sách Đơn hàng `GET /api/owner/orders` thiếu cơ ch
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`app/api/owner/orders/route.ts#L92-L108`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L92-L108)
+  - [`app/api/owner/orders/route.ts#L92-L108`](../../app/api/owner/orders/route.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Câu truy vấn chính trong route:
   ```ts
@@ -353,9 +361,9 @@ MÔ TẢ: Xung đột Ghi (Write Contention) trên Cloudflare D1 do Dọn dẹp 
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`modules/ordering/application/rate-limit.ts#L11-L17`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/rate-limit.ts#L11-L17)
-  - [`app/api/order/track/route.ts#L9`](file:///d:/College/Practice/loopicafe-management-system/app/api/order/track/route.ts#L9)
-  - [`components/order/order-tracking-view.tsx#L49`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx#L49)
+  - [`modules/ordering/application/rate-limit.ts#L11-L17`](../../modules/ordering/application/rate-limit.ts)
+  - [`app/api/order/track/route.ts#L9`](../../app/api/order/track/route.ts)
+  - [`components/order/order-tracking-view.tsx#L49`](../../components/order/order-tracking-view.tsx)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong hàm `limitOrderRequests`, mỗi khi có một request kiểm tra đơn hàng (`action === "track"`), hệ thống thực hiện một batch ghi vào D1:
   ```ts
@@ -393,9 +401,9 @@ MÔ TẢ: Trưởng ca (Team Lead) có thể Chỉnh sửa hoặc Hủy ca làm 
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`app/api/shifts/route.ts#L38-L44`](file:///d:/College/Practice/loopicafe-management-system/app/api/shifts/route.ts#L38-L44)
-  - [`modules/operations/application/manage-shifts.ts#L7-L9`](file:///d:/College/Practice/loopicafe-management-system/modules/operations/application/manage-shifts.ts#L7-L9)
-  - [`modules/operations/application/manage-shifts.ts#L53-L57`](file:///d:/College/Practice/loopicafe-management-system/modules/operations/application/manage-shifts.ts#L53-L57)
+  - [`app/api/shifts/route.ts#L38-L44`](../../app/api/shifts/route.ts)
+  - [`modules/operations/application/manage-shifts.ts#L7-L9`](../../modules/operations/application/manage-shifts.ts)
+  - [`modules/operations/application/manage-shifts.ts#L53-L57`](../../modules/operations/application/manage-shifts.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Trong `manage-shifts.ts`, hàm phân quyền:
   ```ts
@@ -441,7 +449,7 @@ MÔ TẢ: Máy trạng thái Đơn hàng thiếu nhánh Hủy (`cancelled`) từ
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`modules/ordering/application/change-status.ts#L4-L6`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/change-status.ts#L4-L6)
+  - [`modules/ordering/application/change-status.ts#L4-L6`](../../modules/ordering/application/change-status.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Cấu hình chuyển đổi trạng thái:
   ```ts
@@ -477,9 +485,9 @@ MÔ TẢ: Cơ chế bảo vệ Origin Guard phụ thuộc Worker fetch pipeline,
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`platform/http/request-origin.ts#L2-L13`](file:///d:/College/Practice/loopicafe-management-system/platform/http/request-origin.ts#L2-L13)
-  - [`worker/index.ts#L32-L33`](file:///d:/College/Practice/loopicafe-management-system/worker/index.ts#L32-L33)
-  - [`middleware.ts#L1-L3`](file:///d:/College/Practice/loopicafe-management-system/middleware.ts#L1-L3)
+  - [`platform/http/request-origin.ts#L2-L13`](../../platform/http/request-origin.ts)
+  - [`worker/index.ts#L32-L33`](../../worker/index.ts)
+  - [`middleware.ts#L1-L3`](../../middleware.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   `rejectCrossOriginMutation` chỉ được gọi tại `worker/index.ts`. Trong khi đó, `middleware.ts` chỉ có matcher:
   ```ts
@@ -508,7 +516,7 @@ MÔ TẢ: Rate Limiter Đơn hàng chia sẻ chung Bucket `"local"` khi chạy n
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`modules/ordering/application/rate-limit.ts#L7`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/rate-limit.ts#L7)
+  - [`modules/ordering/application/rate-limit.ts#L7`](../../modules/ordering/application/rate-limit.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Đoạn mã xác định IP client:
   ```ts
@@ -541,7 +549,7 @@ MÔ TẢ: `rejectCrossOriginMutation` từ chối Yêu cầu Hợp lệ khi Trì
 ================================================================================
 ```
 - **Tập tin liên quan:**
-  - [`platform/http/request-origin.ts#L8-L11`](file:///d:/College/Practice/loopicafe-management-system/platform/http/request-origin.ts#L8-L11)
+  - [`platform/http/request-origin.ts#L8-L11`](../../platform/http/request-origin.ts)
 - **Root Cause (Nguyên nhân gốc rễ):**
   Logic kiểm tra:
   ```ts
@@ -636,6 +644,6 @@ Trong quá trình kiểm toán, toàn bộ các lệnh kiểm tra an toàn sau �
 
 ## 8. Kết luận
 
-Hệ thống API và Server Contracts của **LoopiCafe Management System** thể hiện tư duy thiết kế bài bản, chú trọng tính toàn vẹn dữ liệu, kiểm soát đồng thời mạnh mẽ và bảo mật cao đối với luồng khách vãng lai (Guest Order Capability Security). 
+Hệ thống API và Server Contracts của **LoopiCafe Management System** thể hiện tư duy thiết kế bài bản, chú trọng tính toàn vẹn dữ liệu, kiểm soát đồng thời mạnh mẽ và bảo mật cao đối với luồng khách vãng lai (Guest Order Capability Security).
 
 Các rủi ro phát hiện (`API-001` và `API-002`) là những lỗ hổng logic phân quyền ngang và thiếu sót bao bọc middleware chuẩn, hoàn toàn có thể được khắc phục nhanh chóng thông qua các patch nhỏ theo lộ trình ưu tiên tại Mục 6 mà không cần thay đổi kiến trúc tổng thể hay phá vỡ tính tương thích ngược của sản phẩm.

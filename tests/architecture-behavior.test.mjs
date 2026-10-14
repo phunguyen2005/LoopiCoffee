@@ -92,7 +92,8 @@ test("sign-in activates only an invited member, without creating owners or conse
 
 test("request decisions, notifications and audit either commit together or roll back", async (t) => {
   const { db, owner } = setup(t);
-  db.sqlite.prepare("INSERT INTO requests (id, store_id, employee_email, type, title, reason, status, created_at) VALUES ('request-a', 'store-a', ?, 'leave', 'Leave', 'Personal', 'pending', '2026-07-01')").run(owner.email);
+  const staff = seedEmployee(db, { id: "staff-req", role: "employee" });
+  db.sqlite.prepare("INSERT INTO requests (id, store_id, employee_email, type, title, reason, status, created_at) VALUES ('request-a', 'store-a', ?, 'leave', 'Leave', 'Personal', 'pending', '2026-07-01')").run(staff.email);
   db.failOn(/INSERT INTO audit_events/);
   await assert.rejects(decideRequest(db, owner, "request-a", "approved"));
   assert.equal(db.sqlite.prepare("SELECT status FROM requests").get().status, "pending");

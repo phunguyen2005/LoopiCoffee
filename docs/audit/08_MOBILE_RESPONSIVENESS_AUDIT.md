@@ -1,8 +1,16 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](../README.md), [hiện trạng source](../implementation-status.md) và [đính chính audit](ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # BÁO CÁO AUDIT CHUYÊN SÂU: MOBILE RESPONSIVENESS & TOUCH USABILITY
 **LoopiCafe Management System**
 
 - **Mã báo cáo:** `AUDIT-MOB-2026-001`
-- **Tài liệu tham chiếu:** [`00_COMMON_RULES.md`](file:///d:/College/Practice/loopicafe-management-system/docs/audit/00_COMMON_RULES.md), [`AGENTS.md`](file:///d:/College/Practice/loopicafe-management-system/AGENTS.md) (Mục 7 — UI/UX Nguyên tắc thiết kế và cải thiện)
+- **Tài liệu tham chiếu:** [`00_COMMON_RULES.md`](00_COMMON_RULES.md), [`AGENTS.md`](../../AGENTS.md) (Mục 7 — UI/UX Nguyên tắc thiết kế và cải thiện)
 - **Baseline Git Commit:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
 - **Môi trường & Ngôn ngữ phân tích:** TypeScript, Next.js (Vinext), Tailwind CSS, Vanilla CSS; Báo cáo bằng Tiếng Việt; Định danh kỹ thuật bằng Tiếng Anh.
 - **Quy chế hoạt động:** **AUDIT ONLY** — Không chỉnh sửa code ứng dụng, dependencies, migrations hay dữ liệu.
@@ -15,8 +23,8 @@
 
 ### 1.1. Đánh giá tổng quan
 Hệ thống đã có nhận thức và nỗ lực rõ ràng trong việc xây dựng trải nghiệm mobile:
-- Đã thiết lập các breakpoint CSS media query tại `980px`, `720px`, `520px`, `350px` trong [`app/globals.css`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css).
-- Cung cấp thanh điều hướng đáy di động ([`.mobile-nav`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3797-L3838)), thanh topbar di động ([`.mobile-topbar`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3743-L3795)), và các nút hành động nổi ([`.mobile-attendance-cta`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3840-L3855), [`.mobile-sticky-primary`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3857-L3872)).
+- Đã thiết lập các breakpoint CSS media query tại `980px`, `720px`, `520px`, `350px` trong [`app/globals.css`](../../app/globals.css).
+- Cung cấp thanh điều hướng đáy di động ([`.mobile-nav`](../../app/globals.css)), thanh topbar di động ([`.mobile-topbar`](../../app/globals.css)), và các nút hành động nổi ([`.mobile-attendance-cta`](../../app/globals.css), [`.mobile-sticky-primary`](../../app/globals.css)).
 - Luồng khách hàng đặt món sử dụng kiến trúc Bottom Sheet / Drawer tiện lợi cho thao tác ngón cái trên điện thoại.
 - Luồng chấm công di động hỗ trợ tích hợp camera trước, định vị GPS vệ tinh và luồng giải trình ngoại lệ không bắt buộc GPS tuyệt đối.
 
@@ -50,35 +58,35 @@ Audit được thực hiện dựa trên phân tích tương quan layout, CSS Bo
 Hệ thống bao gồm các màn hình và component giao diện người dùng sau:
 
 ### 3.1. Phân hệ Khách hàng (Customer Public Ordering)
-- [`components/order/customer-order-page.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/customer-order-page.tsx): Trang chủ đặt món, danh mục carousel ngang, thanh tìm kiếm, giỏ hàng nổi đáy trang.
-- [`components/order/menu-card.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/menu-card.tsx): Card hiển thị món, ảnh thumbnail, mô tả rút gọn, giá bán, nút "+" thêm nhanh.
-- [`components/order/item-detail-modal.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/item-detail-modal.tsx): Bottom modal tùy chọn kích cỡ (Size), mức đường, mức đá, ghi chú và nút submit thêm vào giỏ.
-- [`components/order/cart-drawer.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/cart-drawer.tsx): Drawer giỏ hàng trượt từ đáy, danh sách món, nút tăng/giảm/xoá, form tên, SĐT, mã bàn, ghi chú đơn.
-- [`components/order/order-tracking-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tracking-view.tsx): Màn hình theo dõi tiến trình 5 bước của đơn hàng (`PENDING` → `COMPLETED`).
-- [`components/order/order-tokens.css`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tokens.css): Hệ token màu sắc, typography và animation dành riêng cho trải nghiệm đặt món.
+- [`components/order/customer-order-page.tsx`](../../components/order/customer-order-page.tsx): Trang chủ đặt món, danh mục carousel ngang, thanh tìm kiếm, giỏ hàng nổi đáy trang.
+- [`components/order/menu-card.tsx`](../../components/order/menu-card.tsx): Card hiển thị món, ảnh thumbnail, mô tả rút gọn, giá bán, nút "+" thêm nhanh.
+- [`components/order/item-detail-modal.tsx`](../../components/order/item-detail-modal.tsx): Bottom modal tùy chọn kích cỡ (Size), mức đường, mức đá, ghi chú và nút submit thêm vào giỏ.
+- [`components/order/cart-drawer.tsx`](../../components/order/cart-drawer.tsx): Drawer giỏ hàng trượt từ đáy, danh sách món, nút tăng/giảm/xoá, form tên, SĐT, mã bàn, ghi chú đơn.
+- [`components/order/order-tracking-view.tsx`](../../components/order/order-tracking-view.tsx): Màn hình theo dõi tiến trình 5 bước của đơn hàng (`PENDING` → `COMPLETED`).
+- [`components/order/order-tokens.css`](../../components/order/order-tokens.css): Hệ token màu sắc, typography và animation dành riêng cho trải nghiệm đặt món.
 
 ### 3.2. Phân hệ Nhân viên (Staff Operations Flow)
-- [`components/operational/today-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/today-view.tsx): Màn hình trọng tâm hàng ngày của nhân viên: ca trực, trạng thái chấm công, checklist ca, lối tắt báo sự cố và xin nghỉ.
-- [`components/attendance-capture.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx): Giao diện chụp ảnh check-in/out qua webcam/camera, lấy tọa độ GPS, kiểm tra bán kính geofence, form giải trình ngoại lệ.
-- [`components/operational/schedule-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/schedule-view.tsx): Xem lịch làm việc theo tuần/tháng, chế độ xem cá nhân và toàn bộ ca làm việc.
-- [`components/operational/checklists-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/checklists-view.tsx): Danh sách việc cần làm theo ca (Mở ca, Giữa ca, Đóng ca) kèm trạng thái hoàn thành.
-- [`components/operational/issues-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/issues-view.tsx): Báo cáo sự cố thiết bị/vận hành và theo dõi tiến độ xử lý.
-- [`components/operational/handovers-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/handovers-view.tsx): Bàn giao ca trực, đối soát tiền mặt quầy thu ngân.
-- [`components/operational/requests-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/requests-view.tsx): Tạo và theo dõi yêu cầu xin nghỉ, đổi ca, điều chỉnh giờ công.
-- [`components/operational/profile-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/profile-view.tsx): Hồ sơ cá nhân của nhân viên, số điện thoại, thông tin hợp đồng ca.
+- [`components/operational/today-view.tsx`](../../components/operational/today-view.tsx): Màn hình trọng tâm hàng ngày của nhân viên: ca trực, trạng thái chấm công, checklist ca, lối tắt báo sự cố và xin nghỉ.
+- [`components/attendance-capture.tsx`](../../components/attendance-capture.tsx): Giao diện chụp ảnh check-in/out qua webcam/camera, lấy tọa độ GPS, kiểm tra bán kính geofence, form giải trình ngoại lệ.
+- [`components/operational/schedule-view.tsx`](../../components/operational/schedule-view.tsx): Xem lịch làm việc theo tuần/tháng, chế độ xem cá nhân và toàn bộ ca làm việc.
+- [`components/operational/checklists-view.tsx`](../../components/operational/checklists-view.tsx): Danh sách việc cần làm theo ca (Mở ca, Giữa ca, Đóng ca) kèm trạng thái hoàn thành.
+- [`components/operational/issues-view.tsx`](../../components/operational/issues-view.tsx): Báo cáo sự cố thiết bị/vận hành và theo dõi tiến độ xử lý.
+- [`components/operational/handovers-view.tsx`](../../components/operational/handovers-view.tsx): Bàn giao ca trực, đối soát tiền mặt quầy thu ngân.
+- [`components/operational/requests-view.tsx`](../../components/operational/requests-view.tsx): Tạo và theo dõi yêu cầu xin nghỉ, đổi ca, điều chỉnh giờ công.
+- [`components/operational/profile-view.tsx`](../../components/operational/profile-view.tsx): Hồ sơ cá nhân của nhân viên, số điện thoại, thông tin hợp đồng ca.
 
 ### 3.3. Phân hệ Quản lý & Chủ quán (Manager / Owner Operations)
-- [`components/operational/owner-orders-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx): Bảng điều khiển đơn hàng theo thời gian thực (KDS/Order Hub), chuyển trạng thái đơn hàng.
-- [`components/operational/attendance-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/attendance-view.tsx): Bảng kiểm tra và phê duyệt công, xử lý ngoại lệ chấm công không ảnh/sai GPS.
-- [`components/payroll-reports-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/payroll-reports-view.tsx): Bảng chấm công tổng hợp và báo cáo lương nhân viên, khóa kỳ công.
-- [`components/operational/reports-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/reports-view.tsx): Báo cáo doanh thu, sản lượng đồ uống và ca trực.
-- [`components/operational/team-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/team-view.tsx): Quản lý danh sách nhân sự, phân quyền, hồ sơ nhân viên.
-- [`components/operational/settings-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/operational/settings-view.tsx): Cài đặt quán, cấu hình tọa độ geofence cửa hàng với bản đồ Leaflet tương tác.
-- [`components/admin-accounts-view.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/admin-accounts-view.tsx): Phân quyền tài khoản quản trị hệ thống.
+- [`components/operational/owner-orders-view.tsx`](../../components/operational/owner-orders-view.tsx): Bảng điều khiển đơn hàng theo thời gian thực (KDS/Order Hub), chuyển trạng thái đơn hàng.
+- [`components/operational/attendance-view.tsx`](../../components/operational/attendance-view.tsx): Bảng kiểm tra và phê duyệt công, xử lý ngoại lệ chấm công không ảnh/sai GPS.
+- [`components/payroll-reports-view.tsx`](../../components/payroll-reports-view.tsx): Bảng chấm công tổng hợp và báo cáo lương nhân viên, khóa kỳ công.
+- [`components/operational/reports-view.tsx`](../../components/operational/reports-view.tsx): Báo cáo doanh thu, sản lượng đồ uống và ca trực.
+- [`components/operational/team-view.tsx`](../../components/operational/team-view.tsx): Quản lý danh sách nhân sự, phân quyền, hồ sơ nhân viên.
+- [`components/operational/settings-view.tsx`](../../components/operational/settings-view.tsx): Cài đặt quán, cấu hình tọa độ geofence cửa hàng với bản đồ Leaflet tương tác.
+- [`components/admin-accounts-view.tsx`](../../components/admin-accounts-view.tsx): Phân quyền tài khoản quản trị hệ thống.
 
 ### 3.4. Khung điều hướng & Toàn cục (App Shell & Navigation)
-- [`components/app-shell.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx): Bố cục tổng thể, ẩn sidebar trên mobile, hiển thị mobile topbar, mobile bottom navigation, và quick drawer.
-- [`app/globals.css`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css): CSS toàn cục, các biến màu sắc, utilities và media queries.
+- [`components/app-shell.tsx`](../../components/app-shell.tsx): Bố cục tổng thể, ẩn sidebar trên mobile, hiển thị mobile topbar, mobile bottom navigation, và quick drawer.
+- [`app/globals.css`](../../app/globals.css): CSS toàn cục, các biến màu sắc, utilities và media queries.
 
 ---
 
@@ -87,16 +95,16 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 | Tiêu chuẩn kiểm tra | Trạng thái | Bằng chứng mã nguồn & Đánh giá kỹ thuật |
 | :--- | :---: | :--- |
 | **Viewport Meta Tag** | **PASS** | `app/layout.tsx` cấu hình chuẩn `width=device-width, initial-scale=1, viewport-fit=cover`. |
-| **Safe Area Insets (iOS notch/home bar)** | **FAIL** | [globals.css#L3799](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3799) có `env(safe-area-inset-bottom)` cho navigation nhưng padding bù nội dung trang lại bị hardcode hoặc thiếu, gây đè lấp. |
-| **Fixed Elements & Overlap** | **FAIL** | [globals.css#L3840-L3872](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3840-L3872) `.mobile-sticky-primary` và `.mobile-attendance-cta` đè lên nội dung cuối trang do thiếu khoảng đệm bù trừ (MOB-001). |
+| **Safe Area Insets (iOS notch/home bar)** | **FAIL** | [globals.css#L3799](../../app/globals.css) có `env(safe-area-inset-bottom)` cho navigation nhưng padding bù nội dung trang lại bị hardcode hoặc thiếu, gây đè lấp. |
+| **Fixed Elements & Overlap** | **FAIL** | [globals.css#L3840-L3872](../../app/globals.css) `.mobile-sticky-primary` và `.mobile-attendance-cta` đè lên nội dung cuối trang do thiếu khoảng đệm bù trừ (MOB-001). |
 | **Touch Targets (WCAG 2.5.5 >= 44×44px)** | **FAIL** | Nhiều nút quan trọng có kích thước chỉ 15px - 36px (nút thêm món, nút xoá món giỏ, nút duyệt yêu cầu) (MOB-002). |
-| **Khoảng cách an toàn nút Destructive** | **FAIL** | [owner-orders-view.tsx#L1168](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L1168) Nút "Huỷ" và "Xác nhận" đặt sát nhau (gap 6px), rất dễ bấm nhầm trên màn hình cảm ứng (MOB-003). |
-| **Bảng dữ liệu rộng & Sticky Column** | **FAIL** | [globals.css#L2010](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L2010) `.payroll-table .sticky-column` chiếm 248px–300px, bóp nghẹt 96% màn hình 320px–375px (MOB-004). |
-| **Cuộn lịch biểu (Schedule Grid)** | **FAIL** | [schedule-view.tsx#L504](file:///d:/College/Practice/loopicafe-management-system/components/operational/schedule-view.tsx#L504) Grid tuần 700px cuộn ngang không có sticky cột nhân viên và thiếu affordance cuộn (MOB-005). |
-| **Bẫy cử chỉ bản đồ (Map Gesture Trap)** | **FAIL** | [settings-view.tsx#L400](file:///d:/College/Practice/loopicafe-management-system/components/operational/settings-view.tsx#L400) Leaflet map bắt trọn cử chỉ vuốt một ngón, gây kẹt trang trên mobile (MOB-006). |
+| **Khoảng cách an toàn nút Destructive** | **FAIL** | [owner-orders-view.tsx#L1168](../../components/operational/owner-orders-view.tsx) Nút "Huỷ" và "Xác nhận" đặt sát nhau (gap 6px), rất dễ bấm nhầm trên màn hình cảm ứng (MOB-003). |
+| **Bảng dữ liệu rộng & Sticky Column** | **FAIL** | [globals.css#L2010](../../app/globals.css) `.payroll-table .sticky-column` chiếm 248px–300px, bóp nghẹt 96% màn hình 320px–375px (MOB-004). |
+| **Cuộn lịch biểu (Schedule Grid)** | **FAIL** | [schedule-view.tsx#L504](../../components/operational/schedule-view.tsx) Grid tuần 700px cuộn ngang không có sticky cột nhân viên và thiếu affordance cuộn (MOB-005). |
+| **Bẫy cử chỉ bản đồ (Map Gesture Trap)** | **FAIL** | [settings-view.tsx#L400](../../components/operational/settings-view.tsx) Leaflet map bắt trọn cử chỉ vuốt một ngón, gây kẹt trang trên mobile (MOB-006). |
 | **Bố cục siêu hẹp 320px (Ultra-narrow)** | **FAIL** | Nút bán kính Geofence, flex container danh sách nhân viên bị nén nghẹt và tràn khung viền (MOB-007). |
-| **Thích ứng bàn phím ảo (Virtual Keyboard)** | **FAIL** | [cart-drawer.tsx#L283](file:///d:/College/Practice/loopicafe-management-system/components/order/cart-drawer.tsx#L283) Drawer và form nhập liệu thiếu xử lý khi bàn phím ảo bật lên, có thể che khuất input (MOB-008). |
-| **Hỗ trợ Giảm chuyển động (Reduced Motion)** | **FAIL** | [order-tokens.css#L70](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tokens.css#L70) và [globals.css](file:///d:/College/Practice/loopicafe-management-system/app/globals.css) thiếu `@media (prefers-reduced-motion: reduce)` toàn diện (MOB-009). |
+| **Thích ứng bàn phím ảo (Virtual Keyboard)** | **FAIL** | [cart-drawer.tsx#L283](../../components/order/cart-drawer.tsx) Drawer và form nhập liệu thiếu xử lý khi bàn phím ảo bật lên, có thể che khuất input (MOB-008). |
+| **Hỗ trợ Giảm chuyển động (Reduced Motion)** | **FAIL** | [order-tokens.css#L70](../../components/order/order-tokens.css) và [globals.css](../../app/globals.css) thiếu `@media (prefers-reduced-motion: reduce)` toàn diện (MOB-009). |
 | **Phóng to chữ (Dynamic Type / 200% Zoom)** | **FAIL** | Một số container dùng `height` cố định kèm `overflow: hidden`, chữ bị cắt khi phóng to 200% (MOB-010). |
 | **Camera & Geolocation Permissions UI** | **PASS** | Giao diện xin cấp quyền có fallback, hiển thị lỗi rõ ràng và hỗ trợ giải trình khi bị từ chối quyền. |
 
@@ -125,7 +133,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-001 | P0 | CONFIRMED | Global Shell / Operational Views
 - **Tiêu đề:** Mobile Fixed Elements & Floating CTA Overlap Che Khuất Nội Dung Cuối Trang
 - **Vị trí bằng chứng:**
-  * [`app/globals.css#L3797-L3808`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3797-L3808):
+  * [`app/globals.css#L3797-L3808`](../../app/globals.css):
     ```css
     .mobile-nav {
       position: fixed;
@@ -136,7 +144,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
       z-index: 45;
     }
     ```
-  * [`app/globals.css#L3840-L3855`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3840-L3855):
+  * [`app/globals.css#L3840-L3855`](../../app/globals.css):
     ```css
     .mobile-attendance-cta,
     .mobile-sticky-primary {
@@ -148,15 +156,15 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
       /* Chiều cao của button container này khoảng 56px - 72px */
     }
     ```
-  * [`components/operational/today-view.tsx#L302-L321`](file:///d:/College/Practice/loopicafe-management-system/components/operational/today-view.tsx#L302-L321):
+  * [`components/operational/today-view.tsx#L302-L321`](../../components/operational/today-view.tsx):
     Cuối màn hình Today có cụm nút:
     - `"Xin nghỉ / Đổi ca"` (button)
     - `"Báo sự cố quán"` (button)
-  * [`components/attendance-capture.tsx#L497-L562`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx#L497-L562):
+  * [`components/attendance-capture.tsx#L497-L562`](../../components/attendance-capture.tsx):
     Cuối màn hình Chấm công có:
     - Textarea giải trình ngoại lệ chấm công
     - Ghi chú bảo mật dữ liệu riêng tư nhân sự
-  * [`app/globals.css#L3681-L3689`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L3681-L3689):
+  * [`app/globals.css#L3681-L3689`](../../app/globals.css):
     `.employee-today-view` và `.attendance-page-grid` chỉ khai báo `padding-bottom: 70px;` hoặc `padding-bottom: 80px;`.
 - **Kỳ vọng:** Khi cuộn xuống hết trang, toàn bộ nội dung, nút hành động và textarea phải hiển thị đầy đủ trên màn hình, không bị bất kỳ thanh điều hướng hoặc nút cố định nào che lấp.
 - **Thực tế / Rủi ro:**
@@ -192,7 +200,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-002 | P1 | CONFIRMED | Customer Menu / Cart / Staff Operations
 - **Tiêu đề:** Kích Thước Touch Target Dưới Chuẩn WCAG 2.5.5 (44×44px) Trên Các Thao Tác Tần Suất Cao
 - **Vị trí bằng chứng:**
-  1. [`components/order/menu-card.tsx#L88`](file:///d:/College/Practice/loopicafe-management-system/components/order/menu-card.tsx#L88):
+  1. [`components/order/menu-card.tsx#L88`](../../components/order/menu-card.tsx):
      ```tsx
      <button
        type="button"
@@ -200,7 +208,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
      ...
      ```
      Kích thước: `w-9 h-9` tương đương **36×36px** (thiếu 8px so với chuẩn 44×44px).
-  2. [`components/order/cart-drawer.tsx#L214`](file:///d:/College/Practice/loopicafe-management-system/components/order/cart-drawer.tsx#L214):
+  2. [`components/order/cart-drawer.tsx#L214`](../../components/order/cart-drawer.tsx):
      ```tsx
      <button
        type="button"
@@ -212,7 +220,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
      </button>
      ```
      Kích thước: Icon 14px + padding 4px mỗi bên = **22×22px** (chỉ đạt 50% kích thước chuẩn cảm ứng).
-  3. [`components/order/cart-drawer.tsx#L227-L248`](file:///d:/College/Practice/loopicafe-management-system/components/order/cart-drawer.tsx#L227-L248):
+  3. [`components/order/cart-drawer.tsx#L227-L248`](../../components/order/cart-drawer.tsx):
      ```tsx
      <button
        type="button"
@@ -225,9 +233,9 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
        className="w-7 h-7 rounded-full flex items-center justify-center ..."
      ```
      Kích thước: `w-7 h-7` tương đương **28×28px** (vùng chạm cực nhỏ đối với ngón cái).
-  4. [`components/operational/requests-view.tsx#L68`](file:///d:/College/Practice/loopicafe-management-system/components/operational/requests-view.tsx#L68):
+  4. [`components/operational/requests-view.tsx#L68`](../../components/operational/requests-view.tsx):
      Các nút Duyệt và Từ chối yêu cầu dùng class `.text-link` với font `11px`, không có padding, chiều cao vùng chạm thực tế chỉ khoảng **15px**.
-  5. [`components/operational/attendance-view.tsx#L350-L364`](file:///d:/College/Practice/loopicafe-management-system/components/operational/attendance-view.tsx#L350-L364):
+  5. [`components/operational/attendance-view.tsx#L350-L364`](../../components/operational/attendance-view.tsx):
      Nút phê duyệt công có style `padding: 3px 8px; font-size: 0.75rem;`, chiều cao tổng thể chỉ **20px**.
 - **Kỳ vọng:** Theo tiêu chuẩn WCAG 2.1 Success Criterion 2.5.5 (Target Size) và Apple iOS Human Interface Guidelines, mọi phần tử tương tác cảm ứng chính phải có vùng chạm tối thiểu **44×44px** (hoặc 48×48px theo Google Material Design).
 - **Thực tế / Rủi ro:**
@@ -266,7 +274,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-003 | P1 | CONFIRMED | Owner Orders View / Operational Hub
 - **Tiêu đề:** Khoảng Cách Quá Hẹp Giữa Thao Tác Huỷ (Destructive) Và Tiếp Nhận Đơn (Constructive)
 - **Vị trí bằng chứng:**
-  * [`components/operational/owner-orders-view.tsx#L1158-L1225`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L1158-L1225):
+  * [`components/operational/owner-orders-view.tsx#L1158-L1225`](../../components/operational/owner-orders-view.tsx):
     ```tsx
     <div className="flex items-center gap-1.5 shrink-0">
       {order.status === "PENDING" && (
@@ -309,7 +317,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-004 | P1 | CONFIRMED | Payroll Reports View
 - **Tiêu đề:** Cột Sticky Employee Chiếm Tới 96% Chiều Rộng Viewport Trên Màn 320px–375px Trong Bảng Lương
 - **Vị trí bằng chứng:**
-  * [`app/globals.css#L2010-L2024`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L2010-L2024):
+  * [`app/globals.css#L2010-L2024`](../../app/globals.css):
     ```css
     .payroll-table .sticky-column,
     .payroll-table .employee-cell {
@@ -321,7 +329,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
       max-width: 300px;
     }
     ```
-  * [`components/payroll-reports-view.tsx#L337-L398`](file:///d:/College/Practice/loopicafe-management-system/components/payroll-reports-view.tsx#L337-L398):
+  * [`components/payroll-reports-view.tsx#L337-L398`](../../components/payroll-reports-view.tsx):
     Bảng lương có nhiều cột: Tên nhân viên (sticky), Vị trí, Tổng giờ làm, Giờ chuẩn, Giờ tăng ca, Thưởng, Khấu trừ, Thực lĩnh, Trạng thái.
 - **Kỳ vọng:** Khi cuộn ngang trên thiết bị di động, cột cố định chỉ nên chiếm tối đa 35% - 40% bề ngang màn hình để chừa ít nhất 60% không gian cho các cột số liệu cuộn ngang.
 - **Thực tế / Rủi ro:**
@@ -342,7 +350,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-005 | P2 | CONFIRMED | Schedule View
 - **Tiêu đề:** Lịch Tuần Thiếu Cột Nhân Viên Cố Định Và Thiếu Visual Affordance Cho Vùng Cuộn Ngang
 - **Vị trí bằng chứng:**
-  * [`components/operational/schedule-view.tsx#L504-L558`](file:///d:/College/Practice/loopicafe-management-system/components/operational/schedule-view.tsx#L504-L558):
+  * [`components/operational/schedule-view.tsx#L504-L558`](../../components/operational/schedule-view.tsx):
     ```tsx
     <div className="overflow-x-auto pb-4">
       <div className="week-grid" style={{ minWidth: 700 }}>
@@ -375,7 +383,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-006 | P2 | CONFIRMED | Settings View (Geofence)
 - **Tiêu đề:** Bản Đồ Leaflet Map Cài Đặt Geofence Bắt Cử Chỉ Vuốt Cuộn Trang (Scroll Trap) Trên Mobile
 - **Vị trí bằng chứng:**
-  * [`components/operational/settings-view.tsx#L400-L425`](file:///d:/College/Practice/loopicafe-management-system/components/operational/settings-view.tsx#L400-L425):
+  * [`components/operational/settings-view.tsx#L400-L425`](../../components/operational/settings-view.tsx):
     Container bản đồ Leaflet Map hiển thị bán kính geofence với chiều cao ~280px–320px chiếm toàn bộ chiều ngang màn hình di động.
 - **Kỳ vọng:** Khi người dùng vuốt ngón tay dọc theo trang cài đặt để xem các phần bên dưới, bản đồ không được cướp cử chỉ cuộn trang trừ khi người dùng chủ động kích hoạt tương tác bản đồ.
 - **Thực tế / Rủi ro:**
@@ -396,7 +404,7 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-007 | P2 | CONFIRMED | Settings / Team / Attendance Capture
 - **Tiêu đề:** Tràn Bố Cục Và Nén Hẹp Nút Bấm Trên Màn Hình Siêu Hẹp 320px (Ultra-Narrow Devices)
 - **Vị trí bằng chứng:**
-  1. [`components/operational/settings-view.tsx#L354-L370`](file:///d:/College/Practice/loopicafe-management-system/components/operational/settings-view.tsx#L354-L370):
+  1. [`components/operational/settings-view.tsx#L354-L370`](../../components/operational/settings-view.tsx):
      Cụm nút chọn bán kính Geofence:
      ```tsx
      <div className="grid grid-cols-4 gap-2">
@@ -407,9 +415,9 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
      </div>
      ```
      Trên 320px, mỗi nút chỉ có chiều rộng ~58px, chữ `"100m ⭐ Khuyên dùng"` bị nén gãy dòng nham nhở hoặc tràn ra khỏi nút.
-  2. [`components/operational/team-view.tsx#L183-L199`](file:///d:/College/Practice/loopicafe-management-system/components/operational/team-view.tsx#L183-L199):
+  2. [`components/operational/team-view.tsx#L183-L199`](../../components/operational/team-view.tsx):
      Cụm nút bộ lọc vai trò và thêm nhân viên dùng `flex items-center gap-2` không có `flex-wrap`, gây tràn thanh cuộn ngang ngoài ý muốn trên 320px.
-  3. [`components/attendance-capture.tsx#L527-L541`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx#L527-L541):
+  3. [`components/attendance-capture.tsx#L527-L541`](../../components/attendance-capture.tsx):
      Cụm 3 nút chọn lý do ngoại lệ chấm công (Hỏng camera, Lỗi GPS, Khác) bị ép trong lưới `grid-cols-3` trên màn hình hẹp khiến text bị co cụm khó đọc.
 - **Kỳ vọng:** Mọi lưới nút bấm và cụm bộ lọc phải tự động chuyển thành 2 cột (`grid-cols-2`) hoặc bọc dòng (`flex-wrap`) khi màn hình nhỏ hơn 360px.
 - **Thực tế / Rủi ro:** Vỡ giao diện, text đè lên icon, hoặc sinh ra thanh cuộn ngang khó coi trên các thiết bị như iPhone SE thế hệ 1 hoặc màn hình phụ của máy gập.
@@ -425,14 +433,14 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-008 | P2 | CONFIRMED | Cart Drawer / Operational Modals
 - **Tiêu đề:** Nguy Cơ Che Khuất Do Bàn Phím Ảo (Virtual Keyboard Occlusion) Khi Nhập Liệu Trong Drawer
 - **Vị trí bằng chứng:**
-  * [`components/order/cart-drawer.tsx#L283-L321`](file:///d:/College/Practice/loopicafe-management-system/components/order/cart-drawer.tsx#L283-L321):
+  * [`components/order/cart-drawer.tsx#L283-L321`](../../components/order/cart-drawer.tsx):
     Form nhập:
     - Họ và tên người nhận
     - Số điện thoại người nhận
     - Số bàn (nếu ngồi tại quán)
     - Ghi chú đơn hàng (textarea)
     Nằm ở nửa dưới của Drawer, ngay phía trên thanh nút thanh toán cố định.
-  * [`components/operational/team-view.tsx#L555-L612`](file:///d:/College/Practice/loopicafe-management-system/components/operational/team-view.tsx#L555-L612):
+  * [`components/operational/team-view.tsx#L555-L612`](../../components/operational/team-view.tsx):
     Modal thêm/sửa nhân viên với các trường nhập lương, email, số điện thoại.
 - **Kỳ vọng:** Khi người dùng chạm vào ô input (focus), bàn phím ảo (Software Keyboard) trên iOS Safari / Android Chrome đẩy lên, ô input phải tự động cuộn vào vùng nhìn thấy an toàn (`scrollIntoView({ block: 'center' })`) và nút hành động không được đè mất trường đang nhập.
 - **Thực tế / Rủi ro:**
@@ -462,14 +470,14 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-009 | P3 | CONFIRMED | Global Styling / Motion Accessibility
 - **Tiêu đề:** Thiếu Hỗ Trợ Toàn Diện Cho `prefers-reduced-motion` Cho Các Hiệu Ứng Chuyển Động
 - **Vị trí bằng chứng:**
-  * [`components/order/order-tokens.css#L70-L100`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tokens.css#L70-L100):
+  * [`components/order/order-tokens.css#L70-L100`](../../components/order/order-tokens.css):
     Định nghĩa nhiều keyframe animation: `slideUp`, `drawerEnter`, `pulseSubtle`, `bounceCart`.
   * Không tìm thấy bất kỳ khai báo `@media (prefers-reduced-motion: reduce)` nào trong file này.
 - **Kỳ vọng:** Đáp ứng chuẩn WCAG 2.1 SC 2.3.3 (Animation from Interactions): Các hiệu ứng chuyển động trượt, nảy, zoom phải được tắt hoặc thay thế bằng hiệu ứng mờ dần (opacity fade) khi người dùng bật chế độ giảm chuyển động trong cài đặt thiết bị di động (để phòng tránh chóng mặt, say xe).
 - **Thực tế / Rủi ro:** Người dùng có bệnh lý tiền đình hoặc nhạy cảm với chuyển động khi thao tác trên điện thoại có thể gặp cảm giác khó chịu khi các drawer và modal liên tục trượt nảy.
 - **Nguyên nhân gốc rễ (Root Cause):** Bỏ qua media query trợ năng chuyển động khi định nghĩa animation CSS.
 - **Đề xuất khắc phục (Recommendation):**
-  Bổ sung vào [`app/globals.css`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css) và [`components/order/order-tokens.css`](file:///d:/College/Practice/loopicafe-management-system/components/order/order-tokens.css):
+  Bổ sung vào [`app/globals.css`](../../app/globals.css) và [`components/order/order-tokens.css`](../../components/order/order-tokens.css):
   ```css
   @media (prefers-reduced-motion: reduce) {
     *, ::before, ::after {
@@ -488,9 +496,9 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 #### MOB-010 | P3 | CONFIRMED | Typography / Text Scaling Accessibility
 - **Tiêu đề:** Rủi Ro Vỡ Bố Cục Khi Phóng To Cỡ Chữ (Dynamic Type / 200% Font Scale)
 - **Vị trí bằng chứng:**
-  * [`components/order/menu-card.tsx#L52`](file:///d:/College/Practice/loopicafe-management-system/components/order/menu-card.tsx#L52):
+  * [`components/order/menu-card.tsx#L52`](../../components/order/menu-card.tsx):
     Thẻ món ăn sử dụng `line-clamp-2` kết hợp container flex bị giới hạn chiều cao cố định của ảnh và nội dung.
-  * [`components/app-shell.tsx#L182`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx#L182):
+  * [`components/app-shell.tsx#L182`](../../components/app-shell.tsx):
     Thanh topbar di động có `h-14` (56px cố định).
 - **Kỳ vọng:** Đáp ứng WCAG 2.1 SC 1.4.4 (Resize Text): Giao diện có thể phóng to chữ lên đến 200% mà không làm mất thông tin hoặc vỡ layout nghiêm trọng.
 - **Thực tế / Rủi ro:** Khi người lớn tuổi hoặc người thị lực kém cài đặt font chữ lớn trong máy, tên quán và thông tin ca trực trong topbar bị cắt bớt; giá món và tên món ăn trên menu card tràn đè lên nút "+" thêm món.
@@ -508,9 +516,9 @@ Hệ thống bao gồm các màn hình và component giao diện người dùng 
 1. **Kiểm thử trên thiết bị phần cứng thật (Physical Hardware Testing):**
    - Đợt audit này được thực hiện trong môi trường tĩnh thông qua phân tích mã nguồn và kiểm tra box-model CSS. Chưa chạy trên thiết bị iOS thật để kiểm tra độ trễ 300ms của touch-action, hành vi bàn phím ảo của Safari khi gõ tiếng Việt (Telex) và thanh địa chỉ tự ẩn của Safari di động.
 2. **Quyền Camera & Tọa độ GPS thực tế:**
-   - Đã xác minh luồng code xử lý lỗi quyền trong [`components/attendance-capture.tsx`](file:///d:/College/Practice/loopicafe-management-system/components/attendance-capture.tsx), nhưng độ chính xác GPS thực tế phụ thuộc vào phần cứng điện thoại nhân viên và độ che phủ vệ tinh tại cửa hàng.
+   - Đã xác minh luồng code xử lý lỗi quyền trong [`components/attendance-capture.tsx`](../../components/attendance-capture.tsx), nhưng độ chính xác GPS thực tế phụ thuộc vào phần cứng điện thoại nhân viên và độ che phủ vệ tinh tại cửa hàng.
 3. **Hiệu năng cuộn trên điện thoại cấu hình thấp (Low-end Android Performance):**
-   - Các hiệu ứng backdrop-blur trong [`app/globals.css`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css) (`backdrop-filter: blur(12px)`) chưa được đo lường FPS thực tế trên các dòng máy Android giá rẻ; có nguy cơ tụt khung hình khi cuộn trang dài.
+   - Các hiệu ứng backdrop-blur trong [`app/globals.css`](../../app/globals.css) (`backdrop-filter: blur(12px)`) chưa được đo lường FPS thực tế trên các dòng máy Android giá rẻ; có nguy cơ tụt khung hình khi cuộn trang dài.
 
 ---
 

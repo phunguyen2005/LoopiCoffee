@@ -27,6 +27,7 @@ export function PersistentIssuesView({ canManage = false }: { canManage?: boolea
   const [error, setError] = useState<string | null>(null);
   const saveLock = useRef(false);
   const statusLock = useRef(false);
+  const createKey = useRef("");
 
   useEffect(() => {
     fetch("/api/incidents", { cache: "no-store" })
@@ -50,13 +51,15 @@ export function PersistentIssuesView({ canManage = false }: { canManage?: boolea
     if (saveLock.current) return;
     saveLock.current = true; setSaving(true); setError(null);
     try {
+      const idempotencyKey = createKey.current || (createKey.current = crypto.randomUUID());
       await readJson(await fetch("/api/incidents", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, category, severity }),
+        body: JSON.stringify({ title, category, severity, idempotencyKey }),
       }));
+      createKey.current = "";
       setTitle(""); setShowForm(false);
       await refresh();
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "Chưa xác nhận được báo cáo. Kiểm tra danh sách trước khi gửi lại."); }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Chưa xác nhận được báo cáo. Gửi lại sẽ dùng đúng mã cũ để tránh tạo trùng."); }
     finally { saveLock.current = false; setSaving(false); }
   }
 

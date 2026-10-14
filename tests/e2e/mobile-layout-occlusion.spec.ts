@@ -131,6 +131,14 @@ async function findOccludedControls(page: Page) {
   });
 }
 
+async function scrollToBottomWithoutAnimation(page: Page) {
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = "auto";
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+  await page.waitForTimeout(100);
+}
+
 test.describe("Design Tokens & Layout Contract", () => {
   test("CSS custom properties --bottom-nav-height and --bottom-nav-with-cta-height are defined in :root", async ({ page }) => {
     await page.goto(`${APP_ORIGIN}/order`);
@@ -203,7 +211,7 @@ test.describe("Customer Order View Action Occlusion", () => {
       }
 
       // Scroll to bottom of menu
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await scrollToBottomWithoutAnimation(page);
       await page.waitForTimeout(150);
 
       // Verify no buttons or inputs are occluded
@@ -260,18 +268,20 @@ test.describe("Operational Employee Views Action Occlusion", () => {
       await signInEmployee(page);
       await page.goto(`${APP_ORIGIN}/app/today`);
       await page.waitForLoadState("domcontentloaded");
+      await page.locator(".today-secondary-actions").waitFor({ state: "visible", timeout: 15_000 });
 
-      // Scroll to bottom
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(150);
+      // Let the page-enter animation settle and disable smooth scrolling so the
+      // hit-test is taken at the real bottom rather than mid-animation.
+      await page.waitForTimeout(400);
+      await scrollToBottomWithoutAnimation(page);
 
       const occluded = await findOccludedControls(page);
       expect(occluded).toHaveLength(0);
 
       // Verify 'Xin nghỉ / Đổi ca' and 'Báo cáo sự cố quán' hit-testing
       const buttonsHit = await page.evaluate(() => {
-        const leaveLink = document.querySelector<HTMLElement>("a[href='/app/requests']");
-        const issueLink = document.querySelector<HTMLElement>("a[href='/app/issues']");
+        const leaveLink = document.querySelector<HTMLElement>(".today-secondary-actions a[href='/app/requests']");
+        const issueLink = document.querySelector<HTMLElement>(".today-secondary-actions a[href='/app/issues']");
         if (!leaveLink || !issueLink) return { found: false, leaveTop: null, issueTop: null };
 
         const lRect = leaveLink.getBoundingClientRect();
@@ -351,7 +361,7 @@ test.describe("Operational Employee Views Action Occlusion", () => {
       await page.goto(`${APP_ORIGIN}/app/attendance`);
       await page.waitForLoadState("domcontentloaded");
 
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await scrollToBottomWithoutAnimation(page);
       await page.waitForTimeout(150);
 
       const occluded = await findOccludedControls(page);
@@ -384,7 +394,7 @@ test.describe("Operational Employee Views Action Occlusion", () => {
       await page.goto(`${APP_ORIGIN}/app/schedule`);
       await page.waitForLoadState("domcontentloaded");
 
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await scrollToBottomWithoutAnimation(page);
       await page.waitForTimeout(150);
 
       const occluded = await findOccludedControls(page);

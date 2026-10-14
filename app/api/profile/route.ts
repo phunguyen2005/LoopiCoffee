@@ -5,7 +5,7 @@ import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
 export const GET = apiHandler(async () => {
-  const auth = await requireApiUser();
+  const auth = await requireApiUser(["system_admin", "owner", "manager", "team_lead", "employee"]);
   if (!auth.actor) return auth.response;
 
   return Response.json(
@@ -23,7 +23,7 @@ export const GET = apiHandler(async () => {
 });
 
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser();
+  const auth = await requireApiUser(["system_admin", "owner", "manager", "team_lead", "employee"]);
   if (!auth.actor) return auth.response;
 
   const body = await readObject(request, { displayName: "string" }) as { displayName?: string };

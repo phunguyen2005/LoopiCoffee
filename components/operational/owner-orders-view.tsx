@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { formatVND } from "../order/menu-card";
 import { DrinkVisual } from "../order/drink-visual";
-import { AsyncStatePanel, ListSkeleton } from "./shared";
+import { AsyncStatePanel, ListSkeleton, readJson } from "./shared";
+import { LatestRequestGate } from "@/platform/http/latest-request";
 
 interface OrderItem {
   id: string;
@@ -80,6 +81,7 @@ interface MenuItemManagement {
   allows_ice?: boolean | number;
   allows_toppings?: boolean | number;
   sort_order?: number;
+  updated_at: string;
 }
 
 interface CategoryManagement {
@@ -134,8 +136,7 @@ export function OwnerOrdersView() {
   const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<Date | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(true);
   const [storeStatusError, setStoreStatusError] = useState("");
-  const ordersRequestIdRef = useRef(0);
-  const isCancelledRef = useRef(false);
+  const ordersRequestGateRef = useRef(new LatestRequestGate());
   const abortControllerRef = useRef<AbortController | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -176,12 +177,17 @@ export function OwnerOrdersView() {
   // Cancellation Modal State
   const [cancelModalOrder, setCancelModalOrder] = useState<OrderRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonCode, setCancelReasonCode] = useState("customer_abandoned");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Menu Management State
   const [menuItems, setMenuItems] = useState<MenuItemManagement[]>([]);
   const [categories, setCategories] = useState<CategoryManagement[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [updatingMenuItemIds, setUpdatingMenuItemIds] = useState<Set<string>>(new Set());
+  const menuRequestIdRef = useRef(0);
+  const menuAbortControllerRef = useRef<AbortController | null>(null);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [newPriceValue, setNewPriceValue] = useState<number>(0);
 
@@ -237,7 +243,7 @@ export function OwnerOrdersView() {
 
   // Fetch Orders
   const fetchOrders = useCallback(async (isPolling = false) => {
-    const currentReqId = ++ordersRequestIdRef.current;
+    const currentReqId = ordersRequestGateRef.current.begin();
     if (!isPolling) setLoadingOrders(true);
     try {
       let url = `/api/owner/orders?`;
@@ -252,7 +258,7 @@ export function OwnerOrdersView() {
       abortControllerRef.current = controller;
 
       const res = await fetch(url, { cache: "no-store", signal: controller.signal });
-      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+      if (!ordersRequestGateRef.current.isCurrent(currentReqId)) return;
 
       if (res.ok) {
         const data = (await res.json()) as {
@@ -260,7 +266,7 @@ export function OwnerOrdersView() {
           counts?: OrderCounts;
           isOrderingOpen?: boolean;
         };
-        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+        if (!ordersRequestGateRef.current.isCurrent(currentReqId)) return;
 
         setOrders(data.orders || []);
         setOrdersError(null);
@@ -301,7 +307,7 @@ export function OwnerOrdersView() {
         } catch {
           // ignore parsing error
         }
-        if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+        if (!ordersRequestGateRef.current.isCurrent(currentReqId)) return;
         if (res.status === 401) {
           errorMsg = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
         } else if (res.status === 403) {
@@ -313,12 +319,12 @@ export function OwnerOrdersView() {
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      if (currentReqId !== ordersRequestIdRef.current || isCancelledRef.current) return;
+      if (!ordersRequestGateRef.current.isCurrent(currentReqId)) return;
       setOrdersError({
         message: "Không thể tải danh sách đơn hàng. Vui lòng thử lại.",
       });
     } finally {
-      if (currentReqId === ordersRequestIdRef.current && !isCancelledRef.current && !isPolling) {
+      if (ordersRequestGateRef.current.isCurrent(currentReqId) && !isPolling) {
         setLoadingOrders(false);
       }
     }
@@ -326,20 +332,25 @@ export function OwnerOrdersView() {
 
   // Fetch Menu Items
   const fetchMenu = useCallback(async () => {
+    const requestId = ++menuRequestIdRef.current;
+    menuAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    menuAbortControllerRef.current = controller;
+    setLoadingMenu(true);
+    setMenuError(null);
     try {
-      const res = await fetch("/api/owner/menu", { cache: "no-store" });
-      if (res.ok) {
-        const data = (await res.json()) as {
-          items?: MenuItemManagement[];
-          categories?: CategoryManagement[];
-        };
-        setMenuItems(data.items || []);
-        setCategories(data.categories || []);
-      }
-    } catch {
-      // ignore
+      const data = await readJson<{ items?: MenuItemManagement[]; categories?: CategoryManagement[] }>(
+        await fetch("/api/owner/menu", { cache: "no-store", signal: controller.signal }),
+      );
+      if (requestId !== menuRequestIdRef.current) return;
+      setMenuItems(data.items || []);
+      setCategories(data.categories || []);
+    } catch (failure) {
+      if (failure instanceof Error && failure.name === "AbortError") return;
+      if (requestId !== menuRequestIdRef.current) return;
+      setMenuError(failure instanceof Error ? failure.message : "Không thể tải thực đơn. Vui lòng thử lại.");
     } finally {
-      setLoadingMenu(false);
+      if (requestId === menuRequestIdRef.current) setLoadingMenu(false);
     }
   }, []);
 
@@ -368,7 +379,8 @@ export function OwnerOrdersView() {
 
   // Initial load and single-flight recursive polling via setTimeout with visibility handling
   useEffect(() => {
-    isCancelledRef.current = false;
+    const ordersRequestGate = ordersRequestGateRef.current;
+    ordersRequestGate.reset();
     let isCancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -408,10 +420,11 @@ export function OwnerOrdersView() {
 
     return () => {
       isCancelled = true;
-      isCancelledRef.current = true;
+      ordersRequestGate.cancel();
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      menuAbortControllerRef.current?.abort();
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
@@ -422,21 +435,8 @@ export function OwnerOrdersView() {
   useEffect(() => {
     let isCancelled = false;
     if (activeTab === "menu" || activeTab === "pricing") {
-      fetch("/api/owner/menu", { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((raw: unknown) => {
-          if (!raw || isCancelled) return;
-          const data = raw as {
-            items?: MenuItemManagement[];
-            categories?: CategoryManagement[];
-          };
-          setMenuItems(data.items || []);
-          setCategories(data.categories || []);
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!isCancelled) setLoadingMenu(false);
-        });
+      const timer = window.setTimeout(() => { if (!isCancelled) void fetchMenu(); }, 0);
+      return () => { isCancelled = true; window.clearTimeout(timer); };
     } else if (activeTab === "settings") {
       const timer = window.setTimeout(() => { if (!isCancelled) void fetchStoreSettings(); }, 0);
       return () => { isCancelled = true; window.clearTimeout(timer); };
@@ -445,7 +445,7 @@ export function OwnerOrdersView() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTab, fetchStoreSettings]);
+  }, [activeTab, fetchMenu, fetchStoreSettings]);
 
   // Status transition handler
   const handleTransitionStatus = async (order: OrderRecord, newStatus: string) => {
@@ -483,7 +483,8 @@ export function OwnerOrdersView() {
         body: JSON.stringify({
           newStatus: "cancelled",
           expectedStatus: cancelModalOrder.status,
-          cancelReason: cancelReason.trim() || "Chủ quán huỷ đơn",
+          reasonCode: ["preparing", "ready"].includes(cancelModalOrder.status) ? cancelReasonCode : undefined,
+          cancelReason: cancelReason.trim() || undefined,
         }),
       });
       if (res.ok) {
@@ -505,29 +506,27 @@ export function OwnerOrdersView() {
 
   // Toggle item in/out of stock
   const handleToggleItemStock = async (item: MenuItemManagement) => {
+    if (updatingMenuItemIds.has(item.id)) return;
     const nextVal = !Boolean(item.is_available);
-    // Optimistic update
-    setMenuItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, is_available: nextVal } : i)),
-    );
-
+    setUpdatingMenuItemIds((current) => new Set(current).add(item.id));
+    setMenuError(null);
+    let updateError: string | null = null;
     try {
-      const res = await fetch("/api/owner/menu", {
+      await readJson(await fetch("/api/owner/menu", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: item.id, isAvailable: nextVal }),
+        body: JSON.stringify({ itemId: item.id, isAvailable: nextVal, expectedUpdatedAt: item.updated_at }),
+      }));
+    } catch (failure) {
+      updateError = failure instanceof Error ? failure.message : "Không thể cập nhật trạng thái món.";
+    } finally {
+      await fetchMenu();
+      if (updateError) setMenuError(updateError);
+      setUpdatingMenuItemIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
       });
-      if (!res.ok) {
-        // Rollback
-        setMenuItems((prev) =>
-          prev.map((i) => (i.id === item.id ? { ...i, is_available: !nextVal } : i)),
-        );
-      }
-    } catch {
-      // Rollback
-      setMenuItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, is_available: !nextVal } : i)),
-      );
     }
   };
 
@@ -1277,6 +1276,9 @@ export function OwnerOrdersView() {
           </div>
 
           {/* Search & Category Filter */}
+          {menuError && (
+            <AsyncStatePanel compact state="error" title="Không thể đồng bộ thực đơn" description={menuError} actionLabel="Thử lại" onAction={() => void fetchMenu()} />
+          )}
           <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-3">
             <div className="relative">
               <Search size={16} className="absolute left-3.5 top-3 text-stone-400" />
@@ -1419,6 +1421,8 @@ export function OwnerOrdersView() {
                             onClick={() => handleToggleItemStock(item)}
                             role="switch"
                             aria-checked={isAvailable}
+                            aria-busy={updatingMenuItemIds.has(item.id)}
+                            disabled={updatingMenuItemIds.has(item.id)}
                             className={`w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
                               isAvailable ? "bg-[#3D5A40]" : "bg-stone-300"
                             }`}
@@ -1844,8 +1848,26 @@ export function OwnerOrdersView() {
               Hành động này sẽ thông báo cho khách hàng rằng đơn hàng đã bị huỷ.
             </p>
 
+            {["preparing", "ready"].includes(cancelModalOrder.status) && (
+              <div className="mb-3">
+                <label htmlFor="cancel-reason-code" className="block text-xs font-semibold text-stone-700 mb-1">
+                  Mã lý do huỷ sau pha (DEC-007):
+                </label>
+                <select
+                  id="cancel-reason-code"
+                  value={cancelReasonCode}
+                  onChange={(e) => setCancelReasonCode(e.target.value)}
+                  className="w-full text-base sm:text-xs p-2.5 min-h-[44px] rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="customer_abandoned">Khách không nhận / bỏ về (customer_abandoned)</option>
+                  <option value="item_preparation_error">Pha chế hỏng / lỗi món (item_preparation_error)</option>
+                  <option value="store_incident">Sự cố vận hành quán (store_incident)</option>
+                </select>
+              </div>
+            )}
+
             <label htmlFor="cancel-reason" className="block text-xs font-semibold text-stone-700 mb-1">
-              Lý do huỷ đơn:
+              Ghi chú chi tiết lý do huỷ:
             </label>
             <input
               id="cancel-reason"

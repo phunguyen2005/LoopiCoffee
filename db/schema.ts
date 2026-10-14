@@ -260,8 +260,13 @@ export const handovers = sqliteTable("handovers", {
   summary: text("summary").notNull(),
   managerAttention: integer("manager_attention", { mode: "boolean" }).notNull(),
   acknowledgedAt: text("acknowledged_at"),
+  clientRequestKey: text("client_request_key"),
+  payloadHash: text("payload_hash"),
   createdAt: text("created_at").notNull(),
-}, (table) => [index("handovers_store_created_idx").on(table.storeId, table.createdAt)]);
+}, (table) => [
+  index("handovers_store_created_idx").on(table.storeId, table.createdAt),
+  uniqueIndex("handovers_client_request_idx").on(table.storeId, table.authorEmail, table.clientRequestKey),
+]);
 
 export const requests = sqliteTable("requests", {
   id: text("id").primaryKey(),
@@ -274,7 +279,7 @@ export const requests = sqliteTable("requests", {
   type: text("type", { enum: ["leave", "swap", "correction"] }).notNull(),
   title: text("title").notNull(),
   reason: text("reason").notNull(),
-  status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull(),
+  status: text("status", { enum: ["pending", "approved", "rejected", "approved_pending_apply", "applied", "withdrawn"] }).notNull(),
   reviewerEmail: text("reviewer_email"),
   reviewedAt: text("reviewed_at"),
   createdAt: text("created_at").notNull(),
@@ -452,3 +457,18 @@ export const payrollAdjustments = sqliteTable("payroll_adjustments", {
   actorEmail: text("actor_email").notNull(),
   createdAt: text("created_at").notNull(),
 }, table => [index("payroll_adjustments_period_idx").on(table.storeId, table.periodKey, table.employeeEmail), check("payroll_adjustments_amount",sql`${table.amount} <> 0 AND abs(${table.amount}) <= 100000000`)]);
+
+export const employeeRateHistory = sqliteTable("employee_rate_history", {
+  id: text("id").primaryKey().notNull(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  employeeEmail: text("employee_email").notNull(),
+  compensationType: text("compensation_type", { enum: ["hourly", "monthly", "none"] }).notNull().default("hourly"),
+  hourlyRate: integer("hourly_rate"),
+  monthlySalary: integer("monthly_salary"),
+  effectiveFrom: text("effective_from").notNull(),
+  effectiveTo: text("effective_to"),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("employee_rate_history_lookup_idx").on(table.storeId, table.employeeEmail, table.effectiveFrom),
+]);

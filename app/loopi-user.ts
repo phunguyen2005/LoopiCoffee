@@ -24,3 +24,8 @@ export async function getLoopiUser(returnTo: string): Promise<LoopiUser> {
   if (await getVerifiedIdentity()) redirect("/auth/access");
   redirect("/auth/login");
 }
+
+export function requireBusinessUser(user: LoopiUser): LoopiUser {
+  if (user.role === "system_admin") redirect("/app");
+  return user;
+}

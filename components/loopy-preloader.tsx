@@ -1,18 +1,32 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { LoopySticker } from "./loopy-sticker";
 import { LoopyMark } from "./loopy-mark";
 
 export type LoopyPreloaderVariant = "welcome" | "depart" | "success";
 
 export function LoopyPreloader({
   visible,
+  variant = "welcome",
+  progress,
+  message,
 }: {
   visible: boolean;
   variant?: LoopyPreloaderVariant | string;
+  progress?: number;
+  message?: string;
 }) {
   const shouldReduceMotion = useReducedMotion();
+  const normalizedProgress = typeof progress === "number"
+    ? Math.min(100, Math.max(0, progress))
+    : null;
+  const statusMessage = message ?? (
+    variant === "depart"
+      ? "Đang đăng xuất an toàn..."
+      : variant === "success"
+        ? "Đã hoàn tất, đang chuyển trang..."
+        : "Đang tải dữ liệu hệ thống..."
+  );
 
   return (
     <AnimatePresence mode="wait">
@@ -20,59 +34,57 @@ export function LoopyPreloader({
         <motion.div
           key="loopy-single-preloader"
           className="loopy-preloader loopy-preloader--minimal"
+          data-variant={variant}
           role="status"
           aria-live="polite"
           aria-busy="true"
-          aria-label="Đang tải..."
-          initial={shouldReduceMotion ? false : { opacity: 0 }}
+          aria-label={statusMessage}
+          initial={false}
           animate={{ opacity: 1 }}
           exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.02 }}
           transition={{ duration: shouldReduceMotion ? 0.12 : 0.25, ease: "easeOut" }}
         >
           <div className="loopy-preloader__soft-glow" aria-hidden="true" />
-
-          <div className="flex flex-col items-center justify-center gap-6">
-            {/* Mascot tượng trưng Loopy */}
+          <div className="loopy-preloader__content">
             <motion.div
-              className="relative flex items-center justify-center"
-              initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.85, y: 8 }}
-              animate={
-                shouldReduceMotion
-                  ? undefined
-                  : {
-                      opacity: 1,
-                      scale: [1, 1.035, 1],
-                      y: [0, -6, 0],
-                    }
-              }
-              transition={
-                shouldReduceMotion
-                  ? { duration: 0 }
-                  : {
-                      opacity: { duration: 0.3 },
-                      scale: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
-                      y: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
-                    }
-              }
-            >
-              <div
-                className="absolute inset-0 -m-6 rounded-full bg-radial from-[#f4a9b7]/25 via-[#f4b85f]/10 to-transparent blur-xl pointer-events-none"
-                aria-hidden="true"
-              />
-              <LoopySticker mood="hello" size={160} />
-            </motion.div>
-
-            {/* Logo Laboong */}
-            <motion.div
-              initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.1, duration: 0.25 }}
-              className="flex items-center justify-center p-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-lg"
-              aria-hidden="true"
+              className="loopy-preloader__logo-card"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.28, ease: "easeOut" }}
             >
               <LoopyMark size="medium" />
             </motion.div>
+
+            <motion.h1
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.24, delay: 0.06 }}
+            >
+              LoopiCafe
+            </motion.h1>
+
+            <div
+              className={`loopy-preloader__progress${normalizedProgress === null ? " is-indeterminate" : ""}`}
+              role="progressbar"
+              aria-label="Tiến trình đăng nhập"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={normalizedProgress ?? undefined}
+              aria-valuetext={normalizedProgress === null ? statusMessage : `${Math.round(normalizedProgress)}% — ${statusMessage}`}
+            >
+              <span
+                style={normalizedProgress === null
+                  ? undefined
+                  : { transform: `scaleX(${normalizedProgress / 100})` }}
+              />
+            </div>
+
+            <p className="loopy-preloader__status">{statusMessage}</p>
           </div>
+
+          <p className="loopy-preloader__footer">
+            Hệ thống quản lý vận hành LoopiCafe <span aria-hidden="true">•</span> Phiên bản v2026.10
+          </p>
         </motion.div>
       )}
     </AnimatePresence>

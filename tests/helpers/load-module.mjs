@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { stripTypeScriptTypes } from "node:module";
 
+import * as manageHandovers from "../../modules/operations/application/manage-handovers.ts";
+import * as checkHandoverGate from "../../modules/attendance/application/check-handover-gate.ts";
+import * as changeStatus from "../../modules/ordering/application/change-status.ts";
+
 // Execute the actual route/module, replacing only framework and service imports.
 // A unique registry keeps parallel test dependencies isolated; no provider calls.
 export async function loadModule(path, dependencies = {}) {
@@ -16,6 +20,9 @@ export async function loadModule(path, dependencies = {}) {
         }
       },
     },
+    "@/modules/operations/application/manage-handovers": manageHandovers,
+    "@/modules/attendance/application/check-handover-gate": checkHandoverGate,
+    "@/modules/ordering/application/change-status": changeStatus,
     ...dependencies,
   };
   globalThis[key] = effectiveDependencies;

@@ -1,70 +1,55 @@
-# Testing Strategy — LoopiCafe
+# Chiến lược kiểm thử
 
-**Stack kiểm thử:** Node Test Runner, SQLite/D1 emulator, Playwright. Không tuyên bố test pass nếu chưa chạy.
+Cập nhật: 2026-10-13. Stack giữ Node Test Runner, SQLite/D1 emulator và Playwright.
 
-## Lệnh hiện có trong repository
+## Lệnh thực có
 
-```bash
-npm test
-npm run typecheck
-npm run lint
-npm run build
-npm run check
-npm run test:e2e
-```
-
-`npm run check` chạy type generation/checking, lint, test và production build. `npm run test:e2e` là bước Playwright riêng, không nằm trong `npm run check`; chỉ báo E2E đã pass khi lệnh này thực sự được chạy trên môi trường phù hợp.
-
-## Test pyramid
-
-- **Unit:** pure business rules (time, distance, wage calculations, status transitions, validation).
-- **Integration:** use cases + D1 emulator, constraints, migrations, auth/authorization, R2 boundary (test doubles được phép trong test).
-- **E2E:** Playwright trên môi trường test, theo role và viewport mobile/desktop; dùng dữ liệu test cô lập.
-
-## Ma trận tối thiểu
-
-| Luồng | Kiểm thử bắt buộc |
+| Lệnh | Phạm vi |
 |---|---|
-| Auth/RBAC | anonymous/STAFF/MANAGER/OWNER, account disabled, IDOR |
-| Scheduling | ca trùng, ca qua ngày, thay đổi ca, yêu cầu nghỉ |
-| Attendance | check-in/out, duplicate, retry, permission denied, server time |
-| Operations | checklist, sự cố, bàn giao, quyền sửa/xem |
-| Payroll | làm tròn, rate history, snapshot, lock, export CSV |
-| Orders | giá server, món ngừng bán, trạng thái hợp lệ, double-submit, tracking privacy |
-| UI/UX | responsive, keyboard, focus, empty/loading/error, form validation |
+| npm test | tests/*.test.mjs; xem từng suite để biết SQLite, mock hay source assertions |
+| npm run typecheck | Generate Workers types + TypeScript |
+| npm run lint | ESLint |
+| npm run build | Vinext/Worker build qua local wrapper |
+| npm run check | typecheck → lint → test → build |
+| npm run test:e2e | Playwright riêng, không nằm trong check |
 
-## Quy tắc test
+Không chạy mutation test trước khi xác minh local isolation/config. Môi trường theo [database operations](database-operations.md).
+CI hiện có bước Playwright và seed-menu; điều này không chứng minh auth E2E đã chạy không skip. Lưu số pass/fail/skip theo suite.
 
-1. Reproduce lỗi bằng test hoặc bước thủ công có thể lặp lại.
-2. Sửa ở phạm vi nhỏ nhất, không bỏ validation để test xanh.
-3. Chạy unit → integration → E2E liên quan; chạy toàn bộ suite nếu có thể.
-4. Với thay đổi UI: chụp before/after, test màn hình hẹp và hành trình người dùng.
-5. Ghi lệnh thực tế, môi trường, số test pass/fail/skip; nêu rõ test không chạy được.
+## Các lớp bằng chứng
 
-## Security regression
+- Static/source: phát hiện pattern/boundary; không chứng minh DOM hoặc hành vi runtime.
+- Unit: production policy với inputs/outputs và dependencies cô lập.
+- Integration: application/route + schema thật; test guard, constraints, rollback và state.
+- Emulator: migrations và workflow trên D1/Worker binding thực ở local.
+- E2E: app qua browser, API thật trong môi trường test; mock camera/GPS có nhãn, auth đầy đủ có fixture thật.
+- Thiết bị/vận hành: permission prompt, keyboard iOS/Android, backup/restore, scheduler và provider failure.
 
-- Truy cập trái quyền và đoán resource ID phải bị chặn ở server.
-- Không được đọc ảnh R2 private bằng URL không được cấp quyền.
-- Tracking token sai không tiết lộ đơn hàng.
-- Race/retry không tạo công/đơn trùng hoặc sửa snapshot đã khóa.
+Mock hợp lệ tại external boundary; không viết lại thuật toán rồi coi là test implementation.
+Đừng xóa source assertions hữu ích chỉ vì bổ sung E2E; đặt tên đúng loại kiểm chứng.
 
-## Definition of Done
+## Bộ kịch bản trọng yếu
 
-- [ ] Thay đổi phù hợp tài liệu và không vượt phạm vi.
-- [ ] Có bằng chứng lỗi và bằng chứng đã sửa.
-- [ ] Test phù hợp pass; không có regression nghiêm trọng đã biết.
-- [ ] UI có states đầy đủ, mobile-friendly và accessible.
-- [ ] Migration/config được review nếu có.
-- [ ] Báo cáo file thay đổi, test, rủi ro và việc còn lại.
+| Miền | Kịch bản |
+|---|---|
+| Auth/quyền | session hết hạn, khóa nhân viên, resource khác store, self-approval, role target mới, system_admin denial, sole-owner correction audit, owner cuối cùng |
+| Ca | draft không lộ/chấm công, publish, adjacent/overlap, ca đêm, stale revision, cut-off 12 giờ, hủy sau công/nghỉ/kỳ khóa |
+| Yêu cầu | duyệt trùng, rút pending, nghỉ nguyên ca, swap atomic apply/rollback, correction append-only |
+| Công | server time, ngưỡng 5/15 phút, overtime, auto-close +4 giờ, approved minutes=0 khi missing checkout, duplicate/retry/lost response, R2/D1 partial failure |
+| Lương | floor block 15 phút, round tổng 1.000 VND, chia tháng VN, rate đổi giữa kỳ/overlap/missing legacy, reopen, correction race, snapshot/version/export |
+| Vận hành | daily/shift checklist, ca đêm, handover receiver/ack/bypass, incident transition/audit rollback |
+| Đặt món | giả giá, stale menu, receipt isolation, customer cancel denial, preparing/ready reason code, spoilage report, simultaneous status |
+| Retention | ảnh/GPS 90 ngày, event còn nguyên, order PII 180 ngày, operational history 3 năm, retry và restore reprocessing |
+| UI | narrow viewport, bàn phím/focus, trạng thái async, stale response, không che CTA |
+| Dữ liệu | fresh/upgrade migration bằng runner thật, ledger parity, restore và retention retry |
 
-## Mẫu báo cáo
+Core E2E cho pilot phải có hành trình draft/publish ca → nhân viên thấy ca → handover/checklist gate → check-in/out → ngoại lệ → người khác có quyền duyệt/correct → chốt lương; không chỉ login và đặt món.
+Ca đêm cần kiểm tra checklist shift đi theo ca, chia tháng và business date Việt Nam.
 
-```text
-Finding: [severity] mô tả ngắn
-Evidence: file:line, steps/test
-Root cause: ...
-Change: ...
-Verification: command + result
-Limitations: ...
-```
+## Báo cáo và gate
 
+Ghi commit/dirty tree, môi trường, lệnh, exit code, test pass/fail/skip, artifact và giới hạn.
+Không ấn định số 128 tests hoặc tỷ lệ coverage tùy ý làm Definition of Done.
+Docs-only: kiểm tra liên kết, trạng thái, tính nhất quán và diff; không bắt buộc chạy app suite nếu không thay app.
+Code: targeted regression phù hợp và check trước bàn giao; thay UI/auth/data cần lớp tích hợp/E2E liên quan.
+Test bị skip hoặc chưa chạy là NOT_RUN/BLOCKED; không tính PASS. Tiêu chí phát hành theo [acceptance](acceptance-matrix.md).

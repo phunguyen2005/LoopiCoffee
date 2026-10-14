@@ -188,6 +188,9 @@ export const GET = apiHandler(async (request: NextRequest) => {
       items: orderItemsMap.get(o.id) ?? [],
     }));
 
+    const { getSpoilageMetrics } = await import("@/modules/ordering/application/change-status");
+    const spoilage = await getSpoilageMetrics(db, auth.actor.storeId, startDate || dateFilter, endDate || dateFilter);
+
     return Response.json({
       orders: enrichedOrders,
       counts: {
@@ -199,6 +202,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
         completed: Number(countsResult?.completed || 0),
         cancelled: Number(countsResult?.cancelled || 0),
       },
+      spoilage,
       pagination: {
         page,
         limit,

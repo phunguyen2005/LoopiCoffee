@@ -83,7 +83,8 @@ async function signIn(page: Page, account: LocalAccount) {
   await page.locator("#login-email").fill(account.email);
   await page.locator("#login-password").fill(account.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await expect(page, "Fixture login must reach the real authenticated application without a bypass").toHaveURL(`${APP_ORIGIN}/app/today`, { timeout: 20_000 });
+  const expectedPath = ["employee", "team_lead"].includes(account.role) ? "/app/today" : "/app";
+  await expect(page, "Fixture login must reach the real authenticated application without a bypass").toHaveURL(`${APP_ORIGIN}${expectedPath}`, { timeout: 20_000 });
   const response = await page.request.get(`${APP_ORIGIN}/api/profile`, { maxRedirects: 0 });
   expect(response.status()).toBe(200);
   const { user } = await response.json();
@@ -123,12 +124,35 @@ test("invalid credentials show an error and do not create an app session", async
   expect((await page.request.get(`${APP_ORIGIN}/api/profile`, { maxRedirects: 0 })).status()).toBe(401);
 });
 
+test("successful login shows accessible backend-linked progress before navigation", async ({ page }) => {
+  const account = accountFor("owner");
+  await page.route("**/api/auth/activate", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.continue();
+  });
+  await page.goto(`${APP_ORIGIN}/auth/login`);
+  await expect(page.locator("form[data-auth-ready]"))
+    .toHaveAttribute("data-auth-ready", "true", { timeout: 15_000 });
+  await page.locator("#login-email").fill(account.email);
+  await page.locator("#login-password").fill(account.password);
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+
+  const progress = page.getByRole("progressbar", { name: "Tiến trình đăng nhập" });
+  await expect(progress).toBeVisible({ timeout: 15_000 });
+  await expect(progress).toHaveAttribute("aria-valuenow", "36");
+  await expect(page.getByText("Đang kiểm tra quyền truy cập...", { exact: true })).toBeVisible();
+  await expect(progress).toHaveAttribute("aria-valuenow", "100", { timeout: 15_000 });
+  await expect(page.getByText("Đăng nhập thành công, đang mở không gian làm việc...", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(`${APP_ORIGIN}/app`, { timeout: 20_000 });
+});
+
 test("owner logs in, refreshes an authenticated page, and logs out through the UI", async ({ page }) => {
   await signIn(page, accountFor("owner"));
   await page.reload();
-  await expect(page).toHaveURL(`${APP_ORIGIN}/app/today`);
+  await expect(page).toHaveURL(`${APP_ORIGIN}/app`);
   await page.getByTitle("Thông tin tài khoản", { exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Đăng xuất tài khoản" }).click();
+  await expect(page.getByText("Đang đăng xuất an toàn...", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(`${APP_ORIGIN}/auth/login`, { timeout: 15_000 });
   expect((await page.request.get(`${APP_ORIGIN}/api/profile`, { maxRedirects: 0 })).status()).toBe(401);
 });
@@ -136,8 +160,8 @@ test("owner logs in, refreshes an authenticated page, and logs out through the U
 for (const role of ["system_admin", "owner", "manager", "team_lead", "employee"] as const) {
   test(`${role} page access and API permissions agree`, async ({ page }) => {
     await signIn(page, accountFor(role));
-    const managesAccounts = ["system_admin", "owner", "manager"].includes(role);
-    const ownsStore = ["system_admin", "owner"].includes(role);
+    const managesAccounts = ["owner", "manager"].includes(role);
+    const ownsStore = role === "owner";
     const accountsResponse = await page.request.get(`${APP_ORIGIN}/api/admin/accounts`, { maxRedirects: 0 });
     expect(accountsResponse.status()).toBe(managesAccounts ? 200 : 403);
     const auditResponse = await page.request.get(`${APP_ORIGIN}/api/audit`, { maxRedirects: 0 });

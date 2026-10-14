@@ -1,10 +1,18 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](../README.md), [hiện trạng source](../implementation-status.md) và [đính chính audit](ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # BÁO CÁO AUDIT CHUYÊN SÂU: DATABASE D1 & DRIZZLE ORM
-**Dự án**: LoopiCafe Management System  
-**Mã kiểm toán viên**: AGENT 1 — DATABASE AUDITOR  
-**Mục tiêu**: Toàn diện mảng Schema, Migrations, Constraints, Transactions, Concurrency & Data Integrity  
-**Quy chuẩn áp dụng**: `AUDIT ONLY` theo [`docs/audit/00_COMMON_RULES.md`](file:///d:/College/Practice/loopicafe-management-system/docs/audit/00_COMMON_RULES.md) và [`AGENTS.md`](file:///d:/College/Practice/loopicafe-management-system/AGENTS.md)  
-**Git Baseline Commit SHA**: `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`  
-**Ngày thực hiện**: 12/10/2026  
+**Dự án**: LoopiCafe Management System
+**Mã kiểm toán viên**: AGENT 1 — DATABASE AUDITOR
+**Mục tiêu**: Toàn diện mảng Schema, Migrations, Constraints, Transactions, Concurrency & Data Integrity
+**Quy chuẩn áp dụng**: `AUDIT ONLY` theo [`docs/audit/00_COMMON_RULES.md`](00_COMMON_RULES.md) và [`AGENTS.md`](../../AGENTS.md)
+**Git Baseline Commit SHA**: `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
+**Ngày thực hiện**: 12/10/2026
 
 ---
 
@@ -31,12 +39,12 @@ Bên cạnh các điểm mạnh, quá trình audit chuyên sâu phát hiện **1
 ## 2. Phạm vi, Phương pháp và Giới hạn
 
 ### Phạm vi kiểm tra
-- Toàn bộ định nghĩa bảng và kiểu dữ liệu: [`db/schema.ts`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts)
-- Toàn bộ chuỗi migration D1: [`drizzle/`](file:///d:/College/Practice/loopicafe-management-system/drizzle) (từ `0000_pink_doctor_doom.sql` đến `0013_workforce_guardrails.sql`) và metadata [`drizzle/meta/`](file:///d:/College/Practice/loopicafe-management-system/drizzle/meta)
-- Runtime kết nối và cấu hình D1: [`db/runtime.ts`](file:///d:/College/Practice/loopicafe-management-system/db/runtime.ts), [`db/index.ts`](file:///d:/College/Practice/loopicafe-management-system/db/index.ts), [`drizzle.config.ts`](file:///d:/College/Practice/loopicafe-management-system/drizzle.config.ts)
+- Toàn bộ định nghĩa bảng và kiểu dữ liệu: [`db/schema.ts`](../../db/schema.ts)
+- Toàn bộ chuỗi migration D1: [`drizzle/`](../../drizzle) (từ `0000_pink_doctor_doom.sql` đến `0013_workforce_guardrails.sql`) và metadata [`drizzle/meta/`](../../drizzle/meta)
+- Runtime kết nối và cấu hình D1: [`db/runtime.ts`](../../db/runtime.ts), [`db/index.ts`](../../db/index.ts), [`drizzle.config.ts`](../../drizzle.config.ts)
 - Toàn bộ tầng Application/Module truy vấn DB: `modules/attendance/`, `modules/operations/`, `modules/ordering/`, `modules/payroll/`, `modules/people/`
 - Toàn bộ route API có tương tác D1: `app/api/**`
-- Trình tạo dữ liệu thử nghiệm: [`db/seed.ts`](file:///d:/College/Practice/loopicafe-management-system/db/seed.ts), [`tooling/schema-preflight.mjs`](file:///d:/College/Practice/loopicafe-management-system/tooling/schema-preflight.mjs)
+- Trình tạo dữ liệu thử nghiệm: [`db/seed.ts`](../../db/seed.ts), [`tooling/schema-preflight.mjs`](../../tooling/schema-preflight.mjs)
 
 ### Phương pháp kiểm tra
 1. **Đối soát tĩnh (Static AST & Schema Diff)**: Trích xuất metadata từ `db/schema.ts` bằng `drizzle-orm/sqlite-core` và so sánh trực tiếp với catalog SQLite thực tế sau khi chạy tuần tự 14 file SQL migration.
@@ -60,37 +68,37 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 
 | STT | Tên bảng | File & Dòng định nghĩa | Khóa chính (PK) | Khóa ngoại (FK) | Unique Constraints | Triggers gắn liền |
 |---|---|---|---|---|---|---|
-| 1 | `stores` | [`db/schema.ts#L4`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L4) | `id` | Không | Không | Target của 7 revision triggers |
-| 2 | `employees` | [`db/schema.ts#L18`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L18) | `id` | `store_id -> stores.id` | `email` (case-sensitive) | `employee_payroll_revision` |
-| 3 | `employee_consents` | [`db/schema.ts#L46`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L46) | `id` | Không | `(employee_email, notice_version)` | Không |
-| 4 | `attendance_rules` | [`db/schema.ts#L53`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L53) | `id` | `store_id -> stores.id` | `(store_id, version)` | Không |
-| 5 | `shifts` | [`db/schema.ts#L71`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L71) | `id` | `store_id -> stores.id`, `approved_leave_request_id -> requests.id` | Không | `shifts_no_overlap_insert`, `shifts_no_overlap_update`, `shifts_revision_insert`, `shifts_revision_update`, `shifts_locked_period_insert` |
-| 6 | `attendance_capture_sessions` | [`db/schema.ts#L89`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L89) | `id` | `store_id -> stores.id` | Không | Không |
-| 7 | `attendance_sessions` | [`db/schema.ts#L100`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L100) | `id` | `store_id -> stores.id`, `shift_id -> shifts.id`, `rule_version_id -> attendance_rules.id` | `employee_email` (partial: `closed_at IS NULL`) | `attendance_session_revision_guard`, `attendance_revision_insert`, `attendance_revision_update`, `attendance_revision_delete` |
-| 8 | `attendance_events` | [`db/schema.ts#L122`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L122) | `id` | `session_id -> attendance_sessions.id`, `capture_session_id -> attendance_capture_sessions.id` | `idempotency_key`, `capture_session_id`, `(session_id, action)` | Không |
-| 9 | `attendance_locations` | [`db/schema.ts#L140`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L140) | `event_id` | `event_id -> attendance_events.id` | `event_id` (PK) | Không |
-| 10 | `attendance_photos` | [`db/schema.ts#L152`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L152) | `event_id` | `event_id -> attendance_events.id` | `event_id` (PK) | Không |
-| 11 | `attendance_exceptions` | [`db/schema.ts#L163`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L163) | `id` | `event_id -> attendance_events.id` | `event_id` | Không |
-| 12 | `payroll_periods` | [`db/schema.ts#L177`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L177) | `id` | `store_id -> stores.id` | `(store_id, period_start, period_end)` | Target của `shifts_locked_period_insert` |
-| 13 | `payroll_entries` | [`db/schema.ts#L193`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L193) | `id` | `payroll_period_id -> payroll_periods.id` | `(payroll_period_id, employee_email)` | Không |
-| 14 | `attendance_action_limits` | [`db/schema.ts#L212`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L212) | `id` | Không | Không | Không |
-| 15 | `checklist_items` | [`db/schema.ts#L219`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L219) | `id` | `store_id -> stores.id` | Không | Không |
-| 16 | `checklist_executions` | [`db/schema.ts#L230`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L230) | `(item_id, business_date)` | `item_id -> checklist_items.id` | Composite PK | Không |
-| 17 | `incidents` | [`db/schema.ts#L239`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L239) | `id` | `store_id -> stores.id` | Không | Không |
-| 18 | `handovers` | [`db/schema.ts#L251`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L251) | `id` | `store_id -> stores.id` | Không | Không |
-| 19 | `requests` | [`db/schema.ts#L261`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L261) | `id` | `store_id -> stores.id`, `shift_id -> shifts.id` | `(employee_email, client_request_key)` | Không |
-| 20 | `notifications` | [`db/schema.ts#L281`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L281) | `id` | Không | Không | Không |
-| 21 | `audit_events` | [`db/schema.ts#L293`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L293) | `id` | Không (unconstrained `store_id`) | Không | Cổng kiểm soát cho batch writes |
-| 22 | `menu_categories` | [`db/schema.ts#L304`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L304) | `id` | `store_id -> stores.id` | Không | Không |
-| 23 | `menu_items` | [`db/schema.ts#L317`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L317) | `id` | `store_id -> stores.id`, `category_id -> menu_categories.id` | Không | Không |
-| 24 | `menu_options` | [`db/schema.ts#L340`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L340) | `id` | `store_id -> stores.id` | Không | Không |
-| 25 | `customer_orders` | [`db/schema.ts#L355`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L355) | `id` | `store_id -> stores.id` | `order_code`, `(store_id, receipt_token_hash)`, `(store_id, submission_key)` | Không |
-| 26 | `order_items` | [`db/schema.ts#L379`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L379) | `id` | `order_id -> customer_orders.id` | Không | Không |
-| 27 | `order_status_history` | [`db/schema.ts#L397`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L397) | `id` | `order_id -> customer_orders.id` | Không | Không |
-| 28 | `store_ordering_settings` | [`db/schema.ts#L410`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L410) | `id` | `store_id -> stores.id` | `store_id` | Không |
-| 29 | `order_rate_limits` | [`db/schema.ts#L421`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L421) | `bucket_key` | Không | `bucket_key` (PK) | Không |
-| 30 | `attendance_corrections` | [`db/schema.ts#L427`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L427) | `id` | `session_id -> attendance_sessions.id`, `event_id -> attendance_events.id` | Không | `attendance_corrections_immutable_update`, `attendance_corrections_immutable_delete` |
-| 31 | `payroll_adjustments` | [`db/schema.ts#L439`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L439) | `id` | `store_id -> stores.id` | Không | `payroll_adjustments_immutable_update`, `payroll_adjustments_immutable_delete`, `payroll_adjustments_revision` |
+| 1 | `stores` | [`db/schema.ts#L4`](../../db/schema.ts) | `id` | Không | Không | Target của 7 revision triggers |
+| 2 | `employees` | [`db/schema.ts#L18`](../../db/schema.ts) | `id` | `store_id -> stores.id` | `email` (case-sensitive) | `employee_payroll_revision` |
+| 3 | `employee_consents` | [`db/schema.ts#L46`](../../db/schema.ts) | `id` | Không | `(employee_email, notice_version)` | Không |
+| 4 | `attendance_rules` | [`db/schema.ts#L53`](../../db/schema.ts) | `id` | `store_id -> stores.id` | `(store_id, version)` | Không |
+| 5 | `shifts` | [`db/schema.ts#L71`](../../db/schema.ts) | `id` | `store_id -> stores.id`, `approved_leave_request_id -> requests.id` | Không | `shifts_no_overlap_insert`, `shifts_no_overlap_update`, `shifts_revision_insert`, `shifts_revision_update`, `shifts_locked_period_insert` |
+| 6 | `attendance_capture_sessions` | [`db/schema.ts#L89`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 7 | `attendance_sessions` | [`db/schema.ts#L100`](../../db/schema.ts) | `id` | `store_id -> stores.id`, `shift_id -> shifts.id`, `rule_version_id -> attendance_rules.id` | `employee_email` (partial: `closed_at IS NULL`) | `attendance_session_revision_guard`, `attendance_revision_insert`, `attendance_revision_update`, `attendance_revision_delete` |
+| 8 | `attendance_events` | [`db/schema.ts#L122`](../../db/schema.ts) | `id` | `session_id -> attendance_sessions.id`, `capture_session_id -> attendance_capture_sessions.id` | `idempotency_key`, `capture_session_id`, `(session_id, action)` | Không |
+| 9 | `attendance_locations` | [`db/schema.ts#L140`](../../db/schema.ts) | `event_id` | `event_id -> attendance_events.id` | `event_id` (PK) | Không |
+| 10 | `attendance_photos` | [`db/schema.ts#L152`](../../db/schema.ts) | `event_id` | `event_id -> attendance_events.id` | `event_id` (PK) | Không |
+| 11 | `attendance_exceptions` | [`db/schema.ts#L163`](../../db/schema.ts) | `id` | `event_id -> attendance_events.id` | `event_id` | Không |
+| 12 | `payroll_periods` | [`db/schema.ts#L177`](../../db/schema.ts) | `id` | `store_id -> stores.id` | `(store_id, period_start, period_end)` | Target của `shifts_locked_period_insert` |
+| 13 | `payroll_entries` | [`db/schema.ts#L193`](../../db/schema.ts) | `id` | `payroll_period_id -> payroll_periods.id` | `(payroll_period_id, employee_email)` | Không |
+| 14 | `attendance_action_limits` | [`db/schema.ts#L212`](../../db/schema.ts) | `id` | Không | Không | Không |
+| 15 | `checklist_items` | [`db/schema.ts#L219`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 16 | `checklist_executions` | [`db/schema.ts#L230`](../../db/schema.ts) | `(item_id, business_date)` | `item_id -> checklist_items.id` | Composite PK | Không |
+| 17 | `incidents` | [`db/schema.ts#L239`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 18 | `handovers` | [`db/schema.ts#L251`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 19 | `requests` | [`db/schema.ts#L261`](../../db/schema.ts) | `id` | `store_id -> stores.id`, `shift_id -> shifts.id` | `(employee_email, client_request_key)` | Không |
+| 20 | `notifications` | [`db/schema.ts#L281`](../../db/schema.ts) | `id` | Không | Không | Không |
+| 21 | `audit_events` | [`db/schema.ts#L293`](../../db/schema.ts) | `id` | Không (unconstrained `store_id`) | Không | Cổng kiểm soát cho batch writes |
+| 22 | `menu_categories` | [`db/schema.ts#L304`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 23 | `menu_items` | [`db/schema.ts#L317`](../../db/schema.ts) | `id` | `store_id -> stores.id`, `category_id -> menu_categories.id` | Không | Không |
+| 24 | `menu_options` | [`db/schema.ts#L340`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | Không |
+| 25 | `customer_orders` | [`db/schema.ts#L355`](../../db/schema.ts) | `id` | `store_id -> stores.id` | `order_code`, `(store_id, receipt_token_hash)`, `(store_id, submission_key)` | Không |
+| 26 | `order_items` | [`db/schema.ts#L379`](../../db/schema.ts) | `id` | `order_id -> customer_orders.id` | Không | Không |
+| 27 | `order_status_history` | [`db/schema.ts#L397`](../../db/schema.ts) | `id` | `order_id -> customer_orders.id` | Không | Không |
+| 28 | `store_ordering_settings` | [`db/schema.ts#L410`](../../db/schema.ts) | `id` | `store_id -> stores.id` | `store_id` | Không |
+| 29 | `order_rate_limits` | [`db/schema.ts#L421`](../../db/schema.ts) | `bucket_key` | Không | `bucket_key` (PK) | Không |
+| 30 | `attendance_corrections` | [`db/schema.ts#L427`](../../db/schema.ts) | `id` | `session_id -> attendance_sessions.id`, `event_id -> attendance_events.id` | Không | `attendance_corrections_immutable_update`, `attendance_corrections_immutable_delete` |
+| 31 | `payroll_adjustments` | [`db/schema.ts#L439`](../../db/schema.ts) | `id` | `store_id -> stores.id` | Không | `payroll_adjustments_immutable_update`, `payroll_adjustments_immutable_delete`, `payroll_adjustments_revision` |
 
 ---
 
@@ -98,7 +106,7 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 
 | Hạng mục kiểm tra | Trạng thái | Bằng chứng thực tế & Đánh giá |
 |---|---|---|
-| **1. Toàn vẹn chuỗi Migration (0000 -> 0013)** | **PASS** | `_journal.json` chứa đầy đủ 14 entries tương ứng với 14 file `.sql`, mỗi snapshot JSON trỏ đúng `prevId` của snapshot trước ([`tests/architecture-boundaries.test.mjs#L40-L51`](file:///d:/College/Practice/loopicafe-management-system/tests/architecture-boundaries.test.mjs#L40-L51)). |
+| **1. Toàn vẹn chuỗi Migration (0000 -> 0013)** | **PASS** | `_journal.json` chứa đầy đủ 14 entries tương ứng với 14 file `.sql`, mỗi snapshot JSON trỏ đúng `prevId` của snapshot trước ([`tests/architecture-boundaries.test.mjs#L40-L51`](../../tests/architecture-boundaries.test.mjs)). |
 | **2. Đồng bộ Schema.ts và SQL Migrations** | **FAIL** | Có 5 cột bị lệch thuộc tính `NOT NULL` và 2 cột bị lệch `DEFAULT` do SQLite `ALTER TABLE ADD COLUMN` ([Chi tiết DB-001](#db-001)). |
 | **3. Cú pháp tương thích Drizzle Migrator** | **FAIL** | Migration `0011` và `0013` thiếu `--> statement-breakpoint`, gây lỗi nếu chạy qua migrator tự động ([Chi tiết DB-002](#db-002)). |
 | **4. Foreign Keys Enforcement & Cascades** | **FAIL** | 31/32 FK có `ON DELETE NO ACTION`. Thực thể `employees` hoàn toàn không có bảng nào trỏ FK vào; xóa/sửa email gây mồ côi dữ liệu ([Chi tiết DB-008](#db-008)). |
@@ -123,8 +131,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P0 (CRITICAL)` | `CONFIRMED`
 - **Module**: `Database / Schema Synchronization`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L15`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L15), [`db/schema.ts#L83`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L83), [`db/schema.ts#L94`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L94), [`db/schema.ts#L132`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L132), [`db/schema.ts#L157`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L157), [`db/schema.ts#L227`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L227), [`db/schema.ts#L248`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L248)
-  - [`drizzle/0001_eager_peter_parker.sql#L83-L98`](file:///d:/College/Practice/loopicafe-management-system/drizzle/0001_eager_peter_parker.sql#L83-L98)
+  - [`db/schema.ts#L15`](../../db/schema.ts), [`db/schema.ts#L83`](../../db/schema.ts), [`db/schema.ts#L94`](../../db/schema.ts), [`db/schema.ts#L132`](../../db/schema.ts), [`db/schema.ts#L157`](../../db/schema.ts), [`db/schema.ts#L227`](../../db/schema.ts), [`db/schema.ts#L248`](../../db/schema.ts)
+  - [`drizzle/0001_eager_peter_parker.sql#L83-L98`](../../drizzle/0001_eager_peter_parker.sql)
 - **Root cause**: SQLite giới hạn câu lệnh `ALTER TABLE ADD COLUMN`: không được phép thêm cột có ràng buộc `NOT NULL` mà không có giá trị default. Trong migration `0001_eager_peter_parker.sql`, các cột được thêm bằng cú pháp `ALTER TABLE ... ADD <col> text;` (tức `NULLABLE`). Trong khi đó, file `db/schema.ts` lại khai báo `.notNull()`.
 - **Evidence (Bằng chứng so sánh qua PRAGMA table_info)**:
   ```
@@ -152,8 +160,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P0 (CRITICAL)` | `CONFIRMED`
 - **Module**: `Database / Migrations Engine`
 - **File & Dòng liên quan**:
-  - [`drizzle/0011_workforce_integrity.sql#L1-L70`](file:///d:/College/Practice/loopicafe-management-system/drizzle/0011_workforce_integrity.sql#L1-L70)
-  - [`drizzle/0013_workforce_guardrails.sql#L1-L9`](file:///d:/College/Practice/loopicafe-management-system/drizzle/0013_workforce_guardrails.sql#L1-L9)
+  - [`drizzle/0011_workforce_integrity.sql#L1-L70`](../../drizzle/0011_workforce_integrity.sql)
+  - [`drizzle/0013_workforce_guardrails.sql#L1-L9`](../../drizzle/0013_workforce_guardrails.sql)
 - **Root cause**: Drizzle ORM không có API khai báo SQLite Triggers trong TypeScript schema, do đó các triggers kiểm soát workforce và ca làm việc được lập trình viên viết trực tiếp bằng tay vào các file migration `0011` và `0013`. Người viết đã không chèn comment `--> statement-breakpoint` giữa các câu lệnh như các file migration chuẩn do Drizzle Kit sinh ra (`0000`, `0001`, `0008`, `0010`, `0012`).
 - **Evidence**:
   Kiểm tra nội dung `0011_workforce_integrity.sql`:
@@ -178,10 +186,10 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P1 (HIGH)` | `CONFIRMED`
 - **Module**: `Identity & Performance`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L42`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L42)
-  - [`server/auth.ts#L49`](file:///d:/College/Practice/loopicafe-management-system/server/auth.ts#L49)
-  - [`server/audit.ts#L15`](file:///d:/College/Practice/loopicafe-management-system/server/audit.ts#L15)
-  - [`app/api/notifications/route.ts#L12`](file:///d:/College/Practice/loopicafe-management-system/app/api/notifications/route.ts#L12)
+  - [`db/schema.ts#L42`](../../db/schema.ts)
+  - [`server/auth.ts#L49`](../../server/auth.ts)
+  - [`server/audit.ts#L15`](../../server/audit.ts)
+  - [`app/api/notifications/route.ts#L12`](../../app/api/notifications/route.ts)
 - **Root cause**: Trong SQLite, so sánh chuỗi mặc định là case-sensitive. Unique index `employees_email_idx` được tạo trên `email` mà không có `COLLATE NOCASE`. Do đó, `john@example.com` và `JOHN@EXAMPLE.COM` được coi là 2 giá trị khác nhau. Để giải quyết, tầng application lại bọc hàm `WHERE lower(email) = lower(?)`. Tuy nhiên, trong SQLite, việc áp dụng hàm `lower()` lên cột index sẽ làm vô hiệu hóa B-tree index, buộc SQLite phải scan toàn bộ bảng.
 - **Evidence (Kiểm chứng thực nghiệm)**:
   1. *Cho phép chèn email trùng lặp*:
@@ -194,7 +202,7 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
      ```
      EXPLAIN QUERY PLAN SELECT id FROM employees WHERE lower(email) = lower(?)
      -> detail: 'SCAN employees' (Full Table Scan!)
-     
+
      EXPLAIN QUERY PLAN SELECT id FROM notifications WHERE lower(recipient_email) = lower(?)
      -> detail: 'SCAN notifications'
      -> detail: 'USE TEMP B-TREE FOR ORDER BY' (Full Table Scan + In-memory Sort!)
@@ -203,7 +211,7 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
   - *Expected*: Email là định danh duy nhất không phân biệt hoa thường. Mọi truy vấn xác thực người dùng phải dùng index point lookup `SEARCH employees USING INDEX`.
   - *Actual*: DB cho phép tạo tài khoản trùng email; mọi request có xác thực đều scan toàn bộ bảng nhân viên.
 - **Business impact**:
-  - Phá vỡ logic audit log: Tại [`server/audit.ts#L15`](file:///d:/College/Practice/loopicafe-management-system/server/audit.ts#L15), subquery `(SELECT MIN(store_id) FROM employees WHERE lower(email) = lower(?) HAVING COUNT(*) = 1)` sẽ trả về `NULL` khi có 2 tài khoản trùng email, khiến audit event bị mất gán cửa hàng (`store_id = NULL`) và biến mất khỏi trang quản trị của Chủ quán.
+  - Phá vỡ logic audit log: Tại [`server/audit.ts#L15`](../../server/audit.ts), subquery `(SELECT MIN(store_id) FROM employees WHERE lower(email) = lower(?) HAVING COUNT(*) = 1)` sẽ trả về `NULL` khi có 2 tài khoản trùng email, khiến audit event bị mất gán cửa hàng (`store_id = NULL`) và biến mất khỏi trang quản trị của Chủ quán.
   - Hiệu năng D1 bị suy giảm nghiêm trọng khi số lượng nhân viên và thông báo tăng lên.
 - **Proposed remediation**:
   1. Thay đổi định nghĩa cột email trong `db/schema.ts` thành `text("email").notNull()` với unique index biểu thức hoặc `COLLATE NOCASE`: `uniqueIndex("employees_email_nocase_idx").on(sql`lower(${table.email})`)` hoặc đổi schema cột sang `COLLATE NOCASE`.
@@ -217,9 +225,9 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P1 (HIGH)` | `CONFIRMED`
 - **Module**: `Payroll / Financial Integrity`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L36`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L36)
-  - [`modules/payroll/application/load-report.ts#L211`](file:///d:/College/Practice/loopicafe-management-system/modules/payroll/application/load-report.ts#L211)
-  - [`modules/payroll/application/change-period.ts#L18`](file:///d:/College/Practice/loopicafe-management-system/modules/payroll/application/change-period.ts#L18)
+  - [`db/schema.ts#L36`](../../db/schema.ts)
+  - [`modules/payroll/application/load-report.ts#L211`](../../modules/payroll/application/load-report.ts)
+  - [`modules/payroll/application/change-period.ts#L18`](../../modules/payroll/application/change-period.ts)
 - **Root cause**: Bảng `employees` chỉ lưu mức lương hiện tại (`hourly_rate`) dưới dạng một cột mutable đơn lẻ. Khi kỳ lương chuyển sang trạng thái `finalized`, dữ liệu được đóng băng vào `payroll_entries.row_snapshot`. Tuy nhiên, nếu Chủ quán dùng chức năng `reopen` để mở lại kỳ lương, trạng thái quay về `reviewing`, và `loadPayrollReport` sẽ tính lại lương dựa trên `employees.hourly_rate` ở thời điểm hiện tại thay vì mức lương có hiệu lực trong kỳ lương đó.
 - **Evidence (Kiểm chứng thực nghiệm)**:
   ```js
@@ -249,8 +257,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P1 (HIGH)` | `CONFIRMED`
 - **Module**: `Ordering / Performance`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L371-L377`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L371-L377)
-  - [`app/api/owner/orders/route.ts#L73-L92`](file:///d:/College/Practice/loopicafe-management-system/app/api/owner/orders/route.ts#L73-L92)
+  - [`db/schema.ts#L371-L377`](../../db/schema.ts)
+  - [`app/api/owner/orders/route.ts#L73-L92`](../../app/api/owner/orders/route.ts)
 - **Root cause**: Bảng `customer_orders` chỉ có composite index:
   `index("customer_orders_store_status_idx").on(table.storeId, table.status, table.createdAt)`.
   Khi xem toàn bộ đơn hàng (không lọc status hoặc status="all"), câu lệnh query là:
@@ -277,8 +285,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P1 (HIGH)` | `CONFIRMED`
 - **Module**: `Attendance / Storage Retention`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L140-L161`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L140-L161)
-  - [`modules/attendance/application/expire-evidence.ts#L10-L11`](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/expire-evidence.ts#L10-L11), [`#L50-L51`](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/expire-evidence.ts#L50-L51)
+  - [`db/schema.ts#L140-L161`](../../db/schema.ts)
+  - [`modules/attendance/application/expire-evidence.ts#L10-L11`](../../modules/attendance/application/expire-evidence.ts), [`#L50-L51`](../../modules/attendance/application/expire-evidence.ts)
 - **Root cause**: Hai bảng lưu dữ liệu bằng chứng chỉ có duy nhất Primary Key trên `event_id`, hoàn toàn không có index phụ nào trên cột ngày hết hạn (`expires_at`).
 - **Evidence (Query Plan thực tế)**:
   ```
@@ -305,7 +313,7 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P2 (MEDIUM)` | `CONFIRMED`
 - **Module**: `Database / Data Integrity`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L71-L87`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L71-L87), [`db/schema.ts#L177-L208`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L177-L208), [`db/schema.ts#L317-L386`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L317-L386)
+  - [`db/schema.ts#L71-L87`](../../db/schema.ts), [`db/schema.ts#L177-L208`](../../db/schema.ts), [`db/schema.ts#L317-L386`](../../db/schema.ts)
 - **Root cause**: Trong số 31 bảng, chỉ có 3 bảng có CHECK constraints. Các bảng cốt lõi khác không có constraint chặn dữ liệu bất thường ở tầng database.
 - **Evidence (Kiểm chứng thực nghiệm)**:
   1. *Chèn ca làm việc có thời gian đảo ngược*:
@@ -333,8 +341,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P2 (MEDIUM)` | `CONFIRMED`
 - **Module**: `People & Relational Integrity`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L18-L44`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L18-L44)
-  - [`db/schema.ts#L76`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L76), [`#L103`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L103), [`#L126`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L126), [`#L196`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L196), [`#L268`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L268)
+  - [`db/schema.ts#L18-L44`](../../db/schema.ts)
+  - [`db/schema.ts#L76`](../../db/schema.ts), [`#L103`](../../db/schema.ts), [`#L126`](../../db/schema.ts), [`#L196`](../../db/schema.ts), [`#L268`](../../db/schema.ts)
 - **Root cause**: Bảng `employees` có khóa chính `id`, nhưng không có bất kỳ bảng con nào thiết lập Foreign Key trỏ vào `employees.id`. Toàn bộ hệ thống liên kết nhân viên qua trường văn bản `employee_email`.
 - **Evidence**:
   Kiểm tra danh mục khóa ngoại bằng script:
@@ -357,9 +365,9 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P2 (MEDIUM)` | `CONFIRMED`
 - **Module**: `Ordering / Rate Limiting`
 - **File & Dòng liên quan**:
-  - [`modules/ordering/application/rate-limit.ts#L11-L17`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/rate-limit.ts#L11-L17)
-  - [`db/schema.ts#L421-L425`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L421-L425)
-- **Root cause**: Hệ thống sử dụng bảng D1 `order_rate_limits` để kiểm soát tần suất request của khách hàng. Mỗi lần khách gọi API tra cứu đơn hàng ([`trackOrder`](file:///d:/College/Practice/loopicafe-management-system/modules/ordering/application/track-order.ts)), hàm `limitOrderRequests` thực thi một `db.batch` gồm 1 lệnh `DELETE` các bucket cũ và 2 lệnh `INSERT ... ON CONFLICT DO UPDATE`.
+  - [`modules/ordering/application/rate-limit.ts#L11-L17`](../../modules/ordering/application/rate-limit.ts)
+  - [`db/schema.ts#L421-L425`](../../db/schema.ts)
+- **Root cause**: Hệ thống sử dụng bảng D1 `order_rate_limits` để kiểm soát tần suất request của khách hàng. Mỗi lần khách gọi API tra cứu đơn hàng ([`trackOrder`](../../modules/ordering/application/track-order.ts)), hàm `limitOrderRequests` thực thi một `db.batch` gồm 1 lệnh `DELETE` các bucket cũ và 2 lệnh `INSERT ... ON CONFLICT DO UPDATE`.
 - **Evidence**:
   ```ts
   const results = await db.batch([
@@ -386,8 +394,8 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P3 (LOW)` | `CONFIRMED`
 - **Module**: `Architecture / Data Access Layer`
 - **File & Dòng liên quan**:
-  - [`db/index.ts#L1-L8`](file:///d:/College/Practice/loopicafe-management-system/db/index.ts#L1-L8)
-  - [`db/runtime.ts#L19-L21`](file:///d:/College/Practice/loopicafe-management-system/db/runtime.ts#L19-L21)
+  - [`db/index.ts#L1-L8`](../../db/index.ts)
+  - [`db/runtime.ts#L19-L21`](../../db/runtime.ts)
 - **Root cause**: Hàm `getDb()` khởi tạo `drizzle(getDatabaseBinding(), { schema })` có tồn tại trong `db/index.ts`, nhưng không được import hoặc sử dụng bởi bất kỳ API route hay module nào. Tất cả các file trong `app/api/` và `modules/` đều import `ensureDatabase()` trả về raw `D1Database` và gọi `db.prepare("SELECT ...")`.
 - **Evidence**:
   Tìm kiếm toàn bộ codebase không có bất kỳ lệnh gọi `getDb()` hay các query builder methods của Drizzle (`db.select()`, `db.insert()`, `db.update()`). Drizzle ORM hiện chỉ đóng vai trò định nghĩa schema và sinh migrations qua Drizzle Kit.
@@ -407,12 +415,12 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
 - **Mức độ & Độ tin cậy**: `P3 (LOW)` | `CONFIRMED`
 - **Module**: `Operations / Checklists`
 - **File & Dòng liên quan**:
-  - [`db/schema.ts#L225-L226`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L225-L226)
-  - [`drizzle/0012_daily_checklists.sql#L1-L16`](file:///d:/College/Practice/loopicafe-management-system/drizzle/0012_daily_checklists.sql#L1-L16)
-  - [`app/api/checklists/route.ts#L64-L79`](file:///d:/College/Practice/loopicafe-management-system/app/api/checklists/route.ts#L64-L79)
+  - [`db/schema.ts#L225-L226`](../../db/schema.ts)
+  - [`drizzle/0012_daily_checklists.sql#L1-L16`](../../drizzle/0012_daily_checklists.sql)
+  - [`app/api/checklists/route.ts#L64-L79`](../../app/api/checklists/route.ts)
 - **Root cause**: Migration `0012` bổ sung bảng `checklist_executions` để theo dõi tiến độ checklist theo ngày nghiệp vụ (`business_date`). Khi người dùng check hoàn thành, hệ thống ghi vào `checklist_executions` mà không cập nhật hai cột `completed` và `completed_at` trên bảng `checklist_items`.
 - **Evidence**:
-  Tại [`app/api/checklists/route.ts#L66`](file:///d:/College/Practice/loopicafe-management-system/app/api/checklists/route.ts#L66), chỉ có `INSERT INTO checklist_executions ... ON CONFLICT DO UPDATE`. Hai cột cũ trên `checklist_items` giữ nguyên giá trị khởi tạo ban đầu (`completed = 0, completed_at = NULL`).
+  Tại [`app/api/checklists/route.ts#L66`](../../app/api/checklists/route.ts), chỉ có `INSERT INTO checklist_executions ... ON CONFLICT DO UPDATE`. Hai cột cũ trên `checklist_items` giữ nguyên giá trị khởi tạo ban đầu (`completed = 0, completed_at = NULL`).
 - **Expected vs Actual**:
   - *Expected*: Bảng danh mục checklist không nên lưu trạng thái thực thi hàng ngày hoặc nếu lưu thì phải phản ánh đúng dữ liệu.
   - *Actual*: Dữ liệu trên 2 cột cũ bị đóng băng và hoàn toàn không đồng bộ với thực tế.
@@ -456,14 +464,14 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
   - **128 passed, 0 failed, 0 skipped**. Toàn bộ hợp đồng dữ liệu hiện tại đều pass.
 
 ### Lệnh 3: So sánh Catalog SQLite vật lý với Drizzle Schema
-- **Lệnh**: Thực thi script đối soát AST [`scratch/audit_db_drift.mjs`](file:///C:/Users/phuga/.gemini/antigravity/brain/30eaa009-0543-419c-9c30-4d10d630edf6/scratch/audit_db_drift.mjs)
+- **Lệnh**: Thực thi script đối soát AST `scratch/audit_db_drift.mjs` (artifact cục bộ lịch sử; chưa tái xác minh)
 - **Kết quả**:
   - Số bảng: 31 bảng trong schema, 31 bảng trong DB sau khi chạy migrations `0000` -> `0013`.
   - Phát hiện 5 lỗi `NOTNULL MISMATCH` và 2 lỗi `DEFAULT MISMATCH`.
   - Trích xuất 15 triggers đang hoạt động trong database SQLite.
 
 ### Lệnh 4: Phân tích Query Execution Plans (`EXPLAIN QUERY PLAN`)
-- **Lệnh**: Thực thi script [`scratch/test_snippets.mjs`](file:///C:/Users/phuga/.gemini/antigravity/brain/30eaa009-0543-419c-9c30-4d10d630edf6/scratch/test_snippets.mjs)
+- **Lệnh**: Thực thi script `scratch/test_snippets.mjs` (artifact cục bộ lịch sử; chưa tái xác minh)
 - **Kết quả**:
   - Query với `lower(email)`: `SCAN employees` (Full Table Scan).
   - Query notifications với `lower(recipient_email)`: `SCAN notifications` + `USE TEMP B-TREE FOR ORDER BY`.
@@ -471,7 +479,7 @@ Hệ thống có tổng cộng **31 bảng**. Chi tiết định nghĩa và quan
   - Query retention bằng chứng: `SCAN attendance_photos` + `USE TEMP B-TREE FOR ORDER BY`.
 
 ### Lệnh 5: Thực nghiệm Kiểm chứng Lỗ hổng Nghiệp vụ
-- **Lệnh**: Thực thi [`scratch/test_reopened_wage.mjs`](file:///C:/Users/phuga/.gemini/antigravity/brain/30eaa009-0543-419c-9c30-4d10d630edf6/scratch/test_reopened_wage.mjs) và [`scratch/test_shift_interval.mjs`](file:///C:/Users/phuga/.gemini/antigravity/brain/30eaa009-0543-419c-9c30-4d10d630edf6/scratch/test_shift_interval.mjs)
+- **Lệnh**: Thực thi `scratch/test_reopened_wage.mjs` (artifact cục bộ lịch sử; chưa tái xác minh) và `scratch/test_shift_interval.mjs` (artifact cục bộ lịch sử; chưa tái xác minh)
 - **Kết quả**:
   - Xác nhận mức lương bị tính nhảy vọt từ 200.000đ lên 280.000đ khi mở lại kỳ lương.
   - Xác nhận ca làm việc có thời gian kết thúc trước thời gian bắt đầu được insert thành công vào DB mà không gặp bất kỳ lỗi nào.

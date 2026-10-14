@@ -24,8 +24,8 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
   const staff = seedEmployee(db, { id: "staff-1", storeId, role: "employee" });
 
   const shiftInput = {
-    startsAt: "2026-08-01T08:00:00+07:00",
-    endsAt: "2026-08-01T16:00:00+07:00",
+    startsAt: "2027-08-01T08:00:00+07:00",
+    endsAt: "2027-08-01T16:00:00+07:00",
     roleLabel: "Pha chế",
   };
 
@@ -58,8 +58,8 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
       id: managerShiftId,
       action: "edit",
       expectedRevision: 0,
-      startsAt: "2026-08-01T08:00:00+07:00",
-      endsAt: "2026-08-01T17:00:00+07:00",
+      startsAt: "2027-08-01T08:00:00+07:00",
+      endsAt: "2027-08-01T17:00:00+07:00",
     }),
     (err) => err instanceof ApplicationError && err.status === 403 && err.code === "forbidden",
     "Team lead cannot edit Manager's shift",
@@ -81,8 +81,8 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
     id: staffShiftId,
     action: "edit",
     expectedRevision: 0,
-    startsAt: "2026-08-01T08:00:00+07:00",
-    endsAt: "2026-08-01T17:00:00+07:00",
+    startsAt: "2027-08-01T08:00:00+07:00",
+    endsAt: "2027-08-01T17:00:00+07:00",
   });
   assert.equal(editResult.updated, true);
 });

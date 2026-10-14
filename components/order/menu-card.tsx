@@ -40,9 +40,12 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
   const isAvailable = Boolean(item.is_available);
 
   return (
-    <div
-      onClick={() => isAvailable && onSelect(item)}
-      className={`group relative flex flex-col justify-between rounded-2xl sm:rounded-3xl bg-white p-2.5 sm:p-4 border transition-all duration-200 cursor-pointer select-none active:scale-[0.99] touch-manipulation ${
+    <button
+      type="button"
+      onClick={() => onSelect(item)}
+      disabled={!isAvailable}
+      aria-label={isAvailable ? `Chọn món ${item.name}, giá ${formatVND(item.base_price)}` : `${item.name} hiện tạm hết`}
+      className={`group relative w-full text-left flex flex-col justify-between rounded-2xl sm:rounded-3xl bg-white p-2.5 sm:p-4 border transition-all duration-200 cursor-pointer select-none active:scale-[0.99] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3D5A40] focus-visible:ring-offset-2 ${
         isAvailable
           ? "border-[#EAE3D9] hover:border-[#3D5A40]/40 hover:shadow-lg hover:-translate-y-0.5 shadow-sm"
           : "border-stone-200 bg-stone-50/70 opacity-65 cursor-not-allowed"
@@ -78,17 +81,12 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
 
         {/* Quick Add Floating Button with Touch-Friendly Hit Target */}
         {isAvailable && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(item);
-            }}
-            aria-label={`Thêm món ${item.name}`}
+          <span
+            aria-hidden="true"
             className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 z-20 w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-white text-[#2B3E2D] shadow-md border border-[#E6DFD5] flex items-center justify-center transition-all duration-150 hover:bg-[#3D5A40] hover:text-white active:scale-90"
           >
             <Plus size={18} strokeWidth={2.5} />
-          </button>
+          </span>
         )}
       </div>
 
@@ -129,6 +127,6 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
           </span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

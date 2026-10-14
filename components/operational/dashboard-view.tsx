@@ -20,7 +20,6 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
-import { MotionLoopySticker, type StickerMood } from "../loopy-sticker";
 import {
   MetricCard,
   AsyncStatePanel,
@@ -126,14 +125,6 @@ export function OperationsDashboardView() {
   const isShiftUnattended = !isStoreOpen && lateOrMissingStaff.length > 0;
   const todayShifts = data?.todayShifts ?? [];
   const upcomingTodayShifts = todayShifts.filter((shift) => new Date(shift.starts_at).getTime() > currentTimestamp);
-
-  const mascotMood: StickerMood = isShiftUnattended
-    ? "panicked"
-    : totalActionItems > 0
-    ? "worries"
-    : isStoreOpen
-    ? "cheer"
-    : "hello";
 
   if (!data) {
     return (
@@ -263,20 +254,6 @@ export function OperationsDashboardView() {
           </div>
         </div>
 
-        <div
-          className="hero-status-mascot"
-          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-        >
-          {isShiftUnattended && (
-            <div
-              className="loopy-speech-bubble"
-              style={{ fontSize: 11, padding: "6px 10px", marginBottom: 4 }}
-            >
-              &quot;Chưa thấy bạn nào check-in! 😱&quot;
-            </div>
-          )}
-          <MotionLoopySticker mood={mascotMood} size={120} />
-        </div>
       </section>
 
       {/* 2. OWNER QUICK ACTIONS TOOLBAR */}

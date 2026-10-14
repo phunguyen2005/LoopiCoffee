@@ -3,16 +3,51 @@ import { ApplicationError } from "../../../platform/http/errors.ts";
 import type { AccessActor } from "../../people/domain/access.ts";
 
 export async function decideRequest(db: D1Database, actor: AccessActor, id: string, decision: "approved" | "rejected") {
-  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt yêu cầu.", 403, "forbidden");
   const now = new Date().toISOString();
   const commandId = crypto.randomUUID();
 
   const targetRequest = await db.prepare(
-    "SELECT id, type, title, status FROM requests WHERE id = ? AND store_id = ?",
-  ).bind(id, actor.storeId).first<{ id: string; type: string; title: string; status: string }>();
+    `SELECT r.id, r.type, r.title, r.status, r.employee_email, emp.role AS employee_role
+     FROM requests r
+     LEFT JOIN employees emp ON lower(emp.email) = lower(r.employee_email) AND emp.store_id = r.store_id
+     WHERE r.id = ? AND r.store_id = ?`,
+  ).bind(id, actor.storeId).first<{
+    id: string;
+    type: string;
+    title: string;
+    status: string;
+    employee_email: string;
+    employee_role: string | null;
+  }>();
 
   if (!targetRequest || targetRequest.status !== "pending") {
     throw new ApplicationError("Yêu cầu không còn chờ duyệt, ca đã thay đổi hoặc kỳ lương đã khóa.", 409, "request_conflict");
+  }
+
+  // DEC-001: Anti-self-approval - checked before role so any actor attempting self-approval gets self_approval_blocked
+  if (actor.email.trim().toLowerCase() === targetRequest.employee_email.trim().toLowerCase()) {
+    throw new ApplicationError("Bạn không thể tự phê duyệt yêu cầu của chính mình.", 403, "self_approval_blocked");
+  }
+
+  if (!["owner", "manager", "team_lead"].includes(actor.role)) {
+    throw new ApplicationError("Bạn không có quyền duyệt yêu cầu.", 403, "forbidden");
+  }
+
+  // DEC-001: Team lead scoping - can only approve swaps between regular employees
+  if (actor.role === "team_lead") {
+    if (targetRequest.type !== "swap") {
+      throw new ApplicationError("Trưởng ca chỉ có quyền duyệt yêu cầu đổi ca giữa các nhân viên.", 403, "forbidden");
+    }
+    if (targetRequest.employee_role && targetRequest.employee_role !== "employee") {
+      throw new ApplicationError("Trưởng ca không có quyền duyệt yêu cầu của Quản lý hoặc Chủ quán.", 403, "forbidden");
+    }
+  }
+
+  // DEC-001: Manager scoping - cannot approve requests of another manager or owner
+  if (actor.role === "manager") {
+    if (targetRequest.employee_role && ["owner", "manager", "system_admin"].includes(targetRequest.employee_role)) {
+      throw new ApplicationError("Quản lý không có quyền duyệt yêu cầu của Quản lý hoặc Chủ quán.", 403, "forbidden");
+    }
   }
 
   const results = await db.batch([

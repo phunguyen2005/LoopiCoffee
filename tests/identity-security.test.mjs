@@ -6,6 +6,7 @@ import { auditStatement } from "../server/audit.ts";
 import { changePassword } from "../modules/people/application/change-password.ts";
 import { resetPassword } from "../modules/people/application/reset-password.ts";
 import { completeSignIn } from "../modules/people/application/complete-sign-in.ts";
+import { defaultAppPath } from "../modules/people/domain/access.ts";
 import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
 import { readObject } from "../platform/http/input.ts";
 
@@ -18,6 +19,14 @@ function fixture(t) {
 async function actual(t, path, dependencies) {
   const loaded = await loadModule(path, dependencies); t.after(loaded.dispose); return loaded.module;
 }
+
+test("post-login destinations match each role's primary workspace", () => {
+  assert.equal(defaultAppPath("owner"), "/app");
+  assert.equal(defaultAppPath("manager"), "/app");
+  assert.equal(defaultAppPath("system_admin"), "/app");
+  assert.equal(defaultAppPath("team_lead"), "/app/today");
+  assert.equal(defaultAppPath("employee"), "/app/today");
+});
 
 test("auth rejects a raw identity header without a provider session", async (t) => {
   const { db } = fixture(t);
@@ -104,6 +113,7 @@ test("callback verifies invite token hashes, sends required changes to password 
   const route = await actual(t, "../../app/auth/callback/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/modules/people/application/complete-sign-in": { completeSignIn },
+    "@/modules/people/domain/access": { defaultAppPath },
     "@/server/auth": { getApiUser: async () => ({ ...actor, mustChangePassword: false }) },
     "@/lib/supabase/server": { createClient: async () => ({ auth: {
       verifyOtp: async (options) => { calls.push(options.type); return { data: { user: { id: "auth-owner", email: actor.email } } }; },
@@ -112,7 +122,7 @@ test("callback verifies invite token hashes, sends required changes to password 
     "next/server": { NextResponse: { redirect: (url) => Response.redirect(url, 307) } },
   });
   const invite = await route.GET(new Request("https://local.test/auth/callback?token_hash=fixture&type=invite&next=https://evil.test"));
-  assert.deepEqual(calls, ["invite"]); assert.equal(invite.headers.get("location"), "https://local.test/app/today");
+  assert.deepEqual(calls, ["invite"]); assert.equal(invite.headers.get("location"), "https://local.test/app");
   const recovery = await route.GET(new Request("https://local.test/auth/callback?code=fixture&recovery=1"));
   assert.equal(recovery.headers.get("location"), "https://local.test/auth/change-password");
   const implicit = await route.GET(new Request("https://local.test/auth/callback"));

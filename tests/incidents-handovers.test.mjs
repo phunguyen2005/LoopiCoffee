@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
 import { loadModule } from "./helpers/load-module.mjs";
 import { auditStatement } from "../server/audit.ts";
-import { apiHandler } from "../platform/http/errors.ts";
+import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
 import { readObject } from "../platform/http/input.ts";
 
 function jsonRequest(url, method, body) {
@@ -22,6 +22,36 @@ function rawRequest(url, method, rawBody) {
   });
 }
 
+test("incident POST replays the same client request key without creating a duplicate", async (t) => {
+  const db = createDatabase();
+  t.after(() => db.close());
+  seedStore(db);
+  const actor = seedEmployee(db, { id: "employee-idempotent", role: "employee" });
+  const loaded = await loadModule("../../app/api/incidents/route.ts", {
+    "@/db/runtime": { ensureDatabase: async () => db },
+    "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
+    "@/platform/http/input": { readObject },
+  });
+  t.after(loaded.dispose);
+  const payload = {
+    title: "Máy pha cà phê mất điện",
+    category: "Thiết bị",
+    severity: "high",
+    idempotencyKey: crypto.randomUUID(),
+  };
+
+  const first = await loaded.module.POST(jsonRequest("http://localhost/api/incidents", "POST", payload));
+  const replay = await loaded.module.POST(jsonRequest("http://localhost/api/incidents", "POST", payload));
+  assert.equal(first.status, 200);
+  assert.equal(replay.status, 200);
+  const firstBody = await first.json();
+  const replayBody = await replay.json();
+  assert.equal(replayBody.replayed, true);
+  assert.equal(replayBody.incident.id, firstBody.incident.id);
+  assert.equal(db.sqlite.prepare("SELECT count(*) AS count FROM incidents WHERE id = ?").get(payload.idempotencyKey).count, 1);
+});
+
 test("R2 (CODE-003): Injected failure on audit insertion causes entire PATCH transaction to roll back", async (t) => {
   const db = createDatabase();
   t.after(() => db.close());
@@ -31,7 +61,7 @@ test("R2 (CODE-003): Injected failure on audit insertion causes entire PATCH tra
   const loaded = await loadModule("../../app/api/incidents/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loaded.dispose);
@@ -263,7 +293,7 @@ test("R4 (CODE-004): Malformed/null/type-mismatched bodies to /api/handovers ret
   const loaded = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
-    "@/platform/http/errors": { apiHandler },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
   t.after(loaded.dispose);
@@ -317,12 +347,25 @@ test("R4 (CODE-004): Malformed/null/type-mismatched bodies to /api/handovers ret
   assert.equal(oversizedPost.status, 413);
 
   // POST: valid handover payload succeeds
-  const validRes = await route.POST(jsonRequest("http://localhost/api/handovers", "POST", {
+  const idempotencyKey = crypto.randomUUID();
+  const validPayload = {
     summary: "Đã hoàn thành kiểm kê nguyên liệu và vệ sinh máy pha espresso",
     managerAttention: true,
-  }));
+    idempotencyKey,
+  };
+  const validRes = await route.POST(jsonRequest("http://localhost/api/handovers", "POST", validPayload));
   assert.equal(validRes.status, 200);
   const validJson = await validRes.json();
   assert.ok(validJson.handover?.id);
   assert.equal(validJson.handover.manager_attention, 1);
+  const replayRes = await route.POST(jsonRequest("http://localhost/api/handovers", "POST", validPayload));
+  assert.equal(replayRes.status, 200);
+  assert.equal((await replayRes.json()).handover.id, validJson.handover.id);
+  assert.equal(db.sqlite.prepare("SELECT count(*) n FROM handovers").get().n, 1);
+  const conflictRes = await route.POST(jsonRequest("http://localhost/api/handovers", "POST", {
+    ...validPayload,
+    summary: "Nội dung khác nhưng cố tình sử dụng lại cùng mã gửi bàn giao",
+  }));
+  assert.equal(conflictRes.status, 409);
+  assert.equal((await conflictRes.json()).code, "idempotency_conflict");
 });

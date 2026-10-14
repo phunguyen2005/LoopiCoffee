@@ -1,5 +1,7 @@
 import { createRequest } from "@/modules/operations/application/create-request";
 import { decideRequest } from "@/modules/operations/application/decide-request";
+import { withdrawRequest } from "@/modules/operations/application/withdraw-request";
+import { applySwap } from "@/modules/operations/application/apply-swap";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 import { ensureDatabase } from "@/db/runtime";
@@ -33,11 +35,32 @@ export const POST = apiHandler(async (request: Request) => {
 });
 
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
+  const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  const body = await readObject(request, { id: "string", decision: "string" });
+  const body = await readObject(request, { id: "string" });
+  const db = await ensureDatabase();
+
+  if (body.action === "withdraw") {
+    return Response.json(await withdrawRequest(db, auth.actor, body.id as string));
+  }
+
+  // Management actions require elevated role
+  if (!["owner", "manager", "team_lead"].includes(auth.actor.role)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  if (body.action === "apply_swap") {
+    return Response.json(
+      await applySwap(db, auth.actor, {
+        requestId: body.id as string,
+        shift1Id: body.shift1Id as string,
+        shift2Id: body.shift2Id as string,
+      })
+    );
+  }
+
   if (typeof body.id !== "string" || !body.id || (body.decision !== "approved" && body.decision !== "rejected")) {
     return Response.json({ error: "Quyết định không hợp lệ." }, { status: 400 });
   }
-  return Response.json(await decideRequest(await ensureDatabase(), auth.actor, body.id, body.decision));
+  return Response.json(await decideRequest(db, auth.actor, body.id, body.decision as "approved" | "rejected"));
 });

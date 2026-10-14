@@ -19,7 +19,7 @@ export async function synchronizeSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({
             request,
@@ -27,6 +27,7 @@ export async function synchronizeSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
+          Object.entries(headers).forEach(([name, value]) => supabaseResponse.headers.set(name, value));
         },
       },
     }
@@ -59,7 +60,10 @@ export async function synchronizeSession(request: NextRequest) {
   // Protect /app routes
   if (url.pathname.startsWith('/app')) {
     if (!user) {
-      return NextResponse.redirect(new URL('/auth/login', request.url));
+      const redirect = NextResponse.redirect(new URL('/auth/login', request.url));
+      supabaseResponse.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+      supabaseResponse.headers.forEach((value, name) => redirect.headers.set(name, value));
+      return redirect;
     }
   }
 

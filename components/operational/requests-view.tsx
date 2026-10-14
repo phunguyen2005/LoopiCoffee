@@ -4,12 +4,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { AsyncStatePanel, ListSkeleton, ViewHeader, initials, readJson, formatDateVN, formatTime } from "./shared";
 
-type RequestRow = { id: string; employee_name: string; type: string; title: string; reason: string; status: string; created_at: string; starts_at: string | null; ends_at: string | null };
+type RequestRow = { id: string; employee_email?: string; employee_name: string; type: string; title: string; reason: string; status: string; created_at: string; starts_at: string | null; ends_at: string | null };
 type OwnShift = { id: string; employee_email: string; starts_at: string; ends_at: string; status: string; approved_leave_request_id: string | null };
 
-export function PersistentRequestsView({ canApprove = false }: { canApprove?: boolean }) {
+export function PersistentRequestsView({ approvalScope = "none" }: { approvalScope?: "none" | "swap_only" | "all" }) {
+  const canApprove = approvalScope !== "none";
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [shifts, setShifts] = useState<OwnShift[]>([]);
+  const [actorEmail, setActorEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState("leave");
   const [title, setTitle] = useState("");
@@ -27,6 +29,7 @@ export function PersistentRequestsView({ canApprove = false }: { canApprove?: bo
       fetch("/api/shifts", { cache: "no-store" }).then(readJson<{ shifts: OwnShift[] }>),
     ]);
     setRequests(payload.requests);
+    setActorEmail(payload.actorEmail ?? "");
     setShifts(schedule.shifts.filter((shift) => shift.employee_email.toLowerCase() === payload.actorEmail.toLowerCase() && shift.status === "published" && !shift.approved_leave_request_id));
   }, []);
   const retry = useCallback(async () => {
@@ -71,7 +74,7 @@ export function PersistentRequestsView({ canApprove = false }: { canApprove?: bo
     {loading ? <ListSkeleton rows={4} /> : error ? <AsyncStatePanel state="error" title="Không thể tải yêu cầu" description={error} actionLabel="Thử lại" onAction={() => void retry()} /> : !requests.length ? <AsyncStatePanel state="empty" title="Chưa có yêu cầu" description={canApprove ? "Yêu cầu nghỉ, đổi ca hoặc sửa công của nhân viên sẽ xuất hiện tại đây." : "Yêu cầu bạn gửi sẽ xuất hiện tại đây để theo dõi."} /> : null}
     <div className="list">{!loading && !error && requests.map((item) => <div className="list-row" key={item.id}>
       <div className="person"><span className="avatar">{initials(item.employee_name)}</span><span className="person-copy"><strong>{item.title}</strong><small>{item.employee_name} · {item.reason}</small>{item.starts_at && <small>{formatDateVN(new Date(item.starts_at))} · {formatTime(item.starts_at)}–{formatTime(item.ends_at!)}</small>}{item.status === "approved" && item.type === "swap" && <small style={{ color: "var(--status-warning, #b45309)", fontWeight: 500 }}>⚠️ Đã duyệt nguyên tắc — Quản lý cần chủ động cập nhật lại Lịch làm việc thủ công.</small>}{item.status === "approved" && item.type === "correction" && <small style={{ color: "var(--status-warning, #b45309)", fontWeight: 500 }}>⚠️ Đã duyệt nguyên tắc — Quản lý cần chủ động điều chỉnh giờ trong Chấm công thủ công.</small>}</span></div>
-      <div className="row-actions">{item.status === "pending" && canApprove ? <><button className="text-link" disabled={busy} onClick={() => void decide(item.id, "approved")}>Duyệt</button><button className="text-link danger-text" disabled={busy} onClick={() => void decide(item.id, "rejected")}>Từ chối</button></> : <span className={`badge ${item.status === "approved" ? (item.type === "leave" ? "success" : "info") : item.status === "rejected" ? "danger" : "warning"}`}>{item.status === "approved" ? (item.type === "leave" ? "Đã duyệt (Đã cập nhật ca)" : item.type === "swap" ? "Duyệt đề nghị (Chờ xếp lịch)" : "Duyệt đề nghị (Chờ sửa công)") : item.status === "rejected" ? "Đã từ chối" : "Đang chờ"}</span>}</div>
+      <div className="row-actions">{item.status === "pending" && canApprove && (approvalScope === "all" || item.type === "swap") && item.employee_email?.toLowerCase() !== actorEmail.toLowerCase() ? <><button className="text-link" disabled={busy} onClick={() => void decide(item.id, "approved")}>Duyệt</button><button className="text-link danger-text" disabled={busy} onClick={() => void decide(item.id, "rejected")}>Từ chối</button></> : <span className={`badge ${item.status === "approved" ? (item.type === "leave" ? "success" : "info") : item.status === "rejected" ? "danger" : "warning"}`}>{item.status === "approved" ? (item.type === "leave" ? "Đã duyệt (Đã cập nhật ca)" : item.type === "swap" ? "Duyệt đề nghị (Chờ xếp lịch)" : "Duyệt đề nghị (Chờ sửa công)") : item.status === "rejected" ? "Đã từ chối" : "Đang chờ"}</span>}</div>
     </div>)}</div>
   </section><aside className="card"><ViewHeader title="Nguyên tắc" subtitle="Giữ nguyên dữ liệu gốc" /><p className="supporting-copy">Nghỉ một ca được duyệt sẽ tự động cập nhật ca nghỉ và không tính vắng. Quản lý chủ động bố trí người thay. Đề nghị đổi ca hoặc sửa công khi được duyệt là chấp thuận về mặt chủ trương; Quản lý cần chủ động thực hiện điều chỉnh trên màn hình Lịch làm việc hoặc Chấm công tương ứng vì hệ thống không tự động sửa dữ liệu ca hay công.</p></aside></div>;
 }

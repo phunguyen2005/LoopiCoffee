@@ -17,6 +17,7 @@ import { AsyncStatePanel, ListSkeleton, MetricCard, MetricSkeleton, ViewHeader, 
 
 type AttendanceEvent = {
   id: string;
+  employeeEmail?: string;
   employeeName: string;
   action: "check_in" | "check_out" | string;
   recordedAt: string;
@@ -58,12 +59,14 @@ export function AttendanceReviewView() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [actorEmail, setActorEmail] = useState("");
 
   const refresh = useCallback(async () => {
     setLoadingEvents(true); setReviewError("");
     try {
-      const payload = await readJson<{ events: typeof events }>(await fetch("/api/attendance/review", { cache: "no-store" }));
+      const payload = await readJson<{ events: typeof events; actorEmail?: string }>(await fetch("/api/attendance/review", { cache: "no-store" }));
       setEvents(payload.events ?? []);
+      setActorEmail(payload.actorEmail ?? "");
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : "Không thể tải chấm công."); }
     finally { setLoadingEvents(false); }
   }, []);
@@ -91,7 +94,11 @@ export function AttendanceReviewView() {
     if (reviewBusy) return;
     setReviewBusy(true); setReviewError("");
     try {
-    const pendingEvents = (events ?? []).filter((e) => e.reviewRequired && e.exceptionStatus === "pending");
+    const pendingEvents = (events ?? []).filter((e) =>
+      e.reviewRequired &&
+      e.exceptionStatus === "pending" &&
+      (!actorEmail || e.employeeEmail?.toLowerCase() !== actorEmail.toLowerCase())
+    );
     for (const ev of pendingEvents) {
       await readJson(await fetch("/api/attendance/review", {
         method: "PATCH",
@@ -347,24 +354,32 @@ export function AttendanceReviewView() {
 
                     {isPending && (
                       <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                        <button
-                          type="button"
-                          className="button button-compact"
-                          style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                          onClick={() => decide(event.id, "approved")}
-                          disabled={reviewBusy}
-                        >
-                          Phê duyệt
-                        </button>
-                        <button
-                          type="button"
-                          className="button-secondary"
-                          style={{ padding: "3px 8px", fontSize: "0.75rem", color: "#b91c1c" }}
-                          onClick={() => decide(event.id, "rejected")}
-                          disabled={reviewBusy}
-                        >
-                          Từ chối
-                        </button>
+                        {actorEmail && event.employeeEmail?.toLowerCase() === actorEmail.toLowerCase() ? (
+                          <span className="badge warning" style={{ fontSize: "0.75rem" }}>
+                            Chờ duyệt độc lập
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="button button-compact"
+                              style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                              onClick={() => decide(event.id, "approved")}
+                              disabled={reviewBusy}
+                            >
+                              Phê duyệt
+                            </button>
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              style={{ padding: "3px 8px", fontSize: "0.75rem", color: "#b91c1c" }}
+                              onClick={() => decide(event.id, "rejected")}
+                              disabled={reviewBusy}
+                            >
+                              Từ chối
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

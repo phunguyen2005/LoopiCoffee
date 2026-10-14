@@ -8,8 +8,7 @@ export default async function OwnerOrdersPage() {
   const user = await getLoopiUser("/app/orders");
   if (
     user.role !== "owner" &&
-    user.role !== "manager" &&
-    user.role !== "system_admin"
+    user.role !== "manager"
   ) {
     redirect("/app");
   }

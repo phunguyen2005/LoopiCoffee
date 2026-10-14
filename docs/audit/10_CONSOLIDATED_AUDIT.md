@@ -1,18 +1,26 @@
+# TÀI LIỆU LỊCH SỬ — không dùng làm đặc tả hiện hành
+
+> Đánh dấu ngày 2026-10-13. Các kết quả và chỉ dẫn bên dưới chỉ thuộc baseline/lượt công việc được mô tả. Không coi là yêu cầu thực thi hoặc trạng thái HEAD hiện tại.
+> Đọc [bộ tài liệu chuẩn](../README.md), [hiện trạng source](../implementation-status.md) và [đính chính audit](ERRATA.md).
+> Bản nguyên gốc được bảo toàn trong docs/archive/2026-10-13/. Liên kết source đã bỏ line anchors cũ; đường dẫn không còn tồn tại chuyển tới đính chính, không coi đó là bằng chứng source.
+
+---
+
 # BÁO CÁO KIỂM TOÁN HỢP NHẤT TOÀN DIỆN (CONSOLIDATED AUDIT REPORT)
 ## LOOPICAFE MANAGEMENT SYSTEM — MULTI-AGENT PARALLEL AUDIT
 
-> **Mã báo cáo:** `AUDIT-10-CONSOLIDATED`  
-> **Vai trò:** Lead Software Architect, QA Lead & Multi-Agent Audit Orchestrator  
-> **Dự án:** LoopiCafe Management System  
-> **Chế độ kiểm toán:** `AUDIT ONLY` (Tuyệt đối không can thiệp code ứng dụng, không thay đổi migrations, không sửa database)  
-> **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`  
-> **Thời điểm xuất báo cáo:** 12/10/2026  
+> **Mã báo cáo:** `AUDIT-10-CONSOLIDATED`
+> **Vai trò:** Lead Software Architect, QA Lead & Multi-Agent Audit Orchestrator
+> **Dự án:** LoopiCafe Management System
+> **Chế độ kiểm toán:** `AUDIT ONLY` (Tuyệt đối không can thiệp code ứng dụng, không thay đổi migrations, không sửa database)
+> **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
+> **Thời điểm xuất báo cáo:** 12/10/2026
 > **Báo cáo chuyên môn thành phần:**
-> - [05_DATABASE_AUDIT.md](file:///d:/College/Practice/loopicafe-management-system/docs/audit/05_DATABASE_AUDIT.md) (Agent 1 — Database Auditor)
-> - [06_API_AUDIT.md](file:///d:/College/Practice/loopicafe-management-system/docs/audit/06_API_AUDIT.md) (Agent 2 — API Auditor)
-> - [07_PERFORMANCE_AUDIT.md](file:///d:/College/Practice/loopicafe-management-system/docs/audit/07_PERFORMANCE_AUDIT.md) (Agent 3 — Performance Auditor)
-> - [08_MOBILE_RESPONSIVENESS_AUDIT.md](file:///d:/College/Practice/loopicafe-management-system/docs/audit/08_MOBILE_RESPONSIVENESS_AUDIT.md) (Agent 4 — Mobile UX Auditor)
-> - [09_TEST_QUALITY_AUDIT.md](file:///d:/College/Practice/loopicafe-management-system/docs/audit/09_TEST_QUALITY_AUDIT.md) (Agent 5 — Test Quality Auditor)
+> - [05_DATABASE_AUDIT.md](05_DATABASE_AUDIT.md) (Agent 1 — Database Auditor)
+> - [06_API_AUDIT.md](06_API_AUDIT.md) (Agent 2 — API Auditor)
+> - [07_PERFORMANCE_AUDIT.md](07_PERFORMANCE_AUDIT.md) (Agent 3 — Performance Auditor)
+> - [08_MOBILE_RESPONSIVENESS_AUDIT.md](08_MOBILE_RESPONSIVENESS_AUDIT.md) (Agent 4 — Mobile UX Auditor)
+> - [09_TEST_QUALITY_AUDIT.md](09_TEST_QUALITY_AUDIT.md) (Agent 5 — Test Quality Auditor)
 
 ---
 
@@ -151,13 +159,13 @@ Quá trình cross-review giữa 5 báo cáo phát hiện **4 cụm rủi ro liê
 
 | Mã Finding | Mức độ | Trạng thái | Nguồn File & Vị trí | Tóm tắt Vấn đề & Tác động |
 |---|:---:|:---:|---|---|
-| **PERF-001** | `P0` | **CONFIRMED** | [`lib/evidence.ts:57`](file:///d:/College/Practice/loopicafe-management-system/lib/evidence.ts#L57) | **Workers CPU Spike do giải nén JPEG thuần JS**: `jpeg-js` decode 1.2M pixel ngốn 40-150ms CPU, vượt ngưỡng 50ms CPU limit của Workers, làm sập chấm công. |
-| **PERF-002** | `P0` | **CONFIRMED** | [`app/api/order/track/route.ts:9`](file:///d:/College/Practice/loopicafe-management-system/app/api/order/track/route.ts#L9) | **Khuếch đại giao dịch ghi D1**: Polling đơn hàng đọc gọi rate-limit ghi, tạo 20 write TPS làm tắc nghẽn D1 Primary Writer. |
-| **DB-001** | `P0` | **CONFIRMED** | [`db/schema.ts`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts) vs [`drizzle/`](file:///d:/College/Practice/loopicafe-management-system/drizzle) | **Schema Drift giữa Drizzle và SQLite**: 5 cột khai báo `notNull()` trong code nhưng thực tế `NULLABLE` trong database do SQLite ALTER TABLE. |
-| **DB-002** | `P0` | **CONFIRMED** | [`drizzle/0011_workforce_integrity.sql`](file:///d:/College/Practice/loopicafe-management-system/drizzle/0011_workforce_integrity.sql) | **Thiếu Statement Breakpoint**: File migration chứa SQLite Triggers thiếu `--> statement-breakpoint`, khiến Drizzle migrator chuẩn báo lỗi cú pháp. |
-| **MOB-001** | `P0` | **CONFIRMED** | [`components/app-shell.tsx:142`](file:///d:/College/Practice/loopicafe-management-system/components/app-shell.tsx#L142) | **Fixed Bottom Elements che khuất nội dung**: Bottom nav và floating CTA che mất 80-90px nội dung cuối trang và nút thao tác chính trên mobile. |
-| **TEST-001** | `P0` | **CONFIRMED** | [`tests/security-remediation-full.test.mjs`](file:///d:/College/Practice/loopicafe-management-system/tests/security-remediation-full.test.mjs) | **False Confidence do Mock D1 bằng Regex**: Test bảo mật dùng object plain JS match chuỗi regex thay vì chạy database SQL thật. |
-| **TEST-002** | `P0` | **CONFIRMED** | [`.github/workflows/check.yml:25`](file:///d:/College/Practice/loopicafe-management-system/.github/workflows/check.yml#L25) | **Toàn bộ E2E Test bị loại khỏi CI**: 100% test Playwright không được kích hoạt trong CI pipeline, tạo vùng mù hồi quy hoàn toàn. |
+| **PERF-001** | `P0` | **CONFIRMED** | [`lib/evidence.ts:57`](../../lib/evidence.ts) | **Workers CPU Spike do giải nén JPEG thuần JS**: `jpeg-js` decode 1.2M pixel ngốn 40-150ms CPU, vượt ngưỡng 50ms CPU limit của Workers, làm sập chấm công. |
+| **PERF-002** | `P0` | **CONFIRMED** | [`app/api/order/track/route.ts:9`](../../app/api/order/track/route.ts) | **Khuếch đại giao dịch ghi D1**: Polling đơn hàng đọc gọi rate-limit ghi, tạo 20 write TPS làm tắc nghẽn D1 Primary Writer. |
+| **DB-001** | `P0` | **CONFIRMED** | [`db/schema.ts`](../../db/schema.ts) vs [`drizzle/`](../../drizzle) | **Schema Drift giữa Drizzle và SQLite**: 5 cột khai báo `notNull()` trong code nhưng thực tế `NULLABLE` trong database do SQLite ALTER TABLE. |
+| **DB-002** | `P0` | **CONFIRMED** | [`drizzle/0011_workforce_integrity.sql`](../../drizzle/0011_workforce_integrity.sql) | **Thiếu Statement Breakpoint**: File migration chứa SQLite Triggers thiếu `--> statement-breakpoint`, khiến Drizzle migrator chuẩn báo lỗi cú pháp. |
+| **MOB-001** | `P0` | **CONFIRMED** | [`components/app-shell.tsx:142`](../../components/app-shell.tsx) | **Fixed Bottom Elements che khuất nội dung**: Bottom nav và floating CTA che mất 80-90px nội dung cuối trang và nút thao tác chính trên mobile. |
+| **TEST-001** | `P0` | **CONFIRMED** | [`tests/security-remediation-full.test.mjs`](../../tests/security-remediation-full.test.mjs) | **False Confidence do Mock D1 bằng Regex**: Test bảo mật dùng object plain JS match chuỗi regex thay vì chạy database SQL thật. |
+| **TEST-002** | `P0` | **CONFIRMED** | [`.github/workflows/check.yml:25`](../../.github/workflows/check.yml) | **Toàn bộ E2E Test bị loại khỏi CI**: 100% test Playwright không được kích hoạt trong CI pipeline, tạo vùng mù hồi quy hoàn toàn. |
 
 ---
 
@@ -165,22 +173,22 @@ Quá trình cross-review giữa 5 báo cáo phát hiện **4 cụm rủi ro liê
 
 | Mã Finding | Mức độ | Trạng thái | Nguồn File & Vị trí | Tóm tắt Vấn đề & Tác động |
 |---|:---:|:---:|---|---|
-| **API-001** | `P1` | **CONFIRMED** | [`modules/people/domain/access.ts:31`](file:///d:/College/Practice/loopicafe-management-system/modules/people/domain/access.ts#L31) | **Leo thang đặc quyền ngang giữa Manager**: Manager có thể giáng chức, khóa hoặc reset mật khẩu của Manager đồng cấp. |
-| **API-002** | `P1` | **CONFIRMED** | [`app/api/`](file:///d:/College/Practice/loopicafe-management-system/app/api) (14 handlers) | **14 Route Handlers thiếu bọc `apiHandler`**: Gây vỡ chuẩn envelope lỗi `{error, code, requestId}` và nguy cơ lộ vết lỗi unhandled. |
-| **DB-003** | `P1` | **CONFIRMED** | [`db/schema.ts:16`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L16) | **Email Unique Index Case-Sensitive**: Cho phép chèn trùng email khác hoa/thường; `lower(email)` gây Full Table Scan toàn bộ bảng nhân viên. |
-| **DB-004** | `P1` | **CONFIRMED** | [`modules/payroll/application/load-report.ts:192`](file:///d:/College/Practice/loopicafe-management-system/modules/payroll/application/load-report.ts#L192) | **Thiếu Wage History**: Khi mở lại kỳ lương (`reopen`), hệ thống tính lại tiền lương tháng cũ theo mức lương hiện thời của nhân sự. |
-| **DB-005** | `P1` | **CONFIRMED** | [`db/schema.ts:182`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L182) | **Bảng `customer_orders` thiếu Index `(store_id, created_at)`**: Gây Sort Temp B-Tree khi chủ quán xem danh sách đơn hàng. |
-| **DB-006** | `P1` | **CONFIRMED** | [`db/schema.ts:89,101`](file:///d:/College/Practice/loopicafe-management-system/db/schema.ts#L89) | **Bảng ảnh/vị trí thiếu Index `expires_at`**: Buộc cron dọn dẹp bằng chứng phải scan toàn bộ bảng. |
-| **PERF-003** | `P1` | **CONFIRMED** | [`components/operational/owner-orders-view.tsx:365`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L365) | **Background Tab Polling Resource Leak**: Polling đơn hàng không dừng khi tab ẩn (`document.hidden`), tốn ~4.500 roundtrips/giờ. |
-| **PERF-004** | `P1` | **CONFIRMED** | [`app/api/shifts/route.ts:23`](file:///d:/College/Practice/loopicafe-management-system/app/api/shifts/route.ts#L23) | **Index Suppression do bọc cột trong hàm SQL**: `lower(email)` và `date(created_at, '+7 hours')` triệt tiêu B-Tree index. |
-| **PERF-005** | `P1` | **CONFIRMED** | [`modules/attendance/application/expire-evidence.ts:26`](file:///d:/College/Practice/loopicafe-management-system/modules/attendance/application/expire-evidence.ts#L26) | **Sequential N+1 Delete trong Cron dọn dẹp R2**: Xóa ảnh tuần tự từng cái một, nguy cơ chạm trần 50 subrequests limit. |
-| **PERF-006** | `P1` | **CONFIRMED** | [`app/order/page.tsx:4`](file:///d:/College/Practice/loopicafe-management-system/app/order/page.tsx#L4) | **Trang khách đặt món thiếu SSR Data & Edge Caching**: Trang CSR hoàn toàn, khách thấy spinner 1-2s; API menu trả `no-store`. |
-| **MOB-002** | `P1` | **CONFIRMED** | [`components/order/customer-order-page.tsx:165`](file:///d:/College/Practice/loopicafe-management-system/components/order/customer-order-page.tsx#L165) | **Touch Targets dưới chuẩn WCAG 44x44px**: Nút thêm món (36px), xóa món giỏ hàng (22px), nút duyệt (15px) quá nhỏ trên cảm ứng. |
-| **MOB-003** | `P1` | **CONFIRMED** | [`components/operational/owner-orders-view.tsx:758`](file:///d:/College/Practice/loopicafe-management-system/components/operational/owner-orders-view.tsx#L758) | **Nút Hủy đơn đặt sát nút Nhận đơn**: Khoảng cách 6px, không có modal xác nhận, nguy cơ cực cao chạm nhầm hủy đơn. |
-| **MOB-004** | `P1` | **CONFIRMED** | [`app/globals.css:1229`](file:///d:/College/Practice/loopicafe-management-system/app/globals.css#L1229) | **Cột Sticky Nhân viên bảng lương quá rộng (248px)**: Chiếm 70%-96% màn hình mobile, làm nghẹt toàn bộ dữ liệu bảng công. |
-| **TEST-003** | `P1` | **CONFIRMED** | [`tests/operational-ui-permissions.test.mjs`](file:///d:/College/Practice/loopicafe-management-system/tests/operational-ui-permissions.test.mjs) | **Kiểm thử UI hời hợt bằng regex file text**: Đọc mã nguồn chuỗi thay vì mount React component và kiểm tra DOM rendering thực. |
-| **TEST-004** | `P1` | **CONFIRMED** | [`tests/concurrency-empirical-stress.test.mjs`](file:///d:/College/Practice/loopicafe-management-system/tests/concurrency-empirical-stress.test.mjs) | **Concurrency test dùng harness tự chế**: Giả lập vòng lặp biến độc lập thay vì kiểm tra React state hook và concurrency thật. |
-| **TEST-005** | `P1` | **CONFIRMED** | [`tests/helpers/load-module.mjs:10`](file:///d:/College/Practice/loopicafe-management-system/tests/helpers/load-module.mjs#L10) | **`load-module.mjs` mock stub toàn bộ Auth**: Triệt tiêu kiểm thử tích hợp middleware cookie/session Supabase Auth. |
+| **API-001** | `P1` | **CONFIRMED** | [`modules/people/domain/access.ts:31`](../../modules/people/domain/access.ts) | **Leo thang đặc quyền ngang giữa Manager**: Manager có thể giáng chức, khóa hoặc reset mật khẩu của Manager đồng cấp. |
+| **API-002** | `P1` | **CONFIRMED** | [`app/api/`](../../app/api) (14 handlers) | **14 Route Handlers thiếu bọc `apiHandler`**: Gây vỡ chuẩn envelope lỗi `{error, code, requestId}` và nguy cơ lộ vết lỗi unhandled. |
+| **DB-003** | `P1` | **CONFIRMED** | [`db/schema.ts:16`](../../db/schema.ts) | **Email Unique Index Case-Sensitive**: Cho phép chèn trùng email khác hoa/thường; `lower(email)` gây Full Table Scan toàn bộ bảng nhân viên. |
+| **DB-004** | `P1` | **CONFIRMED** | [`modules/payroll/application/load-report.ts:192`](../../modules/payroll/application/load-report.ts) | **Thiếu Wage History**: Khi mở lại kỳ lương (`reopen`), hệ thống tính lại tiền lương tháng cũ theo mức lương hiện thời của nhân sự. |
+| **DB-005** | `P1` | **CONFIRMED** | [`db/schema.ts:182`](../../db/schema.ts) | **Bảng `customer_orders` thiếu Index `(store_id, created_at)`**: Gây Sort Temp B-Tree khi chủ quán xem danh sách đơn hàng. |
+| **DB-006** | `P1` | **CONFIRMED** | [`db/schema.ts:89,101`](../../db/schema.ts) | **Bảng ảnh/vị trí thiếu Index `expires_at`**: Buộc cron dọn dẹp bằng chứng phải scan toàn bộ bảng. |
+| **PERF-003** | `P1` | **CONFIRMED** | [`components/operational/owner-orders-view.tsx:365`](../../components/operational/owner-orders-view.tsx) | **Background Tab Polling Resource Leak**: Polling đơn hàng không dừng khi tab ẩn (`document.hidden`), tốn ~4.500 roundtrips/giờ. |
+| **PERF-004** | `P1` | **CONFIRMED** | [`app/api/shifts/route.ts:23`](../../app/api/shifts/route.ts) | **Index Suppression do bọc cột trong hàm SQL**: `lower(email)` và `date(created_at, '+7 hours')` triệt tiêu B-Tree index. |
+| **PERF-005** | `P1` | **CONFIRMED** | [`modules/attendance/application/expire-evidence.ts:26`](../../modules/attendance/application/expire-evidence.ts) | **Sequential N+1 Delete trong Cron dọn dẹp R2**: Xóa ảnh tuần tự từng cái một, nguy cơ chạm trần 50 subrequests limit. |
+| **PERF-006** | `P1` | **CONFIRMED** | [`app/order/page.tsx:4`](../../app/order/page.tsx) | **Trang khách đặt món thiếu SSR Data & Edge Caching**: Trang CSR hoàn toàn, khách thấy spinner 1-2s; API menu trả `no-store`. |
+| **MOB-002** | `P1` | **CONFIRMED** | [`components/order/customer-order-page.tsx:165`](../../components/order/customer-order-page.tsx) | **Touch Targets dưới chuẩn WCAG 44x44px**: Nút thêm món (36px), xóa món giỏ hàng (22px), nút duyệt (15px) quá nhỏ trên cảm ứng. |
+| **MOB-003** | `P1` | **CONFIRMED** | [`components/operational/owner-orders-view.tsx:758`](../../components/operational/owner-orders-view.tsx) | **Nút Hủy đơn đặt sát nút Nhận đơn**: Khoảng cách 6px, không có modal xác nhận, nguy cơ cực cao chạm nhầm hủy đơn. |
+| **MOB-004** | `P1` | **CONFIRMED** | [`app/globals.css:1229`](../../app/globals.css) | **Cột Sticky Nhân viên bảng lương quá rộng (248px)**: Chiếm 70%-96% màn hình mobile, làm nghẹt toàn bộ dữ liệu bảng công. |
+| **TEST-003** | `P1` | **CONFIRMED** | [`tests/operational-ui-permissions.test.mjs`](../../tests/operational-ui-permissions.test.mjs) | **Kiểm thử UI hời hợt bằng regex file text**: Đọc mã nguồn chuỗi thay vì mount React component và kiểm tra DOM rendering thực. |
+| **TEST-004** | `P1` | **CONFIRMED** | [`tests/concurrency-empirical-stress.test.mjs`](../../tests/concurrency-empirical-stress.test.mjs) | **Concurrency test dùng harness tự chế**: Giả lập vòng lặp biến độc lập thay vì kiểm tra React state hook và concurrency thật. |
+| **TEST-005** | `P1` | **CONFIRMED** | [`tests/helpers/load-module.mjs:10`](../../tests/helpers/load-module.mjs) | **`load-module.mjs` mock stub toàn bộ Auth**: Triệt tiêu kiểm thử tích hợp middleware cookie/session Supabase Auth. |
 
 ---
 

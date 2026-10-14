@@ -4,15 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, Check, Clock3, UserRound } from "lucide-react";
 import { LoopySticker } from "../loopy-sticker";
-import { ApiState, ViewHeader, formatTime, readJson } from "./shared";
+import { ApiState, ViewHeader, formatShiftRange, formatTime, readJson } from "./shared";
 
 export function EmployeeTodayView() {
   const [data, setData] = useState<{
     shift: { starts_at: string; ends_at: string; role_label: string; is_shift_lead: number } | null;
-    attendance: { opened_at: string | null; closed_at: string | null; status: string } | null;
+    attendance: { opened_at: string | null; closed_at: string | null; status: string; missing_checkout?: number } | null;
     checklist: { total: number; done: number };
     handover: { id: string; created_at: string } | null;
-    monthStats?: { sessionCount: number; workedMinutes: number };
+    incomingHandover: { id: string; summary: string; manager_attention: number; created_at: string; author_name: string } | null;
+    monthStats?: { completedSessionCount: number; approvedWorkedMinutes: number };
     upcomingShifts?: Array<{ id: string; starts_at: string; ends_at: string; role_label: string; is_shift_lead: number }>;
   } | null>(null);
   const [state, setState] = useState<ApiState>("loading");
@@ -67,29 +68,36 @@ export function EmployeeTodayView() {
   const checklistDone = data.checklist?.done ?? 0;
   const hasCheckedIn = Boolean(data.attendance?.opened_at);
   const hasCheckedOut = Boolean(data.attendance?.closed_at);
+  const isMissingCheckout = Boolean(data.attendance?.missing_checkout);
+  const isAttendanceApproved = data.attendance?.status === "completed" && !isMissingCheckout;
   const hasHandover = Boolean(data.handover?.id);
+  const needsHandoverAcknowledgement = Boolean(data.incomingHandover?.id) && !hasCheckedIn;
   const checklistNotApplicable = checklistCount === 0;
-  const checklistComplete = checklistNotApplicable || checklistDone >= checklistCount;
+  const checklistComplete = checklistCount > 0 && checklistDone >= checklistCount;
+  const checklistAllowsNextStep = checklistNotApplicable || checklistComplete;
   const checklistStepComplete = hasCheckedIn && checklistComplete;
   const checklistProgress = checklistCount > 0 ? Math.min(100, (checklistDone / checklistCount) * 100) : 0;
-  const completedSteps = [hasCheckedIn, checklistStepComplete, hasHandover, hasCheckedOut].filter(Boolean).length;
+  const handoverGateComplete = !needsHandoverAcknowledgement;
+  const completedSteps = [handoverGateComplete, hasCheckedIn, checklistStepComplete, hasHandover, isAttendanceApproved].filter(Boolean).length;
   const primaryAction = !hasShift
     ? { href: "/app/schedule", label: "Xem lịch của tôi", icon: CalendarDays }
     : hasCheckedOut
     ? { href: "/app/schedule", label: "Xem lịch ca tiếp theo", icon: CalendarDays }
+    : needsHandoverAcknowledgement
+    ? { href: "/app/handovers", label: "Nhận bàn giao trước khi vào ca", icon: UserRound }
     : !hasCheckedIn
     ? { href: "/app/attendance", label: "Chấm công vào ca", icon: Clock3 }
-    : !checklistComplete
+    : !checklistAllowsNextStep
     ? { href: "/app/checklists", label: "Tiếp tục checklist", icon: Check }
     : !hasHandover
     ? { href: "/app/handovers", label: "Chuẩn bị bàn giao ca", icon: UserRound }
     : { href: "/app/attendance", label: "Chấm công ra ca", icon: Clock3 };
   const PrimaryIcon = primaryAction.icon;
 
-  const monthMinutes = data.monthStats?.workedMinutes ?? 0;
+  const monthMinutes = data.monthStats?.approvedWorkedMinutes ?? 0;
   const monthHours = Math.floor(monthMinutes / 60);
   const monthRemMins = monthMinutes % 60;
-  const monthSessions = data.monthStats?.sessionCount ?? 0;
+  const monthSessions = data.monthStats?.completedSessionCount ?? 0;
 
   return (
     <div className="stack employee-today-view has-sticky-primary" style={{ gap: 20 }}>
@@ -99,12 +107,12 @@ export function EmployeeTodayView() {
           <div className="today-summary-heading">
             <span className={`today-live-status ${hasCheckedIn && !hasCheckedOut ? "is-live" : ""}`}>
               <span aria-hidden="true" />
-              {hasCheckedOut ? "Đã hoàn tất ca" : hasCheckedIn ? "Đang trong ca làm" : hasShift ? "Sắp đến ca làm" : "Hôm nay nghỉ"}
+              {isMissingCheckout ? "Quên chấm ra · chờ duyệt" : hasCheckedOut ? (isAttendanceApproved ? "Ca đã được ghi nhận" : "Chờ quản lý duyệt") : hasCheckedIn ? "Đang trong ca làm" : hasShift ? "Sắp đến ca làm" : "Hôm nay nghỉ"}
             </span>
             <span className="today-store-label">Cửa hàng LoopiCafe</span>
           </div>
           <span className="today-kicker">Ca làm việc của bạn</span>
-          <h2>{hasShift ? `${formatTime(data.shift!.starts_at)} — ${formatTime(data.shift!.ends_at)}` : "Một ngày thật nhẹ nhàng"}</h2>
+          <h2>{hasShift ? formatShiftRange(data.shift!.starts_at, data.shift!.ends_at) : "Một ngày thật nhẹ nhàng"}</h2>
           <p>
             {hasShift
               ? `${data.shift!.role_label}${data.shift!.is_shift_lead ? " · Trưởng ca trực" : ""}`
@@ -154,74 +162,84 @@ export function EmployeeTodayView() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
           <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Tổng giờ tích lũy</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Giờ đã được duyệt</span>
             <strong style={{ fontSize: "1.3rem", color: "var(--primary)" }}>{monthHours}h {monthRemMins > 0 ? `${monthRemMins}p` : ""}</strong>
             <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Trong tháng hiện tại</span>
           </div>
           <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Số ca hoàn tất</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Ca đã được duyệt</span>
             <strong style={{ fontSize: "1.3rem" }}>{monthSessions} ca</strong>
             <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Đã được ghi nhận</span>
           </div>
           <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Tiến độ checklist ca</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Checklist hôm nay</span>
             <strong style={{ fontSize: "1.3rem", color: checklistComplete ? "#15803d" : "inherit" }}>
-              {checklistCount > 0 ? `${checklistDone}/${checklistCount}` : "100%"}
+              {checklistCount > 0 ? `${checklistDone}/${checklistCount}` : "Chưa có"}
             </strong>
             <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Nhiệm vụ chuẩn ca</span>
           </div>
         </div>
       </section>
 
-      {/* 4-Step Shift Operational Progress */}
+      {/* Shift workflow follows the server handover gate and attendance approval states. */}
       {hasShift ? (
         <section className="card today-flow-card">
           <div className="section-row today-flow-heading">
             <ViewHeader title="Tiến trình ca làm" subtitle="Chạm vào từng bước để chuyển nhanh tới việc cần làm" />
-            <span className="badge info">{completedSteps === 4 ? "4/4 Hoàn tất" : `${completedSteps}/4 ${completedSteps === 0 ? "Chưa vào ca" : "Đang thực hiện"}`}</span>
+            <span className="badge info">{completedSteps === 5 ? "5/5 Đã duyệt" : `${completedSteps}/5 ${hasCheckedIn ? "Đang thực hiện" : "Chuẩn bị vào ca"}`}</span>
           </div>
           <div className="today-task-flow">
-            <Link href="/app/attendance" className={`today-task-step ${hasCheckedIn ? "complete" : "current"}`}>
-              <span className="today-step-marker">{hasCheckedIn ? <Check size={16} /> : "1"}</span>
+            <Link href="/app/handovers" className={`today-task-step ${handoverGateComplete ? "complete" : "current"}`}>
+              <span className="today-step-marker">{handoverGateComplete ? <Check size={16} /> : "1"}</span>
               <span>
-                <small>1. Chấm vào ca</small>
+                <small>1. Nhận bàn giao ca trước</small>
+                <strong>{needsHandoverAcknowledgement ? `Từ ${data.incomingHandover!.author_name}` : "Không có bàn giao đang chờ"}</strong>
+                <em className={`step-badge ${handoverGateComplete ? "success" : "warning"}`}>{handoverGateComplete ? "✅ Sẵn sàng" : "🟡 Cần xác nhận"}</em>
+              </span>
+              <span className="today-step-arrow">›</span>
+            </Link>
+
+            <Link href="/app/attendance" className={`today-task-step ${hasCheckedIn ? "complete" : handoverGateComplete ? "current" : "locked"}`}>
+              <span className="today-step-marker">{hasCheckedIn ? <Check size={16} /> : "2"}</span>
+              <span>
+                <small>2. Chấm vào ca</small>
                 <strong>{hasCheckedIn ? formatTime(data.attendance!.opened_at!) : "Chưa chấm vào ca"}</strong>
-                <em className={`step-badge ${hasCheckedIn ? "success" : "warning"}`}>{hasCheckedIn ? "✅ Hoàn thành" : "🟡 Bắt đầu ngay"}</em>
+                <em className={`step-badge ${hasCheckedIn ? "success" : handoverGateComplete ? "warning" : "neutral"}`}>{hasCheckedIn ? "✅ Đã ghi nhận" : handoverGateComplete ? "🟡 Bắt đầu ngay" : "🔒 Nhận bàn giao trước"}</em>
               </span>
               <span className="today-step-arrow">›</span>
             </Link>
 
             <Link href="/app/checklists" className={`today-task-step ${checklistStepComplete ? "complete" : hasCheckedIn ? "current" : "locked"}`}>
-              <span className="today-step-marker">{checklistStepComplete ? <Check size={16} /> : "2"}</span>
+              <span className="today-step-marker">{checklistStepComplete ? <Check size={16} /> : "3"}</span>
               <span>
-                <small>2. Checklist mở ca</small>
+                <small>3. Checklist hôm nay</small>
                 <strong>{checklistNotApplicable ? "Không có việc được giao" : `${checklistDone}/${checklistCount} công việc đã xong`}</strong>
                 <em className={`step-badge ${checklistStepComplete ? "success" : hasCheckedIn ? "warning" : "neutral"}`}>
-                  {checklistStepComplete ? (checklistNotApplicable ? "✅ Không áp dụng" : "✅ Hoàn thành") : hasCheckedIn ? "🟡 Đang thực hiện" : "🔒 Chưa đến bước"}
+                  {checklistStepComplete ? "✅ Hoàn thành" : checklistNotApplicable ? "⚪ Chưa có checklist" : hasCheckedIn ? "🟡 Đang thực hiện" : "🔒 Chưa đến bước"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
             </Link>
 
-            <Link href="/app/handovers" className={`today-task-step ${hasHandover ? "complete" : checklistStepComplete ? "current" : "locked"}`}>
-              <span className="today-step-marker">{hasHandover ? <Check size={16} /> : "3"}</span>
+            <Link href="/app/handovers" className={`today-task-step ${hasHandover ? "complete" : hasCheckedIn && checklistAllowsNextStep ? "current" : "locked"}`}>
+              <span className="today-step-marker">{hasHandover ? <Check size={16} /> : "4"}</span>
               <span>
-                <small>3. Bàn giao ca</small>
+                <small>4. Gửi bàn giao cuối ca</small>
                 <strong>{hasHandover ? `Đã gửi lúc ${formatTime(data.handover!.created_at)}` : "Ghi chú & tài sản ca"}</strong>
-                <em className={`step-badge ${hasHandover ? "success" : checklistStepComplete ? "warning" : "neutral"}`}>
-                  {hasHandover ? "✅ Đã bàn giao" : checklistStepComplete ? "🟡 Sẵn sàng bàn giao" : "⚪ Chưa bắt đầu"}
+                <em className={`step-badge ${hasHandover ? "success" : hasCheckedIn && checklistAllowsNextStep ? "warning" : "neutral"}`}>
+                  {hasHandover ? "✅ Đã bàn giao" : hasCheckedIn && checklistAllowsNextStep ? "🟡 Sẵn sàng bàn giao" : "⚪ Chưa bắt đầu"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
             </Link>
 
-            <Link href="/app/attendance" className={`today-task-step ${hasCheckedOut ? "complete" : checklistStepComplete && hasHandover ? "current" : "locked"}`}>
-              <span className="today-step-marker">{hasCheckedOut ? <Check size={16} /> : "4"}</span>
+            <Link href="/app/attendance" className={`today-task-step ${isAttendanceApproved ? "complete" : hasCheckedOut || hasHandover ? "current" : "locked"}`}>
+              <span className="today-step-marker">{isAttendanceApproved ? <Check size={16} /> : "5"}</span>
               <span>
-                <small>4. Chấm ra ca</small>
-                <strong>{hasCheckedOut ? formatTime(data.attendance!.closed_at!) : `Dự kiến ${formatTime(data.shift!.ends_at)}`}</strong>
-                <em className={`step-badge ${hasCheckedOut ? "success" : checklistStepComplete && hasHandover ? "warning" : "locked"}`}>
-                  {hasCheckedOut ? "✅ Hoàn thành" : checklistStepComplete && hasHandover ? "🟡 Sẵn sàng ra ca" : hasCheckedIn ? "🔒 Hoàn tất các bước trước" : "🔒 Chưa đến bước"}
+                <small>5. Chấm ra ca</small>
+                <strong>{isMissingCheckout ? "Hệ thống đã đóng · chưa tính công" : hasCheckedOut ? formatTime(data.attendance!.closed_at!) : `Dự kiến ${formatTime(data.shift!.ends_at)}`}</strong>
+                <em className={`step-badge ${isAttendanceApproved ? "success" : hasCheckedOut || hasHandover ? "warning" : "locked"}`}>
+                  {isAttendanceApproved ? "✅ Đã ghi nhận" : isMissingCheckout ? "🟠 Cần gửi điều chỉnh" : hasCheckedOut ? "🟡 Chờ duyệt" : hasHandover ? "🟡 Sẵn sàng ra ca" : hasCheckedIn ? "🔒 Hoàn tất các bước trước" : "🔒 Chưa đến bước"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
@@ -272,7 +290,7 @@ export function EmployeeTodayView() {
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 70, color: "var(--foreground)" }}>{dateStr}</span>
                     <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                      {formatTime(upcoming.starts_at)} — {formatTime(upcoming.ends_at)}
+                      {formatShiftRange(upcoming.starts_at, upcoming.ends_at)}
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

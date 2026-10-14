@@ -1,4 +1,4 @@
-import type { AccessActor } from "../../people/domain/access.ts";
+import type { AccessActor, ActorRole } from "../../people/domain/access.ts";
 import { ApplicationError } from "../../../platform/http/errors.ts";
 import { auditStatement } from "../../../server/audit.ts";
 
@@ -11,18 +11,39 @@ export function attendanceTime(value: unknown) {
 }
 
 export async function correctAttendance(db: D1Database, actor: AccessActor, input: { eventId?: string; sessionId?: string; action?: "check_in" | "check_out"; adjustedTime: unknown; reason: unknown; expectedRevision?: number }) {
-  if (!["owner", "manager", "team_lead"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "forbidden");
+  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "forbidden");
   const effectiveTime = attendanceTime(input.adjustedTime);
   if (Date.parse(effectiveTime) > Date.now() + 60_000) throw new ApplicationError("Không thể điều chỉnh công tới thời điểm tương lai.");
   if (typeof input.reason !== "string" || input.reason.trim().length < 5 || input.reason.length > 1000) throw new ApplicationError("Cần lý do điều chỉnh từ 5 đến 1000 ký tự.");
   const session = await db.prepare(
-    `SELECT s.id, s.opened_at, s.closed_at, s.revision, e.id AS event_id, e.action
-     FROM attendance_sessions s LEFT JOIN attendance_events e ON e.session_id = s.id AND e.id = ?
-     WHERE s.store_id = ? AND ${input.eventId ? "e.id = ?" : "s.id = ?"}`,
+    `SELECT s.id, s.employee_email, s.opened_at, s.closed_at, s.revision, e.id AS event_id, e.action, emp.role AS employee_role
+     FROM attendance_sessions s
+     LEFT JOIN attendance_events e ON e.session_id = s.id AND e.id = ?
+     LEFT JOIN employees emp ON lower(emp.email) = lower(s.employee_email) AND emp.store_id = s.store_id
+     WHERE s.store_id = ? AND ${input.eventId ? "e.id = ?" : "s.id = ?"}`
   ).bind(input.eventId ?? null, actor.storeId, input.eventId ?? input.sessionId ?? "").first<{
-    id: string; opened_at: string | null; closed_at: string | null; revision: number; event_id: string | null; action: "check_in" | "check_out" | null;
+    id: string; employee_email: string; opened_at: string | null; closed_at: string | null; revision: number; event_id: string | null; action: "check_in" | "check_out" | null; employee_role: ActorRole | null;
   }>();
   if (!session) throw new ApplicationError("Không tìm thấy phiên chấm công.", 404, "not_found");
+
+  const isSelfCorrection = actor.email.trim().toLowerCase() === session.employee_email.trim().toLowerCase();
+
+  if (isSelfCorrection) {
+    if (actor.role !== "owner") {
+      throw new ApplicationError("Bạn không thể tự điều chỉnh công của chính mình.", 403, "self_approval_blocked");
+    }
+    const activeOwners = await db.prepare(
+      "SELECT COUNT(*) AS count FROM employees WHERE store_id = ? AND role = 'owner' AND status = 'active'"
+    ).bind(actor.storeId).first<{ count: number }>();
+    if ((activeOwners?.count ?? 0) !== 1) {
+      throw new ApplicationError("Tự điều chỉnh công chỉ áp dụng khi cửa hàng chỉ có duy nhất 1 chủ quán đang hoạt động.", 403, "sole_owner_required");
+    }
+  } else {
+    if (actor.role === "manager" && ["owner", "manager"].includes(session.employee_role || "")) {
+      throw new ApplicationError("Quản lý không có quyền điều chỉnh công của Quản lý hoặc Chủ quán.", 403, "forbidden");
+    }
+  }
+
   const action = session.action ?? input.action;
   if (action !== "check_in" && action !== "check_out") throw new ApplicationError("Chọn giờ vào hoặc giờ ra cần bổ sung.");
   if (input.expectedRevision !== undefined && input.expectedRevision !== session.revision) throw new ApplicationError("Phiên chấm công vừa thay đổi. Hãy tải lại.", 409, "attendance_conflict");
@@ -53,8 +74,33 @@ export async function correctAttendance(db: D1Database, actor: AccessActor, inpu
       `INSERT INTO attendance_corrections (id, session_id, event_id, action, previous_time, effective_time, reason, actor_email, created_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
     ).bind(correctionId, session.id, session.event_id, action, previousTime, effectiveTime, input.reason.trim(), actor.email, now),
-    auditStatement(db, actor.email, "attendance_event", input.eventId ?? session.id, "attendance.time_adjusted", { correctionId, sessionId: session.id, action, previousTime, newTime: effectiveTime, reason: input.reason.trim() }, now, true),
+    auditStatement(
+      db,
+      actor.email,
+      "attendance_event",
+      input.eventId ?? session.id,
+      "attendance.time_adjusted",
+      {
+        correctionId,
+        sessionId: session.id,
+        action,
+        previousTime,
+        newTime: effectiveTime,
+        reason: input.reason.trim(),
+        ...(isSelfCorrection ? { soleOwnerCorrection: true, highAudit: true } : {}),
+      },
+      now,
+      true
+    ),
   ]);
   if (!result[0].meta.changes) throw new ApplicationError("Giờ công trùng phiên khác, kỳ lương đã khóa hoặc phiên công vừa thay đổi. Hãy tải lại để đối soát.", 409, "attendance_conflict");
-  return { updated: true, sessionId: session.id, eventId: session.event_id, previousTime, newTime: effectiveTime, revision: session.revision + 1 };
+  return {
+    updated: true,
+    sessionId: session.id,
+    eventId: session.event_id,
+    previousTime,
+    newTime: effectiveTime,
+    revision: session.revision + 1,
+    soleOwnerCorrection: isSelfCorrection,
+  };
 }

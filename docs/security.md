@@ -1,42 +1,46 @@
-# Security & Privacy — LoopiCafe
+# Bảo mật và dữ liệu riêng tư
 
-> Checklist kiểm soát bắt buộc; chỉ đánh dấu đạt sau khi có bằng chứng code và test.
+Cập nhật: 2026-10-13. Đây là yêu cầu kiểm soát; đạt hay chưa phải có evidence.
 
-## Authentication & Authorization
+## Danh tính và quyền
 
-- Verify Supabase session/JWT phía server đúng audience/issuer/signature/expiry theo cấu hình thực tế.
-- Không lấy `role`, `userId`, `isOwner` từ client làm căn cứ phân quyền.
-- Mỗi endpoint/use case kiểm tra cả quyền theo vai trò **và quyền trên resource** (chống IDOR).
-- Nhân viên bị khóa không thể tiếp tục thao tác; không được vô hiệu hóa OWNER cuối cùng.
-- Tách public customer routes và authenticated staff routes, không rò dữ liệu nội bộ.
+Xác minh session/token Supabase tại server theo cấu hình provider. Membership D1 quyết định quyền ứng dụng.
+Không tin raw identity headers từ client, role/user/store tự khai, hoặc metadata người dùng có thể sửa để áp đặt quyền.
+Kiểm tra active status và resource scope; bảo vệ owner cuối cùng. Cờ bắt buộc đổi mật khẩu phải do server quản lý.
+Chặn self-approval tại server. `team_lead` chỉ có quyền Trưởng ca vận hành theo DEC-001; `system_admin` không có quyền business data và không được dùng làm bypass store.
+Sole-owner self-correction là ngoại lệ tách riêng, bắt buộc before/after, lý do, high-priority append-only audit và xuất hiện trong đối soát.
+Chính sách cache identity phải nêu độ trễ thu hồi được chấp nhận; không thay provider lookup bằng JWT-only mà bỏ kiểm tra vòng đời tài khoản.
 
-## R2 và dữ liệu nhạy cảm
+## HTTP và dữ liệu
 
-- Bucket ảnh chấm công private; không lộ key R2 hoặc public object URL.
-- Kiểm tra MIME, kích thước, loại tệp và key path khi upload; không tin filename client.
-- Chỉ người có quyền được đọc ảnh; URL tạm nếu dùng phải giới hạn thời gian.
-- Ảnh, tọa độ, số điện thoại và thông tin nhân sự có thời hạn lưu và cơ chế xóa được xác định.
-- Không đưa PII vào logs, analytics, query string hoặc error response khi không cần.
+Validate type, size, range, enum, timestamp; parameterize SQL; chống mass assignment.
+Bảo vệ mutation theo mô hình cookie/origin/CSRF thực. Thiếu Origin không tự được phép; fallback phải validate và có test.
+Chỉ tin proxy headers khi ingress đáng tin cậy; không dùng x-forwarded-for tùy ý làm căn cứ bảo mật.
+Lỗi trả message/code an toàn và request ID phù hợp; không trả SQL/token/stack nội bộ.
+Rate limit public/auth theo boundary thực, không bỏ chống abuse chỉ để đạt số DB writes = 0.
+API dữ liệu nhạy cảm mặc định private/no-store; thay cache cần review quyền, expiry và logout trên thiết bị dùng chung.
 
-## Public ordering
+## Ảnh, vị trí và retention
 
-- Rate limit và chống spam; validation server-side, giới hạn payload.
-- Tracking token có entropy đủ mạnh, không đoán được; không dùng order ID tuần tự/số điện thoại như token xác thực.
-- Giá, tổng tiền, trạng thái món và chuyển trạng thái đơn do server quyết định.
-- Chống tạo đơn lặp khi retry; chống enumeration thông tin đơn.
+R2 private; retrieval kiểm tra quyền và hạn lưu trước trả nội dung, kể cả phản hồi 304.
+Upload kiểm tra bytes/type/size/dimensions/cấu trúc theo threat model; thay decoder phải bảo toàn kiểm tra ảnh malformed/truncated.
+Không log ảnh, tọa độ chính xác, token, signed URL, password hoặc PII không cần thiết.
+Chỉ lấy camera/GPS sau thao tác; có thông báo và luồng giải trình.
+Ảnh và tọa độ chấm công có hạn tối đa 90 ngày. Hết hạn phải chặn đọc ngay, kể cả khi object chưa được job xóa vật lý.
+Expired access và physical deletion khác nhau; scheduler phải được vận hành và giám sát.
+Không xóa event công chỉ vì ảnh/GPS hết hạn; bảo toàn retry metadata khi R2 deletion lỗi.
+Attendance/correction, payroll snapshot, audit và lịch sử vận hành lưu tối thiểu 3 năm. Sau 180 ngày phải ẩn danh tên, điện thoại và ghi chú PII của customer order; không log giá trị trước/sau khi mask.
+Restore từ backup phải áp lại expiry/anonymization trước khi cấp quyền truy cập thông thường; backup không được dùng để né retention.
 
-## Application security
+## Đơn hàng và export
 
-- Validate input/output, chống XSS, injection, CSRF phù hợp mô hình session/cookie, CORS quá rộng.
-- Không log secrets, tokens, authorization headers, presigned URLs.
-- Bảo vệ exports CSV khỏi formula injection (`=`, `+`, `-`, `@` ở dữ liệu không tin cậy).
-- Cấu hình secrets qua environment bindings, không hardcode hoặc commit.
-- Audit log cho đổi role, duyệt công, khóa lương, sửa giá, thay đổi đơn quan trọng.
+Receipt secret chỉ cấp quyền một đơn; không phone-only history. Server sở hữu giá và chuyển trạng thái.
+CUSTOMER không tự hủy sau khi gửi. Hủy preparing/ready chỉ qua role xử lý đơn được cấp quyền, reason code chuẩn hóa và audit/status history.
+CSV/Excel output phải chống công thức từ input không tin cậy; kiểm tra đúng quyền và dữ liệu export.
 
-## Quy trình xử lý lỗ hổng
+## Secrets và sự cố
 
-1. Ghi endpoint/file/line, điều kiện khai thác, ảnh hưởng và mức độ.
-2. Không thử khai thác phá hoại hoặc dùng dữ liệu thật ngoài quyền được cấp.
-3. Ưu tiên Critical/High trước thay đổi thẩm mỹ.
-4. Thêm regression test cho lỗi đã sửa; báo cáo phần chưa xác minh.
-
+Secret dùng binding/ignored env; không đưa dữ liệu thật vào fixture.
+Nếu phát hiện credential đã bị lộ: loại khỏi source không đồng nghĩa thu hồi. Báo người vận hành, giới hạn tác động, theo dõi thu hồi/rotation và lịch sử theo quyền được cấp.
+Không khai thác production hoặc tự rotate trong tác vụ audit.
+Kiểm chứng trước khi ghi “an toàn”; không khẳng định tuân thủ pháp luật chỉ từ checklist.

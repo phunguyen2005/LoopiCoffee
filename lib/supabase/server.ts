@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const LOCAL_ONLY = process.env.LOOPI_LOCAL_ONLY === "true" || process.env.NEXT_PUBLIC_LOCAL_ONLY === "true";
 
-export async function createClient() {
+export async function createClient(responseHeaders?: Headers) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error('Supabase server configuration is unavailable.');
   }
@@ -20,11 +20,12 @@ export async function createClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options)
           );
+          Object.entries(headers).forEach(([name, value]) => responseHeaders?.set(name, value));
         } catch {
           // Server Components cannot write refreshed cookies.
         }

@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   }
 
   const result = await db.prepare(
-    `SELECT e.id, e.action, e.recorded_at, e.verification_results, e.photo_status,
+    `SELECT e.id, e.employee_email, e.action, e.recorded_at, e.verification_results, e.photo_status,
             e.review_required, s.id AS session_id, s.revision,
              CASE WHEN e.action = 'check_in' THEN s.opened_at ELSE s.closed_at END AS effective_at, x.status AS exception_status, x.employee_reason,
             x.reviewer_note, emp.display_name,
@@ -54,6 +54,7 @@ export async function GET(request: Request) {
      ORDER BY e.recorded_at DESC LIMIT 60`,
   ).bind(auth.actor.storeId).all<{
     id: string;
+    employee_email: string;
     action: "check_in" | "check_out";
     recorded_at: string;
     effective_at: string;
@@ -76,6 +77,7 @@ export async function GET(request: Request) {
   return Response.json({
     events: result.results.map((row) => ({
       id: row.id,
+      employeeEmail: row.employee_email,
       employeeName: row.display_name ?? "Nhân viên",
       action: row.action,
       recordedAt: row.effective_at,
@@ -96,11 +98,12 @@ export async function GET(request: Request) {
         distance: row.distance_from_store_meters,
       },
     })),
+    actorEmail: auth.actor.email,
   });
 }
 
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
+  const auth = await requireApiUser(["owner", "manager"]);
   if (!auth.actor) return auth.response;
   const body = await readObject(request, { eventId: "string", sessionId: "string", action: "string", attendanceAction: "string", adjustedTime: "string", reason: "string", decision: "string", reviewerNote: "string", expectedRevision: "number" });
   const db = await ensureDatabase();

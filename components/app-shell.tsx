@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Bell,
   CalendarDays,
@@ -52,7 +52,7 @@ const staffShiftNav = [
 ];
 
 const staffTaskNav = [
-  { href: "/app/checklists", label: "Checklist ca", icon: CheckSquare2 },
+  { href: "/app/checklists", label: "Checklist hôm nay", icon: CheckSquare2 },
   { href: "/app/handovers", label: "Bàn giao ca", icon: HandHelping },
   { href: "/app/issues", label: "Báo sự cố quầy", icon: TriangleAlert },
   { href: "/app/requests", label: "Yêu cầu cá nhân", icon: UserRound },
@@ -61,26 +61,26 @@ const staffTaskNav = [
 // Owner & Manager Navigation: 3-Level Progressive Disclosure
 // Level 1: Daily Operations (Core day-to-day)
 const ownerDailyNav = [
-  { href: "/app", label: "Tổng quan quán", icon: LayoutDashboard, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/team", label: "Đội ngũ nhân sự", icon: UsersRound, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["system_admin", "owner", "manager", "team_lead"] },
-  { href: "/app/schedule", label: "Lịch làm việc", icon: CalendarDays, roles: ["system_admin", "owner", "manager", "team_lead"] },
-  { href: "/app/orders", label: "Đơn hàng online", icon: ShoppingBag, roles: ["system_admin", "owner", "manager"] },
+  { href: "/app", label: "Tổng quan quán", icon: LayoutDashboard, roles: ["owner", "manager"] },
+  { href: "/app/team", label: "Đội ngũ nhân sự", icon: UsersRound, roles: ["owner", "manager"] },
+  { href: "/app/attendance/review", label: "Duyệt chấm công", icon: ShieldCheck, roles: ["owner", "manager"] },
+  { href: "/app/schedule", label: "Lịch làm việc", icon: CalendarDays, roles: ["owner", "manager", "team_lead"] },
+  { href: "/app/orders", label: "Đơn hàng online", icon: ShoppingBag, roles: ["owner", "manager"] },
 ];
 
 // Level 2: Management & Oversight (Periodic check)
 const ownerManagementNav = [
-  { href: "/app/reports/attendance", label: "Báo cáo & Lương", icon: FileBarChart, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/requests", label: "Yêu cầu nhân sự", icon: UserRound, roles: ["system_admin", "owner", "manager", "team_lead"] },
-  { href: "/app/checklists", label: "Checklist vận hành", icon: CheckSquare2, roles: ["system_admin", "owner", "manager", "team_lead"] },
-  { href: "/app/issues", label: "Sự cố & Bàn giao", icon: TriangleAlert, roles: ["system_admin", "owner", "manager", "team_lead"] },
+  { href: "/app/reports/attendance", label: "Báo cáo & Lương", icon: FileBarChart, roles: ["owner", "manager"] },
+  { href: "/app/requests", label: "Yêu cầu nhân sự", icon: UserRound, roles: ["owner", "manager", "team_lead"] },
+  { href: "/app/checklists", label: "Checklist vận hành", icon: CheckSquare2, roles: ["owner", "manager", "team_lead"] },
+  { href: "/app/issues", label: "Sự cố & Bàn giao", icon: TriangleAlert, roles: ["owner", "manager", "team_lead"] },
 ];
 
 // Level 3: Administration & Settings (Less frequent, safely grouped)
 const ownerAdminNav = [
-  { href: "/app/settings/store", label: "Thiết lập cửa hàng", icon: Settings, roles: ["system_admin", "owner"] },
-  { href: "/app/admin/accounts", label: "Quản trị tài khoản", icon: ShieldPlus, roles: ["system_admin", "owner", "manager"] },
-  { href: "/app/audit", label: "Nhật ký kiểm toán", icon: FileBarChart, roles: ["system_admin", "owner"] },
+  { href: "/app/settings/store", label: "Thiết lập cửa hàng", icon: Settings, roles: ["owner"] },
+  { href: "/app/admin/accounts", label: "Quản trị tài khoản", icon: ShieldPlus, roles: ["owner", "manager"] },
+  { href: "/app/audit", label: "Nhật ký kiểm toán", icon: FileBarChart, roles: ["owner"] },
 ];
 
 function isActive(pathname: string, href: string, isStaff: boolean = false) {
@@ -102,6 +102,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();
+  const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
   const [showProfile, setShowProfile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [todaySnapshot, setTodaySnapshot] = useState<TodaySnapshot | null>(null);
@@ -112,7 +113,8 @@ export function AppShell({
   const mobileDrawerRef = useRef<HTMLElement>(null);
   const mobileDrawerCloseButtonRef = useRef<HTMLButtonElement>(null);
 
-  const isStaff = user.role === "employee";
+  const isStaff = user.role === "employee" || user.role === "team_lead";
+  const isTechnicalAdmin = user.role === "system_admin";
   const hasStickyCta = (isStaff && (pathname === "/app" || pathname.startsWith("/app/today"))) || pathname === "/app/attendance";
   const [ownerMetrics, setOwnerMetrics] = useState<OwnerDashboardSnapshot | null>(null);
 
@@ -124,7 +126,7 @@ export function AppShell({
         .then((payload) => payload && setTodaySnapshot(payload as TodaySnapshot))
         .catch(() => {});
 
-      if (!isStaff) {
+      if (!isStaff && !isTechnicalAdmin) {
         void fetch("/api/dashboard", { cache: "no-store", signal: controller.signal })
           .then(async (response) => (response.ok ? (await response.json()) as { metrics?: OwnerDashboardSnapshot } : null))
           .then((payload) => payload?.metrics && setOwnerMetrics(payload.metrics))
@@ -151,7 +153,7 @@ export function AppShell({
       controller.abort();
       window.removeEventListener("focus", loadShellData);
     };
-  }, [isStaff]);
+  }, [isStaff, isTechnicalAdmin]);
 
   useEffect(() => {
     const closeFrame = window.requestAnimationFrame(() => setMobileNavOpen(false));
@@ -220,11 +222,13 @@ export function AppShell({
   const filterNav = <T extends { roles?: string[] }>(items: T[]) =>
     items.filter((item) => !item.roles || item.roles.includes(user.role));
 
-  const visibleDaily = filterNav(ownerDailyNav);
-  const visibleManagement = filterNav(ownerManagementNav);
-  const visibleAdmin = filterNav(ownerAdminNav);
+  const visibleDaily = isTechnicalAdmin ? [] : filterNav(ownerDailyNav);
+  const visibleManagement = isTechnicalAdmin ? [] : filterNav(ownerManagementNav);
+  const visibleAdmin = isTechnicalAdmin ? [] : filterNav(ownerAdminNav);
 
-  const visibleMobile = isStaff
+  const visibleMobile = isTechnicalAdmin
+    ? [{ href: "/app/profile", label: "Tài khoản", icon: UserRound }]
+    : isStaff
     ? [
         { href: "/app/today", label: "Hôm nay", icon: Coffee },
         { href: "/app/attendance", label: "Chấm công", icon: Clock3 },
@@ -254,12 +258,15 @@ export function AppShell({
       form.action = "/auth/signout";
       document.body.appendChild(form);
       form.submit();
-    }, 560);
+    }, 950);
   };
 
   return (
     <LoopyToastProvider>
-      <LoopyPreloader visible={preloaderVariant !== null} />
+      <LoopyPreloader
+        visible={preloaderVariant !== null}
+        variant={preloaderVariant ?? undefined}
+      />
       <div className="app-frame">
         <aside className="app-sidebar">
           {/* Brand logo redirects to Landing Page (/) */}
@@ -272,7 +279,14 @@ export function AppShell({
             <span>LoopiCafe</span>
           </Link>
 
-          {isStaff ? (
+          {isTechnicalAdmin ? (
+            <section className="mobile-quick-panel" aria-label="Tài khoản quản trị hệ thống">
+              <Link href="/app/profile" className="mobile-quick-stat">
+                <span>Phạm vi tài khoản</span>
+                <strong>Kỹ thuật hệ thống</strong>
+              </Link>
+            </section>
+          ) : isStaff ? (
             <>
               <span className="nav-section-label">Ca làm & Chấm công</span>
               <nav className="app-nav" aria-label="Điều hướng ca làm">
@@ -356,6 +370,7 @@ export function AppShell({
             type="button"
             className="sidebar-bottom w-full cursor-pointer text-left hover:bg-[#fff2f4] transition p-2 rounded-xl"
             onClick={() => setShowProfile(true)}
+            disabled={!hydrated}
             title="Xem thông tin tài khoản"
           >
             <span className="avatar">{initials}</span>
@@ -377,7 +392,7 @@ export function AppShell({
                   <Bell size={18} />
                   {unreadNotificationCount > 0 && <span aria-hidden="true" />}
                 </Link>
-                <button onClick={() => setShowProfile(true)} className="avatar-button" aria-label="Mở hồ sơ cá nhân">
+                <button disabled={!hydrated} onClick={() => setShowProfile(true)} className="avatar-button" aria-label="Mở hồ sơ cá nhân">
                   <span className="avatar">{initials}</span>
                 </button>
                 <button
@@ -411,6 +426,7 @@ export function AppShell({
               </Link>
               <button
                 onClick={() => setShowProfile(true)}
+                disabled={!hydrated}
                 className="avatar-button focus:outline-none"
                 title="Thông tin tài khoản"
               >
@@ -759,11 +775,15 @@ function subtitleForPath(pathname: string, today: TodaySnapshot | null) {
     return today?.attendance?.opened_at ? "Bạn đang trong ca làm việc" : "Bạn chưa bắt đầu ca hôm nay";
   }
   if (pathname.startsWith("/app/checklists")) {
-    return today ? `Bạn đã hoàn tất ${today.checklist.done}/${today.checklist.total} công việc` : "Theo dõi checklist trong ca";
+    return today ? `Bạn đã hoàn tất ${today.checklist.done}/${today.checklist.total} công việc hôm nay` : "Theo dõi checklist vận hành hôm nay";
   }
   if (pathname.startsWith("/app/issues")) return "Báo nhanh và theo dõi sự cố tại cửa hàng";
   if (pathname.startsWith("/app/orders")) return "Theo dõi đơn mới và tiến độ pha chế theo thời gian thực";
   return "LoopiCafe · Cửa hàng chính";
+}
+
+function subscribeHydration() {
+  return () => {};
 }
 
 function formatShellTime(value: string) {
@@ -779,6 +799,6 @@ function roleLabel(role: LoopiUser["role"]) {
   if (role === "system_admin") return "Quản trị hệ thống";
   if (role === "owner") return "Chủ cửa hàng";
   if (role === "manager") return "Quản lý";
-  if (role === "team_lead") return "Trưởng nhóm";
+  if (role === "team_lead") return "Trưởng ca";
   return "Nhân viên";
 }

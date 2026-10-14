@@ -1,20 +1,22 @@
+import Image from "next/image";
+
 type LoopyMarkProps = {
-  size?: "small" | "medium" | "hero";
+  size?: "small" | "medium" | "login" | "hero";
   mood?: "happy" | "alert";
 };
 
 export function LoopyMark({ size = "medium", mood = "happy" }: LoopyMarkProps) {
   return (
-    <span className={`loopy loopy-${size} loopy-${mood}`} aria-hidden="true">
-      <span className="loopy-ear loopy-ear-left" />
-      <span className="loopy-ear loopy-ear-right" />
-      <span className="loopy-face">
-        <span className="loopy-eye loopy-eye-left" />
-        <span className="loopy-eye loopy-eye-right" />
-        <span className="loopy-cheek loopy-cheek-left" />
-        <span className="loopy-cheek loopy-cheek-right" />
-        <span className="loopy-mouth" />
-      </span>
+    <span className={`loopy loopy-${size}`} data-mood={mood} aria-hidden="true">
+      <Image
+        className="loopy-logo-image"
+        src="/brand/loopicafe-logo.webp"
+        alt=""
+        width={512}
+        height={512}
+        sizes={size === "hero" ? "230px" : size === "login" ? "104px" : size === "medium" ? "64px" : "34px"}
+        unoptimized
+      />
     </span>
   );
 }

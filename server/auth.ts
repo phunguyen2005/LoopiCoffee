@@ -85,6 +85,9 @@ export async function requireApiUser(roles?: ActorRole[], options?: AuthOptions)
   if (actor.mustChangePassword) {
     return { actor: null, response: Response.json({ error: "Hãy đổi mật khẩu tạm trước khi tiếp tục.", code: "password_change_required" }, { status: 403 }) };
   }
+  if (actor.role === "system_admin" && !roles?.includes("system_admin")) {
+    return { actor: null, response: Response.json({ error: "Tài khoản quản trị kỹ thuật không có quyền truy cập nghiệp vụ cửa hàng.", code: "system_admin_blocked" }, { status: 403 }) };
+  }
   if (roles && !roles.includes(actor.role)) {
     return { actor: null, response: Response.json({ error: "Bạn không có quyền thực hiện thao tác này." }, { status: 403 }) };
   }

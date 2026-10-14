@@ -23,8 +23,8 @@ export default function ConfirmPage() {
         if (result.error) throw new Error("Liên kết đã hết hạn hoặc không hợp lệ.");
       }
       const response = await fetch("/api/auth/activate", { method: "POST" });
-      const result = await readJson<{ mustChangePassword?: boolean }>(response);
-      return recovery || result.mustChangePassword ? "/auth/change-password" : "/app/today";
+      const result = await readJson<{ mustChangePassword?: boolean; landingPath?: string }>(response);
+      return recovery || result.mustChangePassword ? "/auth/change-password" : result.landingPath ?? "/app";
     }
     confirmation.current ??= confirm();
     void confirmation.current.then((destination) => {

@@ -12,6 +12,7 @@ import {
   addStoreDays,
   formatDateVN,
   formatTime,
+  formatShiftRange,
   getShiftStatus,
   readJson,
   startOfStoreWeek,
@@ -46,6 +47,8 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
   const [successMsg, setSuccessMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [editingShift, setEditingShift] = useState<ScheduleShift | null>(null);
+  const [isDraft, setIsDraft] = useState(false);
+  const [adjustmentReason, setAdjustmentReason] = useState("");
 
   const scheduleSeqRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -212,35 +215,70 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
       payloadBody = {
         employeeEmail,
         batch: batchShifts,
+        status: isDraft ? "draft" : "published",
       };
     }
 
     try {
       setBusy(true);
+      const isAdjust = Boolean(editingShift && adjustmentReason.trim().length >= 5);
+      const requestBody = editingShift
+        ? {
+            ...payloadBody,
+            id: editingShift.id,
+            action: isAdjust ? "adjust" : "edit",
+            reason: isAdjust ? adjustmentReason.trim() : undefined,
+            expectedRevision: editingShift.revision,
+          }
+        : {
+            ...payloadBody,
+            status: isDraft ? "draft" : "published",
+          };
+
       const response = await fetch("/api/shifts", {
         method: editingShift ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(editingShift ? { ...payloadBody, id: editingShift.id, action: "edit", expectedRevision: editingShift.revision } : payloadBody),
+        body: JSON.stringify(requestBody),
       });
       const payload = await readJson<{ message?: string; error?: string }>(response);
       if (response.ok) {
         setShowForm(false);
         setEditingShift(null);
+        setAdjustmentReason("");
+        setIsDraft(false);
         setError("");
-        setSuccessMsg(payload.message ?? "Đã thêm ca vào lịch thành công!");
+        setSuccessMsg(payload.message ?? "Đã lưu ca vào lịch thành công!");
         await refresh();
       } else {
-        setError(payload.error ?? "Không thể tạo ca.");
+        setError(payload.error ?? "Không thể lưu ca.");
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Không thể tạo ca.");
+      setError(cause instanceof Error ? cause.message : "Không thể lưu ca.");
     } finally { setBusy(false); }
   }
 
   function editShift(shift: ScheduleShift) {
     const localInput = (value: string) => new Date(Date.parse(value) + 7 * 60 * 60_000).toISOString().slice(0, 16);
     setEditingShift(shift); setScheduleMode("single"); setEmployeeEmail(shift.employee_email); setRoleLabel(shift.role_label); setIsLead(Boolean(shift.is_shift_lead));
-    setStartsAt(localInput(shift.starts_at)); setEndsAt(localInput(shift.ends_at)); setShowForm(true); setError("");
+    setStartsAt(localInput(shift.starts_at)); setEndsAt(localInput(shift.ends_at)); setShowForm(true); setError(""); setAdjustmentReason("");
+  }
+
+  async function publishShift(shift: ScheduleShift) {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      await readJson(await fetch("/api/shifts", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: shift.id, action: "publish", expectedRevision: shift.revision }),
+      }));
+      setSuccessMsg("Đã xuất bản ca và gửi thông báo cho nhân viên.");
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không thể xuất bản ca.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function cancelShift(shift: ScheduleShift) {
@@ -485,6 +523,32 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
               </label>
             </div>
 
+            {!editingShift ? (
+              <div className="field full" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  id="is-draft"
+                  type="checkbox"
+                  checked={isDraft}
+                  onChange={(e) => setIsDraft(e.target.checked)}
+                  style={{ width: 18, height: 18 }}
+                />
+                <label htmlFor="is-draft" style={{ margin: 0, cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+                  Lưu dạng Ca nháp (Draft - chỉ Quản lý/Chủ quán thấy trước khi xuất bản)
+                </label>
+              </div>
+            ) : (
+              <div className="field full">
+                <label htmlFor="adjust-reason">Lý do điều chỉnh (khi ca bắt đầu trong vòng 12 giờ)</label>
+                <textarea
+                  id="adjust-reason"
+                  rows={2}
+                  value={adjustmentReason}
+                  onChange={(e) => setAdjustmentReason(e.target.value)}
+                  placeholder="Nhập lý do điều chỉnh nếu ca cận giờ (tối thiểu 5 ký tự)..."
+                />
+              </div>
+            )}
+
             <div className="form-actions">
               <button className="button button-compact" type="submit" disabled={busy}>
                 {scheduleMode === "weekly" ? `Thêm ${selectedDays.length} ca vào lịch` : "Thêm ca vào lịch"}
@@ -560,7 +624,7 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
                                 }}
                               >
                                 <strong>{s.role_label}</strong>
-                                <div>{formatTime(s.starts_at)}–{formatTime(s.ends_at)}</div>
+                                <div>{formatShiftRange(s.starts_at, s.ends_at)}</div>
                               </div>
                             ))}
                             {canManage && emp.email !== "demo" && (
@@ -602,12 +666,23 @@ export function ScheduleManagerView({ canManage = false }: { canManage?: boolean
                                 <span>{shift.role_label}{shift.is_shift_lead ? " · Trưởng ca" : ""}</span>
                                 <strong>{shift.employee_name}</strong>
                               </div>
+                              {shift.status === "draft" && <span className="badge warning">Bản nháp</span>}
                               <span className={`badge ${status.badge}`}>{status.label}</span>
                             </div>
                             {shift.approved_leave_request_id && <p className="warning-text">Nghỉ được duyệt · cần bố trí người thay.</p>}
-                            {canManage && !shift.approved_leave_request_id && <div className="schedule-shift-actions"><button className="button-secondary button-compact" disabled={busy} onClick={() => editShift(shift)}>Sửa ca</button><button className="button-secondary button-compact" disabled={busy} onClick={() => void cancelShift(shift)}>Hủy ca</button></div>}
+                            {canManage && !shift.approved_leave_request_id && (
+                              <div className="schedule-shift-actions">
+                                {shift.status === "draft" && (
+                                  <button className="button button-compact" disabled={busy} onClick={() => void publishShift(shift)}>
+                                    Xuất bản
+                                  </button>
+                                )}
+                                <button className="button-secondary button-compact" disabled={busy} onClick={() => editShift(shift)}>Sửa ca</button>
+                                <button className="button-secondary button-compact" disabled={busy} onClick={() => void cancelShift(shift)}>Hủy ca</button>
+                              </div>
+                            )}
                             <div className="schedule-shift-meta">
-                              <span><Clock3 size={14} /> {formatTime(shift.starts_at)} — {formatTime(shift.ends_at)}</span>
+                              <span><Clock3 size={14} /> {formatShiftRange(shift.starts_at, shift.ends_at)}</span>
                               <span><MapPin size={14} /> Cửa hàng chính</span>
                             </div>
                             {!canManage && (

@@ -1,62 +1,93 @@
-# Business Rules — LoopiCafe
+# Quy tắc nghiệp vụ
 
-> Đây là **quy tắc mục tiêu/câu hỏi xác minh**, không khẳng định đã có trong code. Những điểm còn mở phải xin quyết định từ chủ dự án trước khi đổi logic.
+Cập nhật: 2026-10-13. Quy tắc nền kế thừa phạm vi dự án; hiện trạng triển khai được tách tại [implementation-status](implementation-status.md).
+Các quyết định `DEC-001..009` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
 
-## Vai trò
+## Phạm vi và thuật ngữ
 
-- OWNER: quản lý toàn bộ cửa hàng; không được xóa/vô hiệu hóa OWNER cuối cùng.
-- MANAGER: phân ca, duyệt yêu cầu, kiểm tra vận hành và báo cáo trong phạm vi được cấp.
-- STAFF: chỉ thao tác dữ liệu được cấp và dữ liệu của mình.
-- CUSTOMER: menu, đặt món, theo dõi đơn bằng thông tin bí mật riêng của đơn.
+- BR-001: một cửa hàng; phân ca/chấm công là luồng cốt lõi. Checklist, sự cố, bàn giao hỗ trợ vận hành. Lương và đặt món có tiêu chí nghiệm thu riêng.
+- BR-002: không thêm chuỗi, payment gateway, giao hàng, kho/kế toán chuyên sâu.
+- Ca kế hoạch: thời gian được phân; phiên công: khoảng check-in/out; sự kiện gốc: bằng chứng ghi nhận; điều chỉnh: hiệu chỉnh có truy vết.
+- Giờ ghi nhận, giờ được duyệt và giờ trả lương phải phân biệt. Không gọi phiên còn thiếu checkout là công hoàn tất.
+- Quyền hành động theo [permissions](permissions.md); CUSTOMER là khách không tài khoản, không phải membership nhân sự.
 
-## Phân ca và yêu cầu
+## Vai trò và nguyên tắc phê duyệt
 
-- Xác minh chính sách ca trùng, ca qua ngày, chỉnh sửa ca đã bắt đầu, đổi lịch sau khi chấm công.
-- Đơn nghỉ/điều chỉnh cần trạng thái rõ ràng, người duyệt, thời điểm và lý do; ngăn duyệt lặp hoặc tự duyệt nếu chính sách cấm.
-- Mọi sửa đổi ảnh hưởng công/lương phải truy vết được.
-- **Ý nghĩa nghiệp vụ khi phê duyệt yêu cầu (BIZ-002)**:
-  - Yêu cầu nghỉ một ca (`leave`): Khi được phê duyệt, hệ thống tự động cập nhật ca làm việc tương ứng sang trạng thái nghỉ được duyệt (`approved_leave_request_id`), giảm giờ công kế hoạch và không tính vắng mặt.
-  - Đề nghị đổi ca (`swap`) và đề nghị sửa chấm công (`correction`): Khi được phê duyệt, hệ thống ghi nhận sự chấp thuận về mặt chủ trương (`approved in principle`) nhưng **không tự động biến đổi dữ liệu ca làm việc hay dữ liệu chấm công gốc**. Thông báo và phản hồi API ghi rõ cảnh báo Quản lý phải chủ động thực hiện điều chỉnh thủ công tương ứng trên màn hình Lịch làm việc (Schedule) hoặc Chấm công (Attendance). Giao diện hiển thị huy hiệu trạng thái phân biệt rõ ràng giữa nghỉ ca đã áp dụng và đề nghị đổi ca/sửa công đang chờ quản lý thao tác.
+- ROLE-001: OWNER và MANAGER quản lý nghiệp vụ theo scope; `team_lead` là Trưởng ca vận hành, không phải MANAGER thu nhỏ; `system_admin` là tài khoản kỹ thuật không có quyền nghiệp vụ.
+- ROLE-002: không actor nào tự duyệt request của mình. Employee/team lead do manager/owner khác duyệt; manager do owner khác duyệt.
+- ROLE-003: sole OWNER chỉ được sửa công của chính mình qua luồng ngoại lệ có before/after, lý do, high-priority audit và báo cáo đối soát; không được giả là phê duyệt độc lập.
+- ROLE-004: team lead chỉ xử lý swap của cấp dưới, checklist/bàn giao/sự cố theo ca; không duyệt nghỉ, sửa công, xem ảnh/GPS, chốt lương, quản lý tài khoản/cấu hình/đơn hàng.
+
+## Lịch và yêu cầu
+
+- SCH-001: bắt đầu < kết thúc, tối đa 24 giờ; hỗ trợ ca qua ngày; nhân viên phải thuộc phạm vi được cấp. Ngăn ca chồng nhau, kể cả ghi đồng thời.
+- SCH-002: ca có `draft → published → completed/cancelled`. Draft chỉ OWNER/MANAGER thấy, không thông báo, không hiện cho nhân viên và không dùng để chấm công.
+- SCH-003: publish phải kiểm tra active membership, overlap và revision. Tạo nhiều ca phải có kết quả rõ; không thông báo thành công toàn bộ nếu chỉ ghi một phần.
+- SCH-004: sửa/hủy trực tiếp chỉ khi còn ít nhất 12 giờ trước ca và chưa có công, nghỉ duyệt hoặc kỳ khóa. Sau cut-off phải qua điều chỉnh có lý do, tác động, notification và audit.
+- SCH-005: MVP không áp một số người tối thiểu chung; cảnh báo thiếu người không được tự biến thành hard rule chưa cấu hình.
+- REQ-001: quyết định yêu cầu chỉ từ pending; lưu người duyệt/thời điểm và audit, tránh duyệt lặp.
+- REQ-002: nghỉ một ca có liên kết hợp lệ, khi duyệt phải đánh dấu nghỉ được duyệt, loại khỏi vắng mặt và cảnh báo cần người thay; không tự chọn người thay.
+- REQ-003: swap dùng `pending → approved_pending_apply → applied`; “Duyệt & áp dụng” phải nguyên tử cùng đổi người của hai ca, kiểm revision/overlap, notification và audit. Chưa `applied` thì UI không được nói lịch đã đổi.
+- REQ-004: xin nghỉ chỉ theo toàn bộ một ca trong MVP. Requester được rút khi còn pending; sau quyết định/applied phải tạo yêu cầu hoặc điều chỉnh mới.
+- REQ-005: correction được duyệt tạo bản ghi append-only, không sửa đè event gốc.
 
 ## Chấm công
 
-- Thời gian check-in/out lấy từ server; không lấy đồng hồ thiết bị làm nguồn chân lý.
-- Ảnh và vị trí chỉ thu thập khi người dùng chủ động thao tác và được thông báo mục đích.
-- Thiếu quyền camera/location phải có luồng giải trình, không âm thầm giả lập dữ liệu.
-- Khoảng cách địa lý chỉ là chỉ báo để quản lý xem xét, không tự khẳng định gian lận.
-- Phải quyết định và test: check-in trùng, check-out không có check-in, ca qua ngày, mất mạng, retry, chỉnh sửa thủ công, timezone và DST ngoài vùng hiện tại.
-- Có chính sách lưu/xóa ảnh và vị trí, quyền truy cập theo vai trò.
+- ATT-001: server là nguồn thời gian chính thức. Lưu UTC nhất quán, tính ngày/tháng theo Asia/Ho_Chi_Minh.
+- ATT-002: sự kiện gốc bất biến; sửa công phải lưu effective time, lý do, actor, thời điểm, liên kết nguồn và revision.
+- ATT-003: chặn phiên mở trùng và retry gây sự kiện trùng; phản hồi mất sau commit phải có cách truy vấn/retry cùng khóa.
+- ATT-004: ảnh/location chỉ lấy sau thao tác chủ động và thông báo mục đích. Thiếu quyền thiết bị có giải trình; không giả lập bằng chứng.
+- ATT-005: GPS chỉ cung cấp thông tin; không tự kết luận gian lận hoặc tự loại công chỉ vì khoảng cách/độ chính xác.
+- ATT-006: dung sai muộn/sớm là 5 phút; ngoài ngưỡng tạo exception. Biên ghi nhận mặc định là check-in sớm 15 phút/check-out muộn 15 phút; phần vượt biên chưa được tính nếu chưa duyệt tăng ca.
+- ATT-007: R2 thành công nhưng D1 thất bại cần cleanup/retry; trạng thái UI phải đúng kết quả lưu thực.
+- ATT-008: tăng ca cần số phút, lý do, actor và audit. Không tự trừ nghỉ giữa ca; muốn loại thời gian phải có correction được duyệt.
+- ATT-009: quên checkout tự đóng tại giờ kết thúc ca + 4 giờ với `MISSING_CHECKOUT`; giữ giờ ghi nhận nhưng giờ được duyệt/tính lương bằng 0 đến khi correction được duyệt.
 
 ## Checklist, sự cố, bàn giao
 
-- **Checklist (BIZ-003)**: Thao tác checklist gắn với ngày làm việc (Asia/Ho_Chi_Minh business date) thống nhất cho mỗi request, có người hoàn thành, thời điểm và nhật ký kiểm toán (audit log). Execution upsert, audit metadata và response payload luôn dùng chung một giá trị ngày nghiệp vụ, loại bỏ sai lệch qua ranh giới nửa đêm 00:00.
-- **Sự cố (BIZ-001)**: Tuân thủ nghiêm ngặt máy trạng thái đơn hướng: `open` → `acknowledged` → `resolved` → `closed`. Nghiêm cấm nhảy cóc trạng thái, hồi quy lùi trạng thái hoặc mở lại sự cố đã đóng. Cập nhật trạng thái và ghi audit log phải thực hiện nguyên tử (atomic) trong cùng một batch; trả về 409 Conflict nếu phát hiện xung đột trạng thái hoặc dữ liệu cũ.
-- **Bàn giao ca — Phạm vi và ranh giới vận hành MVP (BIZ-004)**:
-  - *Phạm vi MVP hiện tại*: Bàn giao hoạt động ở cấp độ cửa hàng (`store-level`), lưu giữ ghi chú vận hành theo thứ tự thời gian (`created_at DESC`, hiển thị tối đa 30 bản ghi gần nhất). Bất kỳ nhân sự nào đang trong ca làm việc đều có thể tạo bản ghi bàn giao cho cửa hàng.
-  - *Dấu vết và toàn vẹn dữ liệu*: Mọi bản ghi bàn giao đều gắn với định danh người tạo (`author_email`), cửa hàng (`store_id`), cờ chú ý của quản lý (`manager_attention`) và ghi nhận audit log nguyên tử (`handover.created`). Dữ liệu bàn giao được bảo toàn vĩnh viễn, không hỗ trợ xóa hoặc ghi đè tùy tiện.
-  - *Ranh giới mở rộng (Post-MVP)*: Nếu quy trình vận hành chuỗi hoặc đa ca phức tạp đòi hỏi liên kết trực tiếp với từng ca làm (`shift_id`) hoặc quy trình xác nhận 1-1 bắt buộc giữa người giao và người nhận (`recipient_email`, `acknowledged_at`), hệ thống sẽ nâng cấp schema và API theo lộ trình tương thích ngược (migration bảo toàn toàn bộ dữ liệu bàn giao cấp cửa hàng hiện có).
-- Không cho người không có quyền sửa/xóa bằng chứng của người khác.
+- OPS-001: checklist gồm `daily_routine` theo business date và `shift_routine` gắn shift. Checklist ca đêm đi theo shift, không tách tại 00:00.
+- OPS-002: sự cố hiện hành: open → acknowledged → resolved → closed. Server kiểm tra chuyển trạng thái; update và audit nguyên tử. Mở lại/nhảy bước là thay đổi chính sách cần duyệt.
+- OPS-003: bàn giao có tác giả, thời gian, summary, manager_attention và người/ca nhận. Người nhận phải acknowledge trước khi hoàn tất check-in; MANAGER/OWNER chỉ bypass bằng lý do và audit trong tình huống khẩn cấp/lỗi hệ thống.
+- OPS-004: bảo toàn lịch sử vận hành; sửa/xóa cần chính sách và truy vết. Không đồng nhất lịch sử bất biến với lưu mọi dữ liệu cá nhân vĩnh viễn.
+- OPS-005: checklist ca chưa hoàn thành phải hiện trước bàn giao và không được tự hoàn thành khi ca kết thúc.
 
-## Báo cáo công và lương
+## Công và lương
 
-- Xác định chính sách giờ công, nghỉ giữa ca, làm thêm, làm tròn, ca đêm và thay đổi đơn giá theo thời gian **trước khi triển khai phép tính**.
-- Snapshot kỳ lương phải lưu dữ liệu tính toán, thời điểm khóa, người khóa và version; thay đổi dữ liệu nguồn sau khi khóa không được âm thầm sửa kỳ đã chốt.
-- CSV cần chống spreadsheet formula injection, xác thực quyền export và ghi nhận phạm vi xuất.
-- Không tuyên bố tính lương phù hợp quy định kế toán/pháp luật nếu chưa được xác minh.
+- PAY-001: tổng hợp lương giờ từ giờ được duyệt đã clip theo ca/tăng ca và làm tròn xuống block 15 phút, dùng đơn giá có hiệu lực, cộng/trừ điều chỉnh có lý do. Không tự thêm thuế, bảo hiểm hoặc hệ số luật định.
+- PAY-002: cắt khoảng công tại ranh giới kỳ; không tính toàn bộ ca qua tháng vào cả hai tháng. Nhân viên thôi việc không mất công đã làm.
+- PAY-003: khóa kỳ lưu snapshot/version, người khóa và thời điểm. Dữ liệu nhân viên thay đổi không được viết lại bản đã khóa.
+- PAY-004: mở lại là hành động có quyền/audit; mỗi đoạn công dùng rate history có hiệu lực tại thời điểm phát sinh. Rate đổi giữa kỳ phải chia đoạn, không dùng giá hiện tại cho quá khứ.
+- PAY-005: tổng lương cuối kỳ theo nhân viên làm tròn số học đến 1.000 VND, phần dư từ 500 VND làm tròn lên; không làm tròn tiền từng event.
+- PAY-006: không chốt khi còn dữ liệu không đủ điều kiện. Legacy thiếu rate history phải được OWNER khôi phục có căn cứ/audit, không fallback im lặng.
+- Xuất file phải kiểm tra quyền, chống formula injection và phản ánh đúng phạm vi/kỳ/version.
 
-## Menu và đơn hàng
+## Đặt món
 
-- Giá, tên món và tổng tiền của đơn phải được server xác nhận và snapshot tại thời điểm đặt.
-- Món ngừng bán không thể được đặt mới; thay đổi menu sau đó không làm thay đổi đơn cũ.
-- Luồng chuẩn: `PENDING → ACCEPTED → PREPARING → READY → COMPLETED`.
-- Cần xác định quy tắc `CANCELLED`/`REJECTED` và ai có quyền chuyển trạng thái; không tự thêm nếu chưa thống nhất.
-- Chặn chuyển trạng thái trái phép, xử lý retry và double-submit để không tạo đơn trùng.
+- ORD-001: server tính giá từ món/options hợp lệ, lưu snapshot; không tin tổng tiền client.
+- ORD-002: retry cùng khóa/cùng payload trả cùng kết quả; khóa cũ với payload khác phải conflict.
+- ORD-003: quyền xem đơn khách dựa trên receipt secret khó đoán của một đơn; không tra lịch sử khách chỉ bằng điện thoại.
+- ORD-004: luồng chính pending → accepted → preparing → ready → completed. Role nội bộ được cấp quyền có thể chuyển sang cancelled từ pending/accepted/preparing/ready; CUSTOMER không tự hủy sau khi gửi.
+- ORD-005: completed nghĩa hoàn tất giao/nhận, không chứng minh tiền đã thu. Không gọi tổng giá trị đơn là doanh thu thực thu khi không có dữ liệu thanh toán.
+- ORD-006: giá/món thay đổi trong giỏ phải xử lý conflict và thông tin xác nhận rõ; không ghi đè lịch sử đơn.
+- ORD-007: hủy từ preparing/ready bắt buộc reason code `customer_abandoned`, `item_preparation_error` hoặc `store_incident`; ghi status history và đưa vào báo cáo hao hụt riêng, không hạch toán như doanh thu thực thu.
 
-## Các quyết định cần chủ dự án xác nhận
+## Lưu trữ và phát hành
 
-1. Cho phép chấm công ngoài ca hay không?
-2. Chính sách check-in muộn, check-out sớm, ca qua ngày và làm tròn công?
-3. Ai có quyền chỉnh sửa dữ liệu công và mở lại kỳ lương?
-4. Đơn hàng có cho phép hủy/từ chối và trong trạng thái nào?
-5. Thời hạn lưu ảnh, vị trí và thông tin khách hàng?
+- RET-001: ảnh/GPS tối đa 90 ngày; hết hạn chặn đọc và xóa vật lý theo job idempotent, nhưng không xóa attendance event.
+- RET-002: công/correction, payroll snapshot, audit, checklist execution, incident và handover lưu tối thiểu 3 năm theo policy append-only/truy vết.
+- RET-003: sau 180 ngày, ẩn danh tên, số điện thoại và ghi chú PII của đơn; giữ số liệu không định danh theo thời hạn vận hành công bố.
+- REL-001: pilot chỉ mở khi core E2E, integrity, Auth/RBAC, retention, mobile flow và backup/restore staging có evidence PASS tại đúng commit/môi trường.
+- REL-002: release record phải có tải dự kiến, người trực, monitoring, rollback owner, RPO/RTO được chủ dự án chấp nhận; không dùng default giả.
 
+## Ví dụ nghiệm thu
+
+| ID | Tình huống | Kết quả cần bảo toàn |
+|---|---|---|
+| EX-01 | Hai request check-in cùng nhân viên | Không tạo hai phiên mở |
+| EX-02 | Ca 31/07 23:00–01/08 01:00 giờ VN, toàn bộ được duyệt | Phân bổ 60 phút mỗi tháng |
+| EX-03 | Duyệt swap nhưng chưa cập nhật lịch | Hiển thị chờ thao tác, lịch không được giả vờ đã đổi |
+| EX-04 | Đổi tên/đơn giá sau khóa kỳ | Snapshot cũ không đổi |
+| EX-05 | Người dùng sửa đồng hồ điện thoại | recorded time vẫn từ server |
+| EX-06 | Hai người duyệt cùng yêu cầu | Một quyết định có hiệu lực, không nhân đôi side effects |
+
+Các ví dụ là tiêu chí cần kiểm chứng, không phải kết quả test đã chạy.

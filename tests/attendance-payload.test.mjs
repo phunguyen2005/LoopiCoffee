@@ -14,6 +14,7 @@ import {
 import { distanceInMeters, formatStoreTime, isCoordinate } from "../lib/attendance.ts";
 import { evaluateShiftWindow } from "../modules/attendance/domain/policy.ts";
 import { auditStatement } from "../server/audit.ts";
+import { recoverAttendanceWrite } from "../modules/attendance/application/evidence-cleanup.ts";
 
 function generateValidJpegDataUrl(width = 300, height = 300, quality = 90) {
   const raw = Buffer.alloc(width * height * 4);
@@ -117,6 +118,7 @@ test("R1: valid JPEG image capture (>64 KiB up to 2 MiB) passes JSON parsing and
     },
     "@/platform/http/errors": { apiHandler },
     "@/platform/http/input": { readObject },
+    "@/modules/attendance/application/evidence-cleanup": { recoverAttendanceWrite },
     "@/lib/evidence": {
       createServerStampedSvg,
       evidenceObjectKey,
@@ -180,6 +182,7 @@ test("R1: payloads exceeding 3 MiB at /api/attendance/actions are rejected with 
     },
     "@/platform/http/errors": { apiHandler },
     "@/platform/http/input": { readObject },
+    "@/modules/attendance/application/evidence-cleanup": { recoverAttendanceWrite },
     "@/lib/evidence": {
       createServerStampedSvg,
       evidenceObjectKey,
@@ -256,6 +259,7 @@ test("R1: non-JPEG photo payload at /api/attendance/actions is rejected downstre
     },
     "@/platform/http/errors": { apiHandler },
     "@/platform/http/input": { readObject },
+    "@/modules/attendance/application/evidence-cleanup": { recoverAttendanceWrite },
     "@/lib/evidence": {
       createServerStampedSvg,
       evidenceObjectKey,
