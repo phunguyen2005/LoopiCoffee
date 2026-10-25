@@ -15,7 +15,7 @@ Web app mobile-first quản lý vận hành một quán cà phê: phân ca, ch�
 ## Công nghệ
 
 React, Next.js-compatible routing, TypeScript, Tailwind CSS; Vinext chạy trên Cloudflare Workers.
-D1 lưu dữ liệu nghiệp vụ, Drizzle khai báo schema/migrations, R2 private lưu bằng chứng và Supabase Auth xác thực.
+D1 lưu dữ liệu nghiệp vụ, Drizzle khai báo schema/migrations, Supabase Storage private lưu bằng chứng và Supabase Auth xác thực (DEC-016). Xem [triển khai Free trên main](docs/free-production-deployment.md); không cần đăng ký R2.
 Phiên bản chính xác nằm trong package.json/package-lock.json. Không coi đây là deployment Next.js Node mặc định.
 
 ## Chạy cục bộ

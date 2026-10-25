@@ -6,7 +6,6 @@ import { rejectCrossOriginMutation } from "../platform/http/request-origin";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  EVIDENCE: R2Bucket;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {

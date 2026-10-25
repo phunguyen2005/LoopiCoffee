@@ -1,7 +1,8 @@
 import { auditStatement } from "../../../server/audit.ts";
+import type { EvidenceStorage } from "../../../platform/storage/evidence.ts";
 import { processPendingEvidenceCleanup } from "./evidence-cleanup.ts";
 
-export async function expireEvidence(db: D1Database, evidence: Pick<R2Bucket, "delete"> | undefined, now = new Date().toISOString()) {
+export async function expireEvidence(db: D1Database, evidence: Pick<EvidenceStorage, "delete"> | undefined, now = new Date().toISOString()) {
   const pendingCleanup = await processPendingEvidenceCleanup(db, evidence, now);
   // Include legacy tombstones: earlier versions marked rows without erasing them.
   const photos = await db.prepare(

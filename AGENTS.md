@@ -16,7 +16,7 @@ Với thay đổi giao diện, đọc [hệ thống thiết kế](docs/design.md
 
 ## Ràng buộc
 
-Một cửa hàng MVP/pilot; modular monolith. Giữ React, Next-compatible routes, TypeScript, Tailwind, Vinext/Cloudflare Workers, D1, Drizzle, R2 private, Supabase Auth, Node Test Runner và Playwright.
+Một cửa hàng MVP/pilot; modular monolith. Giữ React, Next-compatible routes, TypeScript, Tailwind, Vinext/Cloudflare Workers, D1, Drizzle, Supabase Storage private và Supabase Auth, Node Test Runner và Playwright. DEC-016 thay R2 để dùng gói Free; production branch là `main`.
 Giữ component hiện có; shadcn/ui là định hướng dự án, không giả định đã cài. Kiểm tra cấu hình trước khi thêm dependency.
 Không tự mở rộng chuỗi, thanh toán online, giao hàng, kho/kế toán chuyên sâu hoặc microservices.
 

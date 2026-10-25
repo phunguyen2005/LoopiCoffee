@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
-const { d1, r2 } = hostingConfig;
+const { d1 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -24,24 +24,27 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: r2
-    ? [
-        {
-          binding: r2,
-          bucket_name: "site-creator-r2",
-        },
-      ]
-    : [],
 };
 
 export default defineConfig(async ({ mode }) => {
   const localOnly = process.env.LOOPI_RUNTIME_PROFILE === "local" || process.env.LOOPI_LOCAL_ONLY === "true";
-  const envDir = localOnly ? resolve("tooling/local-runtime") : process.cwd();
+  const productionOnly = process.env.LOOPI_RUNTIME_PROFILE === "production";
+  const envDir = localOnly ? resolve("tooling/local-runtime") : productionOnly ? resolve("tooling/production-runtime") : process.cwd();
   const appEnv = loadEnv(mode, envDir, "");
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? appEnv.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? appEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? appEnv.NEXT_PUBLIC_APP_URL ?? "";
+  if (productionOnly) {
+    for (const value of [supabaseUrl, appUrl]) {
+      const url = new URL(value);
+      if (url.protocol !== "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+        throw new Error("Production requires HTTPS Supabase and application URLs.");
+      }
+    }
+    if (!supabaseAnonKey) throw new Error("Production requires the public Supabase anon key at build time.");
+  }
 
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
@@ -77,6 +80,21 @@ export default defineConfig(async ({ mode }) => {
           configPath: resolve("tooling/local-runtime/wrangler.jsonc"),
           persistState: { path: resolve(".wrangler/local-readiness") },
           inspectorPort: false as const,
+        } : process.env.LOOPI_WORKER_CONFIG ? {
+          configPath: resolve(process.env.LOOPI_WORKER_CONFIG),
+          ...(productionOnly ? {
+            config: (config) => ({ vars: {
+              ...config.vars,
+              NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+              NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+              NEXT_PUBLIC_APP_URL: appUrl,
+              APP_URL: appUrl,
+              LOOPI_RUNTIME_PROFILE: "production",
+              LOOPI_LOCAL_ONLY: "false",
+              ALLOW_DEMO_AUTH: "false",
+              ENABLE_DEMO_SEED: "false",
+            } }),
+          } : {}),
         } : { config: localBindingConfig }),
       }),
     ],

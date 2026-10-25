@@ -12,7 +12,7 @@ Cập nhật: 2026-10-17. Phạm vi: một cửa hàng, MVP/pilot.
 | Hiện trạng source | Quan sát triển khai, chưa chứng nhận runtime | [implementation-status](implementation-status.md), [permissions](permissions.md) |
 | Quyết định sản phẩm | `DEC-001..010` đã ACCEPTED; không đồng nghĩa source đã triển khai | [decision-register](decision-register.md), [implementation-status](implementation-status.md) |
 | Thiết kế và kiểm chứng | [Design](design.md) giữ quy tắc chung; [hướng dẫn màn hình](ui-ux-guidelines.md) giữ mục đích, nội dung và hành động; không khẳng định UI hiện tại đã đạt | [design](design.md), [UI/UX](ui-ux-guidelines.md), [testing](testing.md), [acceptance](acceptance-matrix.md) |
-| Vận hành | Điều kiện, trình tự, rollback, evidence | [database operations](database-operations.md), [runbook](operational-runbook.md), [admin/RBAC runbook](admin-rbac-runbook.md) |
+| Vận hành | Điều kiện, trình tự, rollback, evidence | [triển khai Free/main](free-production-deployment.md), [database operations](database-operations.md), [runbook](operational-runbook.md), [admin/RBAC runbook](admin-rbac-runbook.md) |
 | Hợp đồng API | Nguyên tắc và bản đồ nguồn, không thay OpenAPI thực thi | [API contracts](api-contracts.md) |
 | Audit | Quy tắc, prompt tái sử dụng và kết quả theo baseline | [audit index](audit/README.md) |
 | Lịch sử | Không phải yêu cầu hiện hành | [archive](archive/README.md), [portfolio](portfolio-improvement-plan.md), [readiness audit](production-readiness-audit.md) |

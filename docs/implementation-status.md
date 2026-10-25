@@ -1,5 +1,9 @@
 # Hiện trạng đối chiếu source
 
+## Cập nhật storage — 2026-10-26
+
+DEC-016: runtime đã thay R2 bằng adapter Supabase Storage private; schema D1, object keys, hash, quyền đọc, expiry và cleanup retry giữ nguyên. Local bật Storage và provision bucket loopback; build production riêng loại R2 và dùng `main`. Hướng dẫn tại [triển khai Free](free-production-deployment.md); [evidence local](verification/2026-10-26-supabase-storage.md) ghi 302 tests PASS, typecheck/lint/build và private Storage drill local. Chưa có bằng chứng upload/download/delete trên Supabase cloud, rollout cloud hoặc chuyển dữ liệu R2 thật. Các mốc dưới đây giữ nguyên baseline lịch sử.
+
 Ngày đọc: 2026-10-13. Git HEAD: 888495ba3fddf4798b80f9a1cbe4aec65c0991b8.
 Working tree sạch lúc khảo sát trước sửa docs. Phương pháp: đọc source/config chọn lọc; KHÔNG chạy app tests, browser, cloud hoặc migration trong đợt này.
 

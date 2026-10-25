@@ -201,9 +201,20 @@ Chỉ các hàng acceptance thuộc phạm vi phát hành có evidence PASS tạ
 
 **Lý do:** giảm bề mặt đặc quyền và tránh mất kiểm soát khi tài khoản kích hoạt lỗi. **Tác động:** cập nhật policy server, ghi có điều kiện, UI quản trị, test race/recovery và runbook; không cần migration schema. Triển khai production vẫn cần kiểm tra backup và smoke test Auth/D1 tại đúng môi trường.
 
+## DEC-016 — Storage private trên Supabase Free và production trên main
+
+**Trạng thái:** ACCEPTED — 2026-10-25. **Người quyết định:** chủ dự án trong phiên làm việc; chấp nhận đề xuất chuyển storage và chỉ dùng `main` cho production. Thay quyết định nền R2 private ở phạm vi lưu bằng chứng.
+
+- Chuyển upload/download/delete ảnh bằng chứng sang Supabase Storage private, cùng project Auth. Không yêu cầu đăng ký R2 có khả năng tính phí vượt quota.
+- Duy trì Workers Free, D1 Free, Supabase Free; production branch duy nhất `main`. Chấp nhận giới hạn quota/khả năng gián đoạn của Free, không tự bật gói Paid. Không suy từ sáu tài khoản thành bảo đảm dung lượng/CPU đủ hoặc miễn phí vĩnh viễn.
+- Giữ quyền `attendance.evidence.read`, resource scope, audit, hash/bytes đóng dấu server, hạn đọc tối đa 90 ngày, xóa vật lý idempotent/retry và event công bất biến. Service-role key chỉ ở server; không có quyền Storage trực tiếp cho browser hoặc public/signed URL.
+- Không đổi schema D1. Nếu có object R2 thật, phải kiểm kê/chuyển và đối chiếu key/bytes/hash trước rollout; không tự xóa dữ liệu R2. Local dùng Supabase Storage loopback với bucket private được provision cô lập.
+- Tác động: adapter storage, runtime binding, local config, test HTTP/SDK và cleanup, build production riêng. Triển khai/provider thật và migration remote cần evidence riêng theo release gate; đồng bộ source không chứng minh đã deploy.
+- Hướng dẫn và giới hạn domain/email/backup: [triển khai Free](free-production-deployment.md).
+
 ## Quyết định nền
 
-Single-store MVP, stack hiện hữu, modular monolith, timezone Việt Nam, server authorization, R2 private, Supabase Auth, không thanh toán online/giao hàng/kho chuyên sâu. Không cần xin lại các quyết định này.
+Single-store MVP, stack hiện hữu, modular monolith, timezone Việt Nam, server authorization, Supabase Storage private (DEC-016 thay R2), Supabase Auth, không thanh toán online/giao hàng/kho chuyên sâu. Không cần xin lại các quyết định này.
 
 ## Quy tắc thay đổi quyết định
 

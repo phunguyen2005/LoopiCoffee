@@ -45,6 +45,8 @@ next-env.d.ts
 *.tsbuildinfo
 /dist/
 /.wrangler/
+**/.wrangler/
+/wrangler.production.jsonc
 /outputs/
 /work/
 

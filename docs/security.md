@@ -26,13 +26,13 @@ API dữ liệu nhạy cảm mặc định private/no-store; thay cache cần re
 
 ## Ảnh, vị trí và retention
 
-R2 private; retrieval kiểm tra quyền và hạn lưu trước trả nội dung, kể cả phản hồi 304.
+Theo DEC-016, Supabase Storage private; retrieval kiểm tra quyền và hạn lưu trước trả nội dung, kể cả phản hồi 304. Chỉ server giữ service-role key; bucket bằng chứng không có policy cấp quyền trực tiếp cho anon/authenticated. Không phát public/signed URL; adapter từ chối bucket public và redirect. Xem [triển khai Free](free-production-deployment.md).
 Upload kiểm tra bytes/type/size/dimensions/cấu trúc theo threat model; thay decoder phải bảo toàn kiểm tra ảnh malformed/truncated.
 Không log ảnh, tọa độ chính xác, token, signed URL, password hoặc PII không cần thiết.
 Chỉ lấy camera/GPS sau thao tác; có thông báo và luồng giải trình.
 Ảnh và tọa độ chấm công có hạn tối đa 90 ngày. Hết hạn phải chặn đọc ngay, kể cả khi object chưa được job xóa vật lý.
 Expired access và physical deletion khác nhau; scheduler phải được vận hành và giám sát.
-Không xóa event công chỉ vì ảnh/GPS hết hạn; bảo toàn retry metadata khi R2 deletion lỗi.
+Không xóa event công chỉ vì ảnh/GPS hết hạn; bảo toàn retry metadata khi Supabase Storage deletion lỗi.
 Attendance/correction, payroll snapshot, audit và lịch sử vận hành lưu tối thiểu 3 năm. Sau 180 ngày phải ẩn danh tên, điện thoại và ghi chú PII của customer order; không log giá trị trước/sau khi mask.
 Restore từ backup phải áp lại expiry/anonymization trước khi cấp quyền truy cập thông thường; backup không được dùng để né retention.
 

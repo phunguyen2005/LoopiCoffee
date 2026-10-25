@@ -154,6 +154,17 @@ async function provision() {
       return fetch(input, { ...init, redirect: "error" });
     } },
   });
+  const bucketName = settings.SUPABASE_EVIDENCE_BUCKET || "attendance-evidence";
+  const bucket = await client.storage.getBucket(bucketName);
+  if (bucket.error) {
+    if (String(bucket.error.statusCode) !== "404" && bucket.error.message !== "Bucket not found") throw new Error("Local storage is unavailable. Restart local Supabase after enabling Storage.");
+    const created = await client.storage.createBucket(bucketName, {
+      public: false, fileSizeLimit: 3 * 1024 * 1024, allowedMimeTypes: ["image/svg+xml"],
+    });
+    if (created.error) throw new Error("Unable to provision the private local evidence bucket.");
+  } else if (bucket.data.public) {
+    throw new Error("Local evidence bucket must be private.");
+  }
   const runtime = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("local"); } }', compatibilityDate: "2026-05-15", d1Databases: { DB: localDatabaseId }, d1Persist: resolve(stateDirectory, "v3/d1") });
   try {
     const db = await runtime.getD1Database("DB");
@@ -249,7 +260,7 @@ async function checkEndpoint(url) {
 try {
   if (action === "auth:start") {
     if (!existsSync(resolve(authDirectory,"supabase/config.toml"))) throw new Error("Missing dedicated local Auth config.");
-    await run(process.execPath, [supabaseBin,"start", "--workdir", authDirectory, "--exclude", "studio,realtime,storage-api,imgproxy,postgrest,edge-runtime,logflare,vector,supavisor"]);
+    await run(process.execPath, [supabaseBin,"start", "--workdir", authDirectory, "--exclude", "studio,realtime,imgproxy,edge-runtime,logflare,vector,supavisor"]);
     configureAuth();
   } else if (action === "auth:configure") configureAuth();
   else if (action === "auth:stop") await run(process.execPath, [supabaseBin,"stop", "--workdir", authDirectory]);

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "node tooling/run-local.mjs dev",
     "build": "node tooling/run-local.mjs build",
+    "build:production": "node tooling/build-production.mjs",
     "start": "node tooling/run-local.mjs preview",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "types:generate": "wrangler types worker-configuration.d.ts --config tooling/workers-types.jsonc --include-env false",
@@ -22,6 +23,7 @@
     "local:auth:configure": "node tooling/local.mjs auth:configure",
     "local:migrate": "node tooling/local.mjs migrate",
     "local:provision": "node tooling/local.mjs provision",
+    "local:storage:verify": "node --experimental-strip-types tooling/verify-local-storage.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

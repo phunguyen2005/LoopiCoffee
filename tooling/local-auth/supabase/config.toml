@@ -25,7 +25,8 @@ smtp_port = 54325
 pop3_port = 54326
 
 [storage]
-enabled = false
+enabled = true
+file_size_limit = "3MiB"
 
 [auth]
 enabled = true

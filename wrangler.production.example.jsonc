@@ -1,0 +1,22 @@
+{
+  "name": "loopicafe-production",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": { "binding": "ASSETS" },
+  "images": { "binding": "IMAGES" },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "loopicafe-production",
+    "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+    "migrations_dir": "drizzle"
+  }],
+  "vars": {
+    "SUPABASE_EVIDENCE_BUCKET": "attendance-evidence",
+    "ALLOW_DEMO_AUTH": "false",
+    "ENABLE_DEMO_SEED": "false",
+    "LOOPI_LOCAL_ONLY": "false",
+    "LOOPI_RUNTIME_PROFILE": "production"
+  }
+}

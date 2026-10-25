@@ -1,7 +1,7 @@
 # Quy tắc nghiệp vụ
 
 Cập nhật: 2026-10-16. Quy tắc nền kế thừa phạm vi dự án; hiện trạng triển khai được tách tại [implementation-status](implementation-status.md).
-Các quyết định `DEC-001..014` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
+Các quyết định `DEC-001..016` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
 
 ## Phạm vi và thuật ngữ
 
@@ -43,7 +43,7 @@ Các quyết định `DEC-001..014` đã được chấp nhận tại [decision-
 - ATT-004: ảnh/location chỉ lấy sau thao tác chủ động và thông báo mục đích. Thiếu quyền thiết bị có giải trình; không giả lập bằng chứng.
 - ATT-005: GPS chỉ cung cấp thông tin; không tự kết luận gian lận hoặc tự loại công chỉ vì khoảng cách/độ chính xác.
 - ATT-006: dung sai muộn/sớm là 5 phút; ngoài ngưỡng tạo exception. Biên ghi nhận mặc định là check-in sớm 15 phút/check-out muộn 15 phút; phần vượt biên chưa được tính nếu chưa duyệt tăng ca.
-- ATT-007: R2 thành công nhưng D1 thất bại cần cleanup/retry; trạng thái UI phải đúng kết quả lưu thực.
+- ATT-007: Supabase Storage private thành công nhưng D1 thất bại cần cleanup/retry; trạng thái UI phải đúng kết quả lưu thực (DEC-016 thay nhà cung cấp, giữ bất biến).
 - ATT-008: tăng ca cần số phút, lý do, actor và audit. Không tự trừ nghỉ giữa ca; muốn loại thời gian phải có correction được duyệt.
 - ATT-009: quên checkout tự đóng tại giờ kết thúc ca + 4 giờ với `MISSING_CHECKOUT`; giữ giờ ghi nhận nhưng giờ được duyệt/tính lương bằng 0 đến khi correction được duyệt.
 

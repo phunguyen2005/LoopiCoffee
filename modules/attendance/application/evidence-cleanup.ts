@@ -1,4 +1,5 @@
 import { auditStatement } from "../../../server/audit.ts";
+import type { EvidenceStorage } from "../../../platform/storage/evidence.ts";
 
 export type AttendanceReplay = {
   id: string;
@@ -11,7 +12,7 @@ export type AttendanceReplay = {
 
 export async function recoverAttendanceWrite(
   db: D1Database,
-  evidence: Pick<R2Bucket, "delete"> | undefined,
+  evidence: Pick<EvidenceStorage, "delete"> | undefined,
   input: {
     idempotencyKey: string;
     employeeEmail: string;
@@ -65,7 +66,7 @@ export async function scheduleEvidenceCleanup(
 
 export async function processPendingEvidenceCleanup(
   db: D1Database,
-  evidence: Pick<R2Bucket, "delete"> | undefined,
+  evidence: Pick<EvidenceStorage, "delete"> | undefined,
   now = new Date().toISOString(),
 ) {
   const pending = await db.prepare(

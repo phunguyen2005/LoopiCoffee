@@ -4,8 +4,8 @@ Cập nhật: 2026-10-13. Quyết định nền: modular monolith cho một cử
 
 ## Luồng dữ liệu
 
-Browser → Vinext route/Worker boundary → verified identity → D1 membership/resource permission → application policy → D1/R2 → response → UI.
-Supabase Auth cung cấp danh tính; D1 sở hữu dữ liệu nghiệp vụ và quyền ứng dụng.
+Browser → Vinext route/Worker boundary → verified identity → D1 membership/resource permission → application policy → D1/Supabase Storage private → response → UI.
+Supabase Auth cung cấp danh tính; D1 sở hữu dữ liệu nghiệp vụ và quyền ứng dụng. DEC-016 thay R2 bằng Supabase Storage; adapter tại `platform/storage/evidence.ts` giữ upload bất biến, private bucket, download qua API và delete retry. [Triển khai Free](free-production-deployment.md), nhánh production `main`.
 
 | Khu vực | Trách nhiệm |
 |---|---|
@@ -30,7 +30,7 @@ Raw prepared SQL không tự là lỗi; kiểm tra parameterization, schema pari
 ## Ranh giới giao dịch
 
 D1 batch cho các ghi liên quan; UPDATE 0 dòng không tự là exception, side effects phải được gate.
-D1–R2 và D1–Supabase không có transaction chung. Cần nhận diện partial failure, retry/compensation và vận hành đối soát.
+D1 và Supabase (Auth/Storage) không có transaction chung. Cần nhận diện partial failure, retry/compensation và vận hành đối soát.
 Không tự thêm queue/outbox chỉ để đạt sơ đồ đẹp; chọn theo nhu cầu độ tin cậy được duyệt.
 Đọc báo cáo trước batch finalize cần guard revision để phát hiện nguồn thay đổi.
 
