@@ -103,3 +103,41 @@ Tuyệt đối không chạy deploy production, không đẩy commit/push, khôn
 - [ ] Toàn bộ bộ kiểm thử tự động (`npm.cmd test`, `npm.cmd run typecheck`, `npm.cmd run check`) vượt qua không có lỗi.
 - [ ] Migration mới tương thích Cloudflare D1/SQLite, không phá vỡ trigger toàn vẹn dữ liệu hiện hữu.
 - [ ] Diễn tập sao lưu và phục hồi (backup/restore drill) thành công trên môi trường thử nghiệm cô lập.
+
+
+## Follow-up — 2026-10-25T06:51:47Z
+
+Quan sát, đánh giá toàn diện giao diện hiện tại của hệ thống **LoopyCafe Management System** dưới góc nhìn của một Senior UI/UX Designer và trực tiếp cải thiện các điểm bất hợp lý gây ảnh hưởng đến trải nghiệm người dùng. Phân tích đầy đủ bố cục, màu sắc, typography, spacing, tính nhất quán, khả năng sử dụng và responsive; ưu tiên cải thiện trải nghiệm sử dụng thực tế, tránh chỉnh sửa chỉ vì mục đích thẩm mỹ và giữ nguyên những phần UI đã tốt.
+
+Working directory: d:/College/Practice/loopicafe-management-system
+Integrity mode: development
+
+Reference material:
+- `docs/design.md` (Hệ thống thiết kế UI/UX chuẩn của LoopyCafe)
+- `docs/ui-ux-guidelines.md` (Hướng dẫn nội dung, hành động và giọng văn từng màn hình)
+- `docs/business-rules.md` & `docs/permissions.md` (Quy tắc nghiệp vụ và phân quyền hiển thị)
+- Local runtime server: `http://127.0.0.1:4173`
+
+## Requirements
+
+### R1. Quan sát và đánh giá chuyên sâu UI/UX đa chiều (Senior UI/UX Evaluation & Report)
+Kết hợp quan sát runtime trực tiếp trên trình duyệt (`http://127.0.0.1:4173`) và rà soát toàn diện mã nguồn giao diện cho tất cả các phân hệ (Khách hàng đặt món, Xác thực, Nhân viên, Trưởng ca, Quản lý/Chủ quán, Admin hệ thống). Phân tích chi tiết 7 khía cạnh: bố cục (layout & hierarchy), màu sắc (color & contrast), chữ viết (typography), khoảng cách (spacing & surface), tính nhất quán (consistency), khả năng sử dụng (usability, trạng thái loading/empty/error/success, vùng chạm, bàn phím/focus) và khả năng thích ứng (responsive trên mobile/tablet/desktop). Tổng hợp kết quả thành báo cáo đánh giá rõ ràng, chỉ ra những khu vực đã tốt (không cần sửa) và những điểm chưa hợp lý kèm đề xuất cải thiện cụ thể theo hướng hiện đại, trực quan, chuyên nghiệp.
+
+### R2. Cải thiện có chọn lọc các vấn đề trải nghiệm người dùng (Targeted UX Improvements)
+Trực tiếp chỉnh sửa giao diện cho các vấn đề UX thực sự cần thiết được xác nhận qua quá trình đánh giá (như bất cập bố cục, vùng chạm dưới chuẩn, che khuất nội dung trên mobile, thiếu trạng thái phản hồi/trợ năng, hoặc sai lệch tính nhất quán so với `docs/design.md` và `docs/ui-ux-guidelines.md`). Không chỉnh sửa những màn hình/thành phần đã tốt, không thay đổi chỉ vì sở thích thẩm mỹ chủ quan, và bảo toàn tuyệt đối logic nghiệp vụ, phân quyền cũng như dữ liệu hiện có.
+
+### R3. Ràng buộc an toàn môi trường và hạ tầng (Controlled Environment Constraints)
+Mọi quá trình kiểm tra trình duyệt và chạy kiểm thử chỉ thực hiện trên môi trường cục bộ (`http://127.0.0.1:4173` và local test runner) nhằm bảo vệ trạng thái repository và dữ liệu. Không thực hiện deploy, không push/commit tự động, không thay đổi biến môi trường/secrets và không chỉnh sửa các file migration lịch sử đã áp dụng.
+
+## Acceptance Criteria
+
+### Đánh giá & Báo cáo UI/UX
+- [ ] Báo cáo đánh giá UI/UX được cập nhật đầy đủ, phân tích rõ từng khía cạnh trong 7 nhóm (bố cục, màu sắc, typography, spacing, tính nhất quán, khả năng sử dụng, responsive) trên cả phân hệ công khai/khách hàng và phân hệ vận hành/quản trị nội bộ.
+- [ ] Mỗi điểm chưa hợp lý đều có bằng chứng khách quan (số đo DOM/computed style từ `http://127.0.0.1:4173` hoặc tham chiếu file/dòng mã nguồn thực tế), phân loại mức độ ưu tiên và đề xuất giải pháp cụ thể; các khu vực đã tốt được ghi nhận rõ để giữ nguyên.
+
+### Chất lượng hiển thị, Tương tác & Responsive
+- [ ] Kiểm tra thực tế trên trình duyệt tại `http://127.0.0.1:4173` ở 5 kích thước viewport (`320×844`, `375×844`, `390×844`, `768×1024`, `1440×900`): không có lỗi tràn ngang ngoài ý muốn (`document.documentElement.scrollWidth <= window.innerWidth`).
+- [ ] Các phần tử tương tác và khu vực giao diện được cải thiện tuân thủ chuẩn `docs/design.md` (vùng chạm tối thiểu `44×44px`, khoảng cách an toàn cho hành động nguy hiểm, không bị thanh điều hướng/CTA cố định che khuất nội dung cuối trang, hỗ trợ thao tác bàn phím/focus và trạng thái phản hồi rõ ràng).
+
+### Toàn vẹn hệ thống & Kiểm thử không hồi quy
+- [ ] Các lệnh kiểm tra chất lượng mã nguồn (`npm run typecheck`, `npm run lint`, `npm run build` và các bài test liên quan tới giao diện/quyền hiển thị) chạy thành công (`exit code 0`), không phát sinh lỗi mới.

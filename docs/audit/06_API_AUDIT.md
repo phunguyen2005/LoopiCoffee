@@ -9,7 +9,7 @@
 # BÁO CÁO AUDIT CHUYÊN SÂU: API, SERVER ACTIONS & CONTRACTS (AUDIT ONLY)
 
 > **Mã báo cáo:** `AUDIT-06-API`
-> **Dự án:** LoopiCafe Management System
+> **Dự án:** LoopyCafe Management System
 > **Chuyên gia thực hiện:** Agent 2 — API Auditor
 > **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
 > **Chế độ:** AUDIT ONLY (Read-only, không can thiệp code ứng dụng, không gửi mutation tới production)
@@ -19,7 +19,7 @@
 
 ## 1. Executive Summary
 
-Báo cáo này cung cấp kết quả kiểm toán kỹ thuật toàn diện cho toàn bộ hệ thống API Route Handlers, Server Contracts, phân quyền RBAC server-side, cơ chế xác thực nguồn gốc, xử lý dữ liệu đầu vào và các luồng chuyển trạng thái nghiệp vụ của dự án **LoopiCafe Management System**.
+Báo cáo này cung cấp kết quả kiểm toán kỹ thuật toàn diện cho toàn bộ hệ thống API Route Handlers, Server Contracts, phân quyền RBAC server-side, cơ chế xác thực nguồn gốc, xử lý dữ liệu đầu vào và các luồng chuyển trạng thái nghiệp vụ của dự án **LoopyCafe Management System**.
 
 ### Tổng quan hiện trạng:
 - **Quy mô API:** 34 file route tại `app/api/`, hiện thực **57 HTTP method handlers** phục vụ 4 nhóm đối tượng người dùng: `OWNER`, `MANAGER`, `STAFF` (`team_lead`/`employee`) và `CUSTOMER` (khách vãng lai).
@@ -644,6 +644,6 @@ Trong quá trình kiểm toán, toàn bộ các lệnh kiểm tra an toàn sau �
 
 ## 8. Kết luận
 
-Hệ thống API và Server Contracts của **LoopiCafe Management System** thể hiện tư duy thiết kế bài bản, chú trọng tính toàn vẹn dữ liệu, kiểm soát đồng thời mạnh mẽ và bảo mật cao đối với luồng khách vãng lai (Guest Order Capability Security).
+Hệ thống API và Server Contracts của **LoopyCafe Management System** thể hiện tư duy thiết kế bài bản, chú trọng tính toàn vẹn dữ liệu, kiểm soát đồng thời mạnh mẽ và bảo mật cao đối với luồng khách vãng lai (Guest Order Capability Security).
 
 Các rủi ro phát hiện (`API-001` và `API-002`) là những lỗ hổng logic phân quyền ngang và thiếu sót bao bọc middleware chuẩn, hoàn toàn có thể được khắc phục nhanh chóng thông qua các patch nhỏ theo lộ trình ưu tiên tại Mục 6 mà không cần thay đổi kiến trúc tổng thể hay phá vỡ tính tương thích ngược của sản phẩm.

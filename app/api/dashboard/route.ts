@@ -1,10 +1,10 @@
 import { ensureDatabase } from "@/db/runtime";
 import { apiHandler } from "@/platform/http/errors";
-import { requireApiUser } from "@/server/auth";
+import { requireApiPermission } from "@/server/auth";
 import { businessDate } from "@/modules/operations/domain/business-day";
 
 export const GET = apiHandler(async () => {
-  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
+  const auth = await requireApiPermission("dashboard.read");
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const [
@@ -39,7 +39,9 @@ export const GET = apiHandler(async () => {
       `SELECT s.id, s.starts_at, s.ends_at, s.role_label,
               COALESCE(e.display_name, s.employee_email) AS employee_name
        FROM shifts s LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email)
-       WHERE s.store_id = ? AND s.status IN ('published', 'completed') AND s.ends_at >= ?
+       WHERE s.store_id = ? AND s.status IN ('published', 'completed')
+         AND s.approved_leave_request_id IS NULL
+         AND s.ends_at >= ?
        ORDER BY s.starts_at LIMIT 5`,
     ).bind(auth.actor.storeId, new Date().toISOString()),
     db.prepare(
@@ -65,6 +67,7 @@ export const GET = apiHandler(async () => {
               COALESCE(e.job_title, 'Nhân viên') AS job_title
        FROM shifts s LEFT JOIN employees e ON lower(e.email) = lower(s.employee_email)
        WHERE s.store_id = ? AND s.status IN ('published', 'completed')
+         AND s.approved_leave_request_id IS NULL
          AND date(s.starts_at,'+7 hours') = date('now','+7 hours')
        ORDER BY s.starts_at ASC LIMIT 250`,
     ).bind(auth.actor.storeId),
@@ -72,6 +75,12 @@ export const GET = apiHandler(async () => {
       `SELECT COALESCE(SUM(worked_minutes), 0) AS total_minutes
        FROM attendance_sessions
        WHERE store_id = ? AND strftime('%Y-%m', opened_at,'+7 hours') = strftime('%Y-%m', 'now','+7 hours')`,
+    ).bind(auth.actor.storeId),
+    db.prepare(
+      `SELECT id, shift_id, employee_email, opened_at, closed_at
+       FROM attendance_sessions
+       WHERE store_id = ? AND date(opened_at, '+7 hours') = date('now', '+7 hours')
+       ORDER BY opened_at ASC LIMIT 250`,
     ).bind(auth.actor.storeId),
   ]);
 
@@ -82,6 +91,12 @@ export const GET = apiHandler(async () => {
   const handover = handoverResult.results[0];
   const pendingRequests = pendingRequestsResult.results[0] as { count: number } | undefined;
   const payrollEstimate = payrollEstimateResult.results[0] as { total_minutes: number } | undefined;
+  const todaySessionsResult = (await db.prepare(
+    `SELECT id, shift_id, employee_email, opened_at, closed_at
+     FROM attendance_sessions
+     WHERE store_id = ? AND date(opened_at, '+7 hours') = date('now', '+7 hours')
+     ORDER BY opened_at ASC LIMIT 250`,
+  ).bind(auth.actor.storeId).all()) as { results: Array<{ id: string; shift_id: string | null; employee_email: string; opened_at: string; closed_at: string | null }> };
 
   return Response.json(
     {
@@ -96,8 +111,10 @@ export const GET = apiHandler(async () => {
       },
       activeStaffList: activeStaffListResult.results,
       todayShifts: todayShiftsResult.results,
+      todaySessions: todaySessionsResult.results ?? [],
       nextShifts: nextShifts.results,
       latestHandover: handover ?? null,
+      serverTime: new Date().toISOString(),
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );

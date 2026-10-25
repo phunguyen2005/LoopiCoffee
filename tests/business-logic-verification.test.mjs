@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
+import { createDatabase, seedStore, seedEmployee, seedShift } from "./helpers/database.mjs";
 import { loadModule } from "./helpers/load-module.mjs";
 import { auditStatement } from "../server/audit.ts";
 import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
@@ -172,7 +172,7 @@ test("BIZ-001: incident update and audit log are committed atomically in the sam
   db.prepare = origPrepare;
 });
 
-test("BIZ-002: deciding swap or correction requests returns clear guidance indicating manual action required and notifies employee", async (t) => {
+test("BIZ-002: approved swap waits for atomic apply while legacy correction requests require structured data", async (t) => {
   const db = createDatabase();
   t.after(() => db.close());
   seedStore(db);
@@ -186,18 +186,18 @@ test("BIZ-002: deciding swap or correction requests returns clear guidance indic
   ).run("swap-req-1", "store-a", staffA.email, "swap", "Đổi ca chiều thứ 3 cho Lan", "Có bài thi", "2026-07-01T08:00:00Z");
 
   const swapDecision = await decideRequest(db, owner, "swap-req-1", "approved");
-  assert.equal(swapDecision.status, "approved");
+  assert.equal(swapDecision.status, "approved_pending_apply");
   assert.equal(swapDecision.requiresManualAction, true);
   assert.ok(swapDecision.guidance);
-  assert.match(swapDecision.guidance, /Lịch làm việc/);
+  assert.match(swapDecision.guidance, /Áp dụng đổi ca/);
 
   // Notification for swap has principle approval wording
   const swapNotif = db.sqlite.prepare(
     "SELECT title FROM notifications WHERE recipient_email = ? ORDER BY created_at DESC",
   ).get(staffA.email);
   assert.ok(swapNotif);
-  assert.match(swapNotif.title, /Đã duyệt nguyên tắc/);
-  assert.match(swapNotif.title, /xếp lại lịch/);
+  assert.match(swapNotif.title, /Đã duyệt/);
+  assert.match(swapNotif.title, /áp dụng đổi ca/);
 
   // Cannot re-decide already approved swap
   await assert.rejects(decideRequest(db, owner, "swap-req-1", "rejected"), { code: "request_conflict" });
@@ -207,19 +207,12 @@ test("BIZ-002: deciding swap or correction requests returns clear guidance indic
     "INSERT INTO requests (id, store_id, employee_email, type, title, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
   ).run("correction-req-1", "store-a", staffB.email, "correction", "Quên bấm check-out lúc 22h", "Hệ thống bận", "2026-07-01T08:00:00Z");
 
-  const corrDecision = await decideRequest(db, owner, "correction-req-1", "approved");
-  assert.equal(corrDecision.status, "approved");
-  assert.equal(corrDecision.requiresManualAction, true);
-  assert.ok(corrDecision.guidance);
-  assert.match(corrDecision.guidance, /Chấm công/);
-
-  // Notification for correction has principle approval wording
-  const corrNotif = db.sqlite.prepare(
-    "SELECT title FROM notifications WHERE recipient_email = ? ORDER BY created_at DESC",
-  ).get(staffB.email);
-  assert.ok(corrNotif);
-  assert.match(corrNotif.title, /Đã duyệt nguyên tắc/);
-  assert.match(corrNotif.title, /điều chỉnh công/);
+  await assert.rejects(
+    decideRequest(db, owner, "correction-req-1", "approved"),
+    { code: "correction_details_required" },
+  );
+  assert.equal(db.sqlite.prepare("SELECT status FROM requests WHERE id = 'correction-req-1'").get().status, "pending");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM attendance_corrections WHERE source_request_id = 'correction-req-1'").get().count, 0);
 
   // 3. Rejected swap gives rejection notification
   db.sqlite.prepare(
@@ -237,17 +230,40 @@ test("BIZ-002: deciding swap or correction requests returns clear guidance indic
   assert.match(rejNotif.title, /^Đã từ chối:/);
 });
 
-test("BIZ-003: checklist PATCH binds and records identical business_date across execution, audit metadata, and response", async (t) => {
+test("BIZ-003/OPS-001: shift checklist crossing midnight keeps the business date of its shift", async (t) => {
   const db = createDatabase();
   t.after(() => db.close());
   seedStore(db);
   const actor = seedEmployee(db);
+  const now = new Date();
+  const storeNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const nextStoreMidnightUtcMs = Date.UTC(
+    storeNow.getUTCFullYear(),
+    storeNow.getUTCMonth(),
+    storeNow.getUTCDate() + 1,
+  ) - 7 * 60 * 60 * 1000;
+  const overnightStartsAt = new Date(nextStoreMidnightUtcMs - 60 * 60 * 1000).toISOString();
+  const overnightEndsAt = new Date(nextStoreMidnightUtcMs + 2 * 60 * 60 * 1000).toISOString();
+  const overnightShift = seedShift(db, {
+    id: "overnight-checklist-shift",
+    employeeEmail: actor.email,
+    startsAt: overnightStartsAt,
+    endsAt: overnightEndsAt,
+  });
 
-  const fixedDate = "2026-09-17";
+  const fixedDate = new Date(now.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const shiftBusinessDate = new Date(nextStoreMidnightUtcMs - 1).toISOString().slice(0, 10);
   const loaded = await loadModule("../../app/api/checklists/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
-    "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
-    "@/modules/operations/domain/business-day": { businessDate: () => fixedDate },
+    "@/server/auth": {
+      requireApiUser: async () => ({ actor }),
+      requireApiPermission: async () => ({ actor }),
+      auditStatement,
+    },
+    "@/modules/operations/domain/business-day": {
+      businessDate: (date) => date?.toISOString() === overnightShift.startsAt ? shiftBusinessDate : fixedDate,
+    },
+    "@/modules/people/domain/permissions": { hasGrantedPermission: () => true },
     "@/platform/http/errors": { apiHandler },
     "@/platform/http/input": { readObject },
   });
@@ -257,6 +273,8 @@ test("BIZ-003: checklist PATCH binds and records identical business_date across 
   const createRes = await route.POST(request("http://localhost/api/checklists", "POST", {
     label: "Kiểm tra nhiệt độ tủ đông",
     required: true,
+    routineType: "shift_routine",
+    shiftId: overnightShift.id,
   }));
   const { item } = await createRes.json();
   const id = item.id;
@@ -270,7 +288,7 @@ test("BIZ-003: checklist PATCH binds and records identical business_date across 
   const patchJson = await patchRes.json();
 
   // 1. Response contains businessDate
-  assert.equal(patchJson.businessDate, fixedDate);
+  assert.equal(patchJson.businessDate, shiftBusinessDate);
   assert.equal(patchJson.completed, true);
 
   // 2. Execution in DB has identical business_date
@@ -278,7 +296,7 @@ test("BIZ-003: checklist PATCH binds and records identical business_date across 
     "SELECT business_date, completed FROM checklist_executions WHERE item_id = ?",
   ).get(id);
   assert.ok(execution);
-  assert.equal(execution.business_date, fixedDate);
+  assert.equal(execution.business_date, shiftBusinessDate);
   assert.equal(execution.completed, 1);
 
   // 3. Audit log metadata has identical businessDate
@@ -287,7 +305,7 @@ test("BIZ-003: checklist PATCH binds and records identical business_date across 
   ).get(id);
   assert.ok(audit);
   const meta = JSON.parse(audit.metadata);
-  assert.equal(meta.businessDate, fixedDate);
+  assert.equal(meta.businessDate, shiftBusinessDate);
 
   // Verify all 3 are identical
   assert.equal(patchJson.businessDate, execution.business_date);
@@ -299,10 +317,14 @@ test("BIZ-004: handover maintains store-level scope, validates input length, and
   t.after(() => db.close());
   seedStore(db);
   const actor = seedEmployee(db, { id: "barista-1", role: "employee" });
+  const receiver = seedEmployee(db, { id: "barista-2", email: "barista-2@example.test", role: "employee" });
+  const shift = seedShift(db, { id: "handover-source-shift", employeeEmail: actor.email, startsAt: "2026-09-17T06:00:00.000Z", endsAt: "2026-09-17T12:00:00.000Z" });
+  const nextShift = seedShift(db, { id: "handover-target-shift", employeeEmail: receiver.email, startsAt: "2026-09-17T12:00:00.000Z", endsAt: "2026-09-17T18:00:00.000Z" });
 
   const loaded = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
+    "@/modules/operations/domain/business-day": { businessDate: () => "2026-09-17" },
     "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
@@ -320,6 +342,9 @@ test("BIZ-004: handover maintains store-level scope, validates input length, and
   const postRes = await route.POST(request("http://localhost/api/handovers", "POST", {
     summary: "Ca tối đã dọn dẹp sạch sẽ, máy xay đã xả bột cũ, sữa tươi còn 3 hộp.",
     managerAttention: true,
+    shiftId: shift.id,
+    receiverEmployeeId: receiver.id,
+    nextShiftId: nextShift.id,
     idempotencyKey: crypto.randomUUID(),
   }));
   assert.equal(postRes.status, 200);
@@ -329,12 +354,15 @@ test("BIZ-004: handover maintains store-level scope, validates input length, and
 
   // 3. Persisted with store_id and author attribution
   const saved = db.sqlite.prepare(
-    "SELECT store_id, author_email, summary, manager_attention FROM handovers WHERE id = ?",
+    "SELECT store_id, author_email, summary, manager_attention, shift_id, receiver_employee_id, next_shift_id FROM handovers WHERE id = ?",
   ).get(postJson.handover.id);
   assert.ok(saved);
   assert.equal(saved.store_id, "store-a");
   assert.equal(saved.author_email, actor.email);
   assert.equal(saved.manager_attention, 1);
+  assert.equal(saved.shift_id, shift.id);
+  assert.equal(saved.receiver_employee_id, receiver.id);
+  assert.equal(saved.next_shift_id, nextShift.id);
 
   // 4. Audit event created
   const audit = db.sqlite.prepare(

@@ -12,7 +12,7 @@ import { ApplicationError } from "../platform/http/errors.ts";
 // Covers: API-004, API-006, API-007, API-010, MOB-009
 // =============================================================================
 
-test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Owner", async (t) => {
+test("API-006: Team Lead cannot manage shifts without a grant", async (t) => {
   const db = createDatabase();
   t.after(() => db.close());
   const storeId = "store-shifts-test";
@@ -21,7 +21,7 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
   const owner = seedEmployee(db, { id: "owner-1", storeId, role: "owner" });
   const manager = seedEmployee(db, { id: "mgr-1", storeId, role: "manager" });
   const lead = seedEmployee(db, { id: "lead-1", storeId, role: "team_lead" });
-  const staff = seedEmployee(db, { id: "staff-1", storeId, role: "employee" });
+  seedEmployee(db, { id: "staff-1", storeId, role: "employee" });
 
   const shiftInput = {
     startsAt: "2027-08-01T08:00:00+07:00",
@@ -29,26 +29,21 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
     roleLabel: "Pha chế",
   };
 
-  // 1. Team Lead attempting to create a shift for Manager -> 403 forbidden
+  // Team lead cannot receive shift-management permissions in RBAC v1.
   await assert.rejects(
     createShifts(db, lead, manager.email, [shiftInput]),
-    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "forbidden",
+    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "permission_denied",
     "Team lead cannot create shift for Manager",
   );
 
   // 2. Team Lead attempting to create a shift for Owner -> 403 forbidden
   await assert.rejects(
     createShifts(db, lead, owner.email, [shiftInput]),
-    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "forbidden",
+    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "permission_denied",
     "Team lead cannot create shift for Owner",
   );
 
-  // 3. Team Lead CAN create shift for staff
-  const staffShifts = await createShifts(db, lead, staff.email, [shiftInput]);
-  assert.equal(staffShifts.shifts.length, 1);
-  const staffShiftId = staffShifts.shifts[0].id;
-
-  // 4. Owner creates a shift for Manager
+  // Owner creates a shift so edit/cancel denial is tested at application boundary.
   const managerShifts = await createShifts(db, owner, manager.email, [shiftInput]);
   const managerShiftId = managerShifts.shifts[0].id;
 
@@ -61,7 +56,7 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
       startsAt: "2027-08-01T08:00:00+07:00",
       endsAt: "2027-08-01T17:00:00+07:00",
     }),
-    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "forbidden",
+    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "permission_denied",
     "Team lead cannot edit Manager's shift",
   );
 
@@ -72,19 +67,10 @@ test("API-006: Team Lead cannot create, edit, or cancel shifts of Manager or Own
       action: "cancel",
       expectedRevision: 0,
     }),
-    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "forbidden",
+    (err) => err instanceof ApplicationError && err.status === 403 && err.code === "permission_denied",
     "Team lead cannot cancel Manager's shift",
   );
 
-  // 7. Team Lead CAN edit Staff's shift
-  const editResult = await changeShift(db, lead, {
-    id: staffShiftId,
-    action: "edit",
-    expectedRevision: 0,
-    startsAt: "2027-08-01T08:00:00+07:00",
-    endsAt: "2027-08-01T17:00:00+07:00",
-  });
-  assert.equal(editResult.updated, true);
 });
 
 test("API-007: Order state machine permits cancelling a ready order with reason", async (t) => {
@@ -101,21 +87,21 @@ test("API-007: Order state machine permits cancelling a ready order with reason"
     VALUES (?, ?, 'ORD-999', 'Khách VIP', '0901234567', 50000, 1, 'ready', 'hash-123', ?, ?)
   `).run(orderId, storeId, now, now);
 
-  // Cancelling ready order without reason must fail (validation requires reason length >= 3)
+  // Cancelling ready order without a normalized reason code must fail.
   await assert.rejects(
     changeOrderStatus(db, owner, orderId, {
       expectedStatus: "ready",
       newStatus: "cancelled",
-      cancelReason: "",
     }),
     (err) => err instanceof ApplicationError && err.status === 400,
     "Cancelling without reason fails validation",
   );
 
-  // Cancelling ready order with reason succeeds
+  // Cancelling ready order with an accepted code and optional detail succeeds.
   const cancelResult = await changeOrderStatus(db, owner, orderId, {
     expectedStatus: "ready",
     newStatus: "cancelled",
+    reasonCode: "customer_abandoned",
     cancelReason: "Khách bận không đến lấy đồ uống",
   });
   assert.equal(cancelResult.success, true);
@@ -125,7 +111,7 @@ test("API-007: Order state machine permits cancelling a ready order with reason"
   // Verify status in DB
   const row = db.sqlite.prepare("SELECT status, cancel_reason FROM customer_orders WHERE id = ?").get(orderId);
   assert.equal(row.status, "cancelled");
-  assert.equal(row.cancel_reason, "Khách bận không đến lấy đồ uống");
+  assert.equal(row.cancel_reason, "customer_abandoned: Khách bận không đến lấy đồ uống");
 });
 
 test("API-010: rejectCrossOriginMutation uses Referer origin fallback when Origin header is omitted", async () => {

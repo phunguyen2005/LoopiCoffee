@@ -32,7 +32,7 @@ export async function autoCloseForgottenSessions(
     const commandId = crypto.randomUUID();
     const exceptionId = crypto.randomUUID();
 
-    await db.batch([
+    const results = await db.batch([
       // Close session with 0 worked_minutes and status 'review_required'
       db.prepare(
         `UPDATE attendance_sessions
@@ -43,8 +43,15 @@ export async function autoCloseForgottenSessions(
       // Create attendance exception MISSING_CHECKOUT
       db.prepare(
         `INSERT INTO attendance_exceptions (id, event_id, employee_reason, status, reviewer_note, created_at)
-         VALUES (?, (SELECT id FROM attendance_events WHERE session_id = ? AND action = 'check_in' LIMIT 1), 'MISSING_CHECKOUT: Hệ thống tự động đóng phiên sau 4 giờ kết thúc ca làm.', 'pending', 'Tự động đóng phiên do quên checkout', ?)`
-      ).bind(exceptionId, session.id, autoClosedAt),
+         SELECT ?, (SELECT id FROM attendance_events WHERE session_id = ? AND action = 'check_in' LIMIT 1),
+                'MISSING_CHECKOUT: Hệ thống tự động đóng phiên sau 4 giờ kết thúc ca làm.',
+                'pending', 'Tự động đóng phiên do quên checkout', ?
+         WHERE changes() = 1
+           AND NOT EXISTS (
+             SELECT 1 FROM attendance_exceptions x JOIN attendance_events e ON e.id = x.event_id
+             WHERE e.session_id = ? AND x.employee_reason LIKE 'MISSING_CHECKOUT:%'
+           )`
+      ).bind(exceptionId, session.id, autoClosedAt, session.id),
 
       auditStatement(db, "system", "attendance_session", session.id, "attendance.auto_closed", {
         reason: "MISSING_CHECKOUT",
@@ -52,7 +59,7 @@ export async function autoCloseForgottenSessions(
         autoClosedAt,
       }, autoClosedAt, true, commandId),
     ]);
-    closedSessions.push({ id: session.id, autoClosedAt });
+    if (results[0].meta.changes) closedSessions.push({ id: session.id, autoClosedAt });
   }
 
   return { closedCount: closedSessions.length, sessions: closedSessions };

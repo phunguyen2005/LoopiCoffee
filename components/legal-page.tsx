@@ -17,7 +17,7 @@ export function LegalPage({
   return (
     <main className="notice-page">
       <nav className="notice-nav">
-        <Link href="/" className="brand"><LoopyMark size="small" /><span>LoopiCafe</span></Link>
+        <Link href="/" className="brand"><LoopyMark size="small" /><span>LoopyCafe</span></Link>
         <Link href="/" className="button-secondary button-compact"><ArrowLeft size={15} /> Trang chủ</Link>
       </nav>
       <header className="notice-hero">

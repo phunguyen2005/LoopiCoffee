@@ -44,7 +44,7 @@ export function EmployeeTodayView() {
     return (
       <div className="stack employee-today-view">
         <section className="card" role="status" aria-live="polite">
-          <ViewHeader title="Đang tải ca hôm nay…" subtitle="LoopiCafe đang cập nhật lịch, chấm công và công việc của bạn" />
+          <ViewHeader title="Đang tải ca hôm nay…" subtitle="LoopyCafe đang cập nhật lịch, chấm công và công việc của bạn" />
         </section>
       </div>
     );
@@ -100,23 +100,23 @@ export function EmployeeTodayView() {
   const monthSessions = data.monthStats?.completedSessionCount ?? 0;
 
   return (
-    <div className="stack employee-today-view has-sticky-primary" style={{ gap: 20 }}>
+    <div className="stack employee-today-view" style={{ gap: 16 }}>
       {/* Hero Shift Summary Card */}
       <section className="today-summary-card">
         <div className="today-summary-content">
           <div className="today-summary-heading">
             <span className={`today-live-status ${hasCheckedIn && !hasCheckedOut ? "is-live" : ""}`}>
               <span aria-hidden="true" />
-              {isMissingCheckout ? "Quên chấm ra · chờ duyệt" : hasCheckedOut ? (isAttendanceApproved ? "Ca đã được ghi nhận" : "Chờ quản lý duyệt") : hasCheckedIn ? "Đang trong ca làm" : hasShift ? "Sắp đến ca làm" : "Hôm nay nghỉ"}
+              {isMissingCheckout ? "Quên check-out · chờ duyệt" : hasCheckedOut ? (isAttendanceApproved ? "Ca đã được ghi nhận ✨" : "Chờ quản lý duyệt") : hasCheckedIn ? "Đang trong ca làm ☕" : hasShift ? "Sắp đến ca làm" : "Hôm nay nghỉ ngơi 🌸"}
             </span>
-            <span className="today-store-label">Cửa hàng LoopiCafe</span>
+            <span className="today-store-label">Cửa hàng LoopyCafe</span>
           </div>
           <span className="today-kicker">Ca làm việc của bạn</span>
           <h2>{hasShift ? formatShiftRange(data.shift!.starts_at, data.shift!.ends_at) : "Một ngày thật nhẹ nhàng"}</h2>
           <p>
             {hasShift
               ? `${data.shift!.role_label}${data.shift!.is_shift_lead ? " · Trưởng ca trực" : ""}`
-              : "Bạn không có ca trực hôm nay. Hãy xem lịch làm việc để biết ca tiếp theo."}
+              : "Hôm nay quán chưa có ca nào được xếp cho bạn nè, thong thả nghỉ ngơi nạp năng lượng nhé 🌸"}
           </p>
 
           <div className="today-summary-metrics">
@@ -138,63 +138,69 @@ export function EmployeeTodayView() {
             </div>
           </div>
 
-          <Link href={primaryAction.href} className="button today-primary-action">
-            <PrimaryIcon size={18} /> {primaryAction.label}
-          </Link>
+          {hasShift && !hasCheckedOut ? (
+            <Link href={primaryAction.href} className="button today-primary-action">
+              <PrimaryIcon size={18} /> {primaryAction.label}
+            </Link>
+          ) : (
+            <Link
+              href={primaryAction.href}
+              className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-[#ffe1e7] hover:text-white transition-colors"
+            >
+              <PrimaryIcon size={15} />
+              <span>{primaryAction.label}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          )}
         </div>
         <div className="today-summary-mascot" aria-hidden="true">
           <LoopySticker mood={hasCheckedOut ? "celebrate" : hasShift ? "working" : "shy"} size={138} />
         </div>
       </section>
 
-      {/* Personal Working Hours & Month Performance Card */}
-      <section className="card" style={{ padding: "18px 20px" }}>
-        <div className="section-row" style={{ marginBottom: 14, justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>Thống kê công tháng này</h3>
-            <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--muted)" }}>
-              Dữ liệu đối soát tự động từ các lần chấm công đã xác thực
+      {/* Urgent Next-Step Banner when Handover Ack or Missing Checkout requires attention */}
+      {needsHandoverAcknowledgement && (
+        <section
+          className="attention-card"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            borderLeft: "4px solid #d97706",
+            background: "#fffbeb",
+            borderColor: "#fde68a",
+          }}
+        >
+          <div style={{ flex: "1 1 200px" }}>
+            <h4 style={{ margin: 0, color: "#92400e", fontSize: "0.9rem" }}>
+              Cần nhận bàn giao từ {data.incomingHandover!.author_name}
+            </h4>
+            <p style={{ margin: "4px 0 0", color: "#b45309", fontSize: "0.8rem" }}>
+              Đọc lời dặn dò ca trước và xác nhận trước khi check-in vào ca nhé.
             </p>
           </div>
-          <Link href="/app/attendance" className="button-link" style={{ fontSize: "0.85rem" }}>
-            Lịch sử chấm công ›
+          <Link href="/app/handovers" className="button button-compact" style={{ minHeight: 44 }}>
+            Đọc & nhận ca ngay
           </Link>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-          <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Giờ đã được duyệt</span>
-            <strong style={{ fontSize: "1.3rem", color: "var(--primary)" }}>{monthHours}h {monthRemMins > 0 ? `${monthRemMins}p` : ""}</strong>
-            <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Trong tháng hiện tại</span>
-          </div>
-          <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Ca đã được duyệt</span>
-            <strong style={{ fontSize: "1.3rem" }}>{monthSessions} ca</strong>
-            <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Đã được ghi nhận</span>
-          </div>
-          <div style={{ padding: "12px 14px", background: "var(--surface-subtle, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--muted)", display: "block" }}>Checklist hôm nay</span>
-            <strong style={{ fontSize: "1.3rem", color: checklistComplete ? "#15803d" : "inherit" }}>
-              {checklistCount > 0 ? `${checklistDone}/${checklistCount}` : "Chưa có"}
-            </strong>
-            <span style={{ fontSize: "0.72rem", color: "var(--muted)", display: "block", marginTop: 2 }}>Nhiệm vụ chuẩn ca</span>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Shift workflow follows the server handover gate and attendance approval states. */}
       {hasShift ? (
         <section className="card today-flow-card">
           <div className="section-row today-flow-heading">
-            <ViewHeader title="Tiến trình ca làm" subtitle="Chạm vào từng bước để chuyển nhanh tới việc cần làm" />
-            <span className="badge info">{completedSteps === 5 ? "5/5 Đã duyệt" : `${completedSteps}/5 ${hasCheckedIn ? "Đang thực hiện" : "Chuẩn bị vào ca"}`}</span>
+            <ViewHeader title="Tiến trình ca làm" subtitle="Chạm vào bước đang mở để thực hiện ngay" />
+            <span className="badge info">{completedSteps === 5 ? "5/5 Đã hoàn tất ✨" : `${completedSteps}/5 ${hasCheckedIn ? "Đang thực hiện" : "Chuẩn bị vào ca"}`}</span>
           </div>
           <div className="today-task-flow">
             <Link href="/app/handovers" className={`today-task-step ${handoverGateComplete ? "complete" : "current"}`}>
               <span className="today-step-marker">{handoverGateComplete ? <Check size={16} /> : "1"}</span>
               <span>
-                <small>1. Nhận bàn giao ca trước</small>
+                <small>1. Nhận bàn giao từ ca trước</small>
                 <strong>{needsHandoverAcknowledgement ? `Từ ${data.incomingHandover!.author_name}` : "Không có bàn giao đang chờ"}</strong>
-                <em className={`step-badge ${handoverGateComplete ? "success" : "warning"}`}>{handoverGateComplete ? "✅ Sẵn sàng" : "🟡 Cần xác nhận"}</em>
+                <em className={`step-badge ${handoverGateComplete ? "success" : "warning"}`}>{handoverGateComplete ? "Sẵn sàng" : "Cần xác nhận"}</em>
               </span>
               <span className="today-step-arrow">›</span>
             </Link>
@@ -202,9 +208,9 @@ export function EmployeeTodayView() {
             <Link href="/app/attendance" className={`today-task-step ${hasCheckedIn ? "complete" : handoverGateComplete ? "current" : "locked"}`}>
               <span className="today-step-marker">{hasCheckedIn ? <Check size={16} /> : "2"}</span>
               <span>
-                <small>2. Chấm vào ca</small>
-                <strong>{hasCheckedIn ? formatTime(data.attendance!.opened_at!) : "Chưa chấm vào ca"}</strong>
-                <em className={`step-badge ${hasCheckedIn ? "success" : handoverGateComplete ? "warning" : "neutral"}`}>{hasCheckedIn ? "✅ Đã ghi nhận" : handoverGateComplete ? "🟡 Bắt đầu ngay" : "🔒 Nhận bàn giao trước"}</em>
+                <small>2. Check-in vào ca</small>
+                <strong>{hasCheckedIn ? formatTime(data.attendance!.opened_at!) : "Chưa check-in vào ca"}</strong>
+                <em className={`step-badge ${hasCheckedIn ? "success" : handoverGateComplete ? "warning" : "neutral"}`}>{hasCheckedIn ? "Đã ghi nhận" : handoverGateComplete ? "Bắt đầu ngay" : "Nhận bàn giao trước"}</em>
               </span>
               <span className="today-step-arrow">›</span>
             </Link>
@@ -212,10 +218,10 @@ export function EmployeeTodayView() {
             <Link href="/app/checklists" className={`today-task-step ${checklistStepComplete ? "complete" : hasCheckedIn ? "current" : "locked"}`}>
               <span className="today-step-marker">{checklistStepComplete ? <Check size={16} /> : "3"}</span>
               <span>
-                <small>3. Checklist hôm nay</small>
+                <small>3. Việc cần làm trong ca</small>
                 <strong>{checklistNotApplicable ? "Không có việc được giao" : `${checklistDone}/${checklistCount} công việc đã xong`}</strong>
                 <em className={`step-badge ${checklistStepComplete ? "success" : hasCheckedIn ? "warning" : "neutral"}`}>
-                  {checklistStepComplete ? "✅ Hoàn thành" : checklistNotApplicable ? "⚪ Chưa có checklist" : hasCheckedIn ? "🟡 Đang thực hiện" : "🔒 Chưa đến bước"}
+                  {checklistStepComplete ? "Hoàn thành" : checklistNotApplicable ? "Chưa có checklist" : hasCheckedIn ? "Đang thực hiện" : "Chưa đến bước"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
@@ -224,10 +230,10 @@ export function EmployeeTodayView() {
             <Link href="/app/handovers" className={`today-task-step ${hasHandover ? "complete" : hasCheckedIn && checklistAllowsNextStep ? "current" : "locked"}`}>
               <span className="today-step-marker">{hasHandover ? <Check size={16} /> : "4"}</span>
               <span>
-                <small>4. Gửi bàn giao cuối ca</small>
+                <small>4. Ghi chú & Bàn giao ca</small>
                 <strong>{hasHandover ? `Đã gửi lúc ${formatTime(data.handover!.created_at)}` : "Ghi chú & tài sản ca"}</strong>
                 <em className={`step-badge ${hasHandover ? "success" : hasCheckedIn && checklistAllowsNextStep ? "warning" : "neutral"}`}>
-                  {hasHandover ? "✅ Đã bàn giao" : hasCheckedIn && checklistAllowsNextStep ? "🟡 Sẵn sàng bàn giao" : "⚪ Chưa bắt đầu"}
+                  {hasHandover ? "Đã bàn giao" : hasCheckedIn && checklistAllowsNextStep ? "Sẵn sàng bàn giao" : "Chưa bắt đầu"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
@@ -236,10 +242,10 @@ export function EmployeeTodayView() {
             <Link href="/app/attendance" className={`today-task-step ${isAttendanceApproved ? "complete" : hasCheckedOut || hasHandover ? "current" : "locked"}`}>
               <span className="today-step-marker">{isAttendanceApproved ? <Check size={16} /> : "5"}</span>
               <span>
-                <small>5. Chấm ra ca</small>
+                <small>5. Check-out ra ca</small>
                 <strong>{isMissingCheckout ? "Hệ thống đã đóng · chưa tính công" : hasCheckedOut ? formatTime(data.attendance!.closed_at!) : `Dự kiến ${formatTime(data.shift!.ends_at)}`}</strong>
                 <em className={`step-badge ${isAttendanceApproved ? "success" : hasCheckedOut || hasHandover ? "warning" : "locked"}`}>
-                  {isAttendanceApproved ? "✅ Đã ghi nhận" : isMissingCheckout ? "🟠 Cần gửi điều chỉnh" : hasCheckedOut ? "🟡 Chờ duyệt" : hasHandover ? "🟡 Sẵn sàng ra ca" : hasCheckedIn ? "🔒 Hoàn tất các bước trước" : "🔒 Chưa đến bước"}
+                  {isAttendanceApproved ? "Đã ghi nhận" : isMissingCheckout ? "Cần gửi điều chỉnh" : hasCheckedOut ? "Chờ duyệt" : hasHandover ? "Sẵn sàng ra ca" : hasCheckedIn ? "Hoàn tất các bước trước" : "Chưa đến bước"}
                 </em>
               </span>
               <span className="today-step-arrow">›</span>
@@ -250,58 +256,8 @@ export function EmployeeTodayView() {
         <section className="card today-empty-actions">
           <ViewHeader title="Chuẩn bị cho ca tiếp theo" subtitle="Lịch làm và yêu cầu của bạn luôn ở đây" />
           <div>
-            <Link href="/app/schedule" className="button-secondary"><CalendarDays size={16} /> Xem lịch làm việc</Link>
-            <Link href="/app/requests" className="button-secondary"><UserRound size={16} /> Gửi yêu cầu</Link>
-          </div>
-        </section>
-      )}
-
-      {/* Upcoming Shifts Section */}
-      {data.upcomingShifts && data.upcomingShifts.length > 0 && (
-        <section className="card" style={{ padding: "18px 20px" }}>
-          <div className="section-row" style={{ marginBottom: 12, justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>Ca làm việc sắp tới</h3>
-              <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--muted)" }}>
-                Lịch phân công tiếp theo của bạn trong tuần
-              </p>
-            </div>
-            <Link href="/app/schedule" className="button-link" style={{ fontSize: "0.85rem" }}>
-              Toàn bộ lịch ›
-            </Link>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {data.upcomingShifts.map((upcoming) => {
-              const startDate = new Date(upcoming.starts_at);
-              const dateStr = new Intl.DateTimeFormat("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit" }).format(startDate);
-              return (
-                <div
-                  key={upcoming.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "10px 14px",
-                    background: "var(--surface-subtle, rgba(0,0,0,0.02))",
-                    borderRadius: 10,
-                    border: "1px solid var(--border-subtle, rgba(0,0,0,0.06))",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 70, color: "var(--foreground)" }}>{dateStr}</span>
-                    <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                      {formatShiftRange(upcoming.starts_at, upcoming.ends_at)}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="badge neutral" style={{ fontSize: "0.75rem" }}>{upcoming.role_label}</span>
-                    {Boolean(upcoming.is_shift_lead) && (
-                      <span className="badge warning" style={{ fontSize: "0.72rem" }}>Trưởng ca</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <Link href="/app/schedule" className="button-secondary" style={{ minHeight: 44 }}><CalendarDays size={16} /> Xem lịch làm việc</Link>
+            <Link href="/app/requests" className="button-secondary" style={{ minHeight: 44 }}><UserRound size={16} /> Gửi yêu cầu</Link>
           </div>
         </section>
       )}
@@ -316,27 +272,98 @@ export function EmployeeTodayView() {
         <Link href="/app/checklists">Mở checklist <span>›</span></Link>
       </section>
 
+      {/* Upcoming Shifts Section */}
+      {data.upcomingShifts && data.upcomingShifts.length > 0 && (
+        <section className="card">
+          <div className="card-header" style={{ marginBottom: 12 }}>
+            <ViewHeader
+              title="Ca làm việc sắp tới"
+              subtitle="Lịch phân công tiếp theo của bạn trong tuần"
+            />
+            <Link href="/app/schedule" className="text-link inline-flex items-center min-h-[44px] px-2">
+              Toàn bộ lịch ›
+            </Link>
+          </div>
+          <div className="divide-y divide-[#f5efec] border border-[#eee3df] rounded-2xl bg-[#fffaf4]/60 overflow-hidden">
+            {data.upcomingShifts.map((upcoming) => {
+              const startDate = new Date(upcoming.starts_at);
+              const dateStr = new Intl.DateTimeFormat("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit" }).format(startDate);
+              return (
+                <div
+                  key={upcoming.id}
+                  className="flex items-center justify-between flex-wrap gap-2 px-3.5 py-2.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold min-w-[64px] text-[#6f2939]">{dateStr}</span>
+                    <span className="text-xs sm:text-sm font-semibold text-[#332a2b]">
+                      {formatShiftRange(upcoming.starts_at, upcoming.ends_at)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="badge neutral">{upcoming.role_label}</span>
+                    {Boolean(upcoming.is_shift_lead) && (
+                      <span className="badge warning">Trưởng ca</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Personal Working Hours & Month Performance Card */}
+      <section className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <ViewHeader
+            title="Thống kê công tháng này"
+            subtitle="Dữ liệu đối soát tự động từ các lần chấm công đã xác thực"
+          />
+          <Link href="/app/attendance" className="text-link inline-flex items-center min-h-[44px] px-2">
+            Lịch sử chấm công ›
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="p-2.5 sm:p-3 rounded-xl bg-[#fffaf4] border border-[#eee3df] min-w-0">
+            <span className="text-[11px] leading-tight text-[#7b6f70] font-medium block truncate">Giờ đã được duyệt</span>
+            <strong className="text-sm sm:text-base font-extrabold text-[#6f2939] block mt-1 tabular-nums whitespace-nowrap">
+              {monthHours}h{monthRemMins > 0 ? ` ${monthRemMins}p` : ""}
+            </strong>
+          </div>
+          <div className="p-2.5 sm:p-3 rounded-xl bg-[#fffaf4] border border-[#eee3df] min-w-0">
+            <span className="text-[11px] leading-tight text-[#7b6f70] font-medium block truncate">Ca đã được duyệt</span>
+            <strong className="text-sm sm:text-base font-extrabold text-[#332a2b] block mt-1 tabular-nums whitespace-nowrap">
+              {monthSessions} ca
+            </strong>
+          </div>
+          <div className="p-2.5 sm:p-3 rounded-xl bg-[#fffaf4] border border-[#eee3df] min-w-0">
+            <span className="text-[11px] leading-tight text-[#7b6f70] font-medium block truncate">Checklist hôm nay</span>
+            <strong
+              className={`text-sm sm:text-base font-extrabold block mt-1 tabular-nums whitespace-nowrap ${
+                checklistComplete ? "text-[#2d6a4f]" : "text-[#332a2b]"
+              }`}
+            >
+              {checklistCount > 0 ? `${checklistDone}/${checklistCount}` : "—"}
+            </strong>
+          </div>
+        </div>
+      </section>
+
       {/* Quick Staff Actions for Exceptions & Help */}
-      <section className="today-secondary-actions" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <section className="today-secondary-actions grid grid-cols-2 gap-3">
         <Link
           href="/app/requests"
-          className="button-secondary"
-          style={{ justifyContent: "center", textAlign: "center", fontSize: "0.85rem", padding: "10px 12px" }}
+          className="button-secondary justify-center text-center text-xs sm:text-sm min-h-[44px]"
         >
           Xin nghỉ / Đổi ca
         </Link>
         <Link
           href="/app/issues"
-          className="button-secondary"
-          style={{ justifyContent: "center", textAlign: "center", fontSize: "0.85rem", padding: "10px 12px" }}
+          className="button-secondary justify-center text-center text-xs sm:text-sm min-h-[44px]"
         >
           Báo cáo sự cố quán
         </Link>
       </section>
-
-      <Link href={primaryAction.href} className="button mobile-sticky-primary">
-        <PrimaryIcon size={18} /> {primaryAction.label}
-      </Link>
     </div>
   );
 }

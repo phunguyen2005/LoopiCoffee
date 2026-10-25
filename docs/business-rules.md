@@ -1,7 +1,7 @@
 # Quy tắc nghiệp vụ
 
-Cập nhật: 2026-10-13. Quy tắc nền kế thừa phạm vi dự án; hiện trạng triển khai được tách tại [implementation-status](implementation-status.md).
-Các quyết định `DEC-001..009` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
+Cập nhật: 2026-10-16. Quy tắc nền kế thừa phạm vi dự án; hiện trạng triển khai được tách tại [implementation-status](implementation-status.md).
+Các quyết định `DEC-001..014` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
 
 ## Phạm vi và thuật ngữ
 
@@ -14,19 +14,23 @@ Các quyết định `DEC-001..009` đã được chấp nhận tại [decision-
 ## Vai trò và nguyên tắc phê duyệt
 
 - ROLE-001: OWNER và MANAGER quản lý nghiệp vụ theo scope; `team_lead` là Trưởng ca vận hành, không phải MANAGER thu nhỏ; `system_admin` là tài khoản kỹ thuật không có quyền nghiệp vụ.
-- ROLE-002: không actor nào tự duyệt request của mình. Employee/team lead do manager/owner khác duyệt; manager do owner khác duyệt.
-- ROLE-003: sole OWNER chỉ được sửa công của chính mình qua luồng ngoại lệ có before/after, lý do, high-priority audit và báo cáo đối soát; không được giả là phê duyệt độc lập.
-- ROLE-004: team lead chỉ xử lý swap của cấp dưới, checklist/bàn giao/sự cố theo ca; không duyệt nghỉ, sửa công, xem ảnh/GPS, chốt lương, quản lý tài khoản/cấu hình/đơn hàng.
+- ROLE-002: Theo DEC-010 & DEC-014, `system_admin` quản trị tài khoản đăng nhập, bộ quyền role hệ thống và vai trò tùy chỉnh (`custom_roles`); OWNER/MANAGER/vai trò có `people.update` quản lý hồ sơ công việc/lương theo scope. Quyền hiệu lực luôn kết hợp resource scope và bất biến nghiệp vụ, không suy ra từ thứ bậc role.
+- ROLE-003: OWNER giữ bộ quyền nghiệp vụ cố định; MANAGER, `team_lead` và các vai trò tùy chỉnh (`custom_roles`) nhận tập quyền cấu hình theo catalog (vai trò tùy chỉnh bắt đầu bằng 0 quyền, chọn từ toàn bộ catalog nghiệp vụ, phải thỏa mãn dependencies). Employee mặc định và `system_admin` không nhận quyền duyệt/quản trị nghiệp vụ.
+- ROLE-004: Mọi thay đổi tài khoản OWNER cần re-auth trong 5 phút, lý do, audit và notification; OWNER active cuối cùng được bảo vệ bằng điều kiện ghi nguyên tử.
+- ROLE-005: Không actor nào tự duyệt request/công của mình. Với vai trò hệ thống: employee/team lead do manager/owner khác duyệt; manager do owner khác duyệt. Với vai trò tùy chỉnh (`custom_roles`): khi được cấp quyền tương ứng, được duyệt nhân sự khác cùng cửa hàng (kể cả đồng cấp), nhưng không được tự duyệt và không được duyệt `owner` hoặc `system_admin`.
+- ROLE-006: Sole OWNER chỉ được sửa công của chính mình qua luồng ngoại lệ có before/after, lý do, high-priority audit và báo cáo đối soát; không được giả là phê duyệt độc lập.
+- ROLE-007: `team_lead` hệ thống chỉ xử lý swap của cấp dưới, checklist/bàn giao/sự cố theo ca; không duyệt nghỉ, sửa công, xem ảnh/GPS, chốt lương, quản lý tài khoản/cấu hình/đơn hàng.
+- ROLE-008: Theo DEC-015, mỗi cửa hàng chỉ có một `system_admin` và một `owner`. Không tạo tài khoản đặc quyền thay thế khi lỗi kích hoạt; phải khôi phục mật khẩu/lời mời/liên kết Auth trên đúng hồ sơ. Owner duy nhất không được hạ vai trò, khóa hoặc offboard; ghi tạo/nâng Owner phải chặn race bằng điều kiện nguyên tử.
 
 ## Lịch và yêu cầu
 
 - SCH-001: bắt đầu < kết thúc, tối đa 24 giờ; hỗ trợ ca qua ngày; nhân viên phải thuộc phạm vi được cấp. Ngăn ca chồng nhau, kể cả ghi đồng thời.
-- SCH-002: ca có `draft → published → completed/cancelled`. Draft chỉ OWNER/MANAGER thấy, không thông báo, không hiện cho nhân viên và không dùng để chấm công.
+- SCH-002: ca có `draft → published → completed/cancelled`. Draft chỉ người có quyền lịch quản lý thấy, không thông báo, không hiện cho nhân viên và không dùng để chấm công.
 - SCH-003: publish phải kiểm tra active membership, overlap và revision. Tạo nhiều ca phải có kết quả rõ; không thông báo thành công toàn bộ nếu chỉ ghi một phần.
 - SCH-004: sửa/hủy trực tiếp chỉ khi còn ít nhất 12 giờ trước ca và chưa có công, nghỉ duyệt hoặc kỳ khóa. Sau cut-off phải qua điều chỉnh có lý do, tác động, notification và audit.
 - SCH-005: MVP không áp một số người tối thiểu chung; cảnh báo thiếu người không được tự biến thành hard rule chưa cấu hình.
-- REQ-001: quyết định yêu cầu chỉ từ pending; lưu người duyệt/thời điểm và audit, tránh duyệt lặp.
-- REQ-002: nghỉ một ca có liên kết hợp lệ, khi duyệt phải đánh dấu nghỉ được duyệt, loại khỏi vắng mặt và cảnh báo cần người thay; không tự chọn người thay.
+- REQ-001: quyết định yêu cầu chỉ từ pending; lưu người duyệt/thời điểm và audit, tránh duyệt lặp. Khi tạo đơn nghỉ, thông báo nguyên tử cho người đang hoạt động có quyền duyệt thực tế trong cửa hàng (gồm Owner và vai trò được cấp quyền, trừ người tạo).
+- REQ-002: nghỉ một ca có liên kết hợp lệ, khi duyệt phải đánh dấu nghỉ được duyệt (`approved_leave_request_id`), có hiệu lực ngay, loại khỏi ca phải đi làm/vắng mặt và cho phép người có quyền `shifts.create` + `shifts.publish` bố trí trực tiếp 1 ca thay thế (`cover_for_shift_id`) cho nhân sự active tham gia chấm công, không trùng lịch mà không đổi chủ sở hữu ca gốc.
 - REQ-003: swap dùng `pending → approved_pending_apply → applied`; “Duyệt & áp dụng” phải nguyên tử cùng đổi người của hai ca, kiểm revision/overlap, notification và audit. Chưa `applied` thì UI không được nói lịch đã đổi.
 - REQ-004: xin nghỉ chỉ theo toàn bộ một ca trong MVP. Requester được rút khi còn pending; sau quyết định/applied phải tạo yêu cầu hoặc điều chỉnh mới.
 - REQ-005: correction được duyệt tạo bản ghi append-only, không sửa đè event gốc.
@@ -49,7 +53,7 @@ Các quyết định `DEC-001..009` đã được chấp nhận tại [decision-
 - OPS-002: sự cố hiện hành: open → acknowledged → resolved → closed. Server kiểm tra chuyển trạng thái; update và audit nguyên tử. Mở lại/nhảy bước là thay đổi chính sách cần duyệt.
 - OPS-003: bàn giao có tác giả, thời gian, summary, manager_attention và người/ca nhận. Người nhận phải acknowledge trước khi hoàn tất check-in; MANAGER/OWNER chỉ bypass bằng lý do và audit trong tình huống khẩn cấp/lỗi hệ thống.
 - OPS-004: bảo toàn lịch sử vận hành; sửa/xóa cần chính sách và truy vết. Không đồng nhất lịch sử bất biến với lưu mọi dữ liệu cá nhân vĩnh viễn.
-- OPS-005: checklist ca chưa hoàn thành phải hiện trước bàn giao và không được tự hoàn thành khi ca kết thúc.
+- OPS-005: checklist ca chưa hoàn thành phải hiện trước bàn giao và không được tự hoàn thành khi ca kết thúc. Khi `shift.ends_at` đã qua, checklist của ca chuyển sang chỉ đọc: không được đánh dấu xong, mở lại hoặc tạo thêm mục cho ca đó; lịch sử vẫn được bảo toàn.
 
 ## Công và lương
 

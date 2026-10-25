@@ -6,7 +6,7 @@
 
 ---
 
-# LoopiCafe: internship portfolio improvement plan
+# LoopyCafe: internship portfolio improvement plan
 
 Reviewed: 15 September 2026. Audience: an IT student applying for software engineering internships.
 
@@ -16,9 +16,9 @@ Position this as **a single-café operations app connecting employee attendance 
 
 Suggested project description:
 
-> LoopiCafe helps a small café record employee shifts and manage pickup orders. Staff check in and out with reviewable attendance evidence; customers order without creating an account; managers handle exceptions and move orders through preparation to collection.
+> LoopyCafe helps a small café record employee shifts and manage pickup orders. Staff check in and out with reviewable attendance evidence; customers order without creating an account; managers handle exceptions and move orders through preparation to collection.
 
-Explain the branding once: **LoopiCafe is the software; La Boong is the demonstration café.** Use that relationship consistently on the landing page, README, screenshots, and CV.
+Explain the branding once: **LoopyCafe is the software; La Boong is the demonstration café.** Use that relationship consistently on the landing page, README, screenshots, and CV.
 
 ### Review scope and confidence
 
@@ -392,7 +392,7 @@ Finish milestones 1–3 and the minimum browser checks/documentation for both co
 Make the opening concise; put detailed operations/security notes in `docs/`.
 
 ```text
-# LoopiCafe — Café Attendance & Pickup Ordering
+# LoopyCafe — Café Attendance & Pickup Ordering
 1. One-sentence purpose + project status (student portfolio demo)
 2. Demo link | 5-minute video | screenshots | demo access instructions
 3. Problem, intended users and single-café scope
@@ -445,7 +445,7 @@ Keep a 60–90 second screen recording as a fallback for network/device failures
 
 ## 13. CV and application material
 
-Suggested title: **LoopiCafe — Café Attendance & Pickup Ordering | TypeScript, React, Cloudflare D1/R2, Supabase Auth**. Add Vinext in the detailed stack/README so the runtime is clear.
+Suggested title: **LoopyCafe — Café Attendance & Pickup Ordering | TypeScript, React, Cloudflare D1/R2, Supabase Auth**. Add Vinext in the detailed stack/README so the runtime is clear.
 
 ### Conservative bullets supported by the inspected implementation
 
@@ -465,7 +465,7 @@ Choose **three bullets**, tuned to the role. For frontend internships, emphasize
 
 Suggested 30-second introduction:
 
-> I built LoopiCafe around two café workflows: employee attendance and customer pickup orders. The main engineering challenges were preserving trustworthy attendance records, keeping order totals authoritative, and handling retries or two people acting at once. I kept it as one application with a relational database, and focused the tests on those failure cases. The demo uses synthetic data and does not include online payments or full inventory management.
+> I built LoopyCafe around two café workflows: employee attendance and customer pickup orders. The main engineering challenges were preserving trustworthy attendance records, keeping order totals authoritative, and handling retries or two people acting at once. I kept it as one application with a relational database, and focused the tests on those failure cases. The demo uses synthetic data and does not include online payments or full inventory management.
 
 Use the introduction only after the relevant fixes and tests exist; otherwise describe them as the next improvements.
 

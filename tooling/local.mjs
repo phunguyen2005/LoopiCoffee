@@ -10,7 +10,9 @@ import { root, runtimeDirectory, authDirectory, stateDirectory, localDatabaseId,
 
 const action = process.argv[2];
 const binDir = resolve(root, "tooling/bin");
+const dockerDesktopBin = "C:\\Program Files\\Docker\\Docker\\resources\\bin";
 const pathSeparator = process.platform === "win32" ? ";" : ":";
+const localPathEntries = [binDir, ...(process.platform === "win32" && existsSync(dockerDesktopBin) ? [dockerDesktopBin] : [])];
 
 function getWslIp() {
   if (process.platform !== "win32") return "127.0.0.1";
@@ -49,9 +51,8 @@ const env = {
   CI: "1",
   WRANGLER_SEND_METRICS: "false",
   SUPABASE_TELEMETRY_DISABLED: "1",
-  PATH: `${binDir}${pathSeparator}${process.env.PATH || process.env.Path || ""}`,
-  Path: `${binDir}${pathSeparator}${process.env.PATH || process.env.Path || ""}`,
-  ...(process.platform === "win32" && !process.env.DOCKER_HOST ? { DOCKER_HOST: `tcp://${getWslIp()}:2375` } : {}),
+  PATH: `${localPathEntries.join(pathSeparator)}${pathSeparator}${process.env.PATH || process.env.Path || ""}`,
+  Path: `${localPathEntries.join(pathSeparator)}${pathSeparator}${process.env.PATH || process.env.Path || ""}`,
 };
 for (const key of Object.keys(env)) if (/^(CLOUDFLARE_|CF_API_|SUPABASE_ACCESS_TOKEN)/.test(key)) delete env[key];
 const supabaseBin = resolve(root, "node_modules/supabase/dist/supabase.js");
@@ -106,14 +107,14 @@ async function migrate() {
     // This dedicated location never adopts the user's existing .wrangler/state DB.
     const { readdirSync } = await import("node:fs");
     if (readdirSync(stateDirectory).length) throw new Error("Unknown contents in local test directory; refusing to adopt or reset it.");
-    writeFileSync(marker, "LoopiCafe disposable local verification data\n");
+    writeFileSync(marker, "LoopyCafe disposable local verification data\n");
   }
   await run(process.execPath, [wranglerBin, "d1", "migrations", "apply", "DB", "--local", "--persist-to", stateDirectory, "--config", resolve(runtimeDirectory, "wrangler.jsonc")]);
 }
 
 async function seedMenu(db, storeId = "store-loopi-nguyen-trai") {
   const now = new Date().toISOString();
-  await db.prepare("INSERT OR IGNORE INTO stores(id,name,address,timezone,latitude,longitude,attendance_enabled,created_at,updated_at) VALUES(?,?,?,'Asia/Ho_Chi_Minh',10.754128,106.66754,1,?,?)").bind(storeId, storeId.includes("quan-1") ? "LoopiCafe Quận 1 (Test Isolation)" : "LoopiCafe Local", "Dữ liệu thử trên máy", now, now).run();
+  await db.prepare("INSERT OR IGNORE INTO stores(id,name,address,timezone,latitude,longitude,attendance_enabled,created_at,updated_at) VALUES(?,?,?,'Asia/Ho_Chi_Minh',10.754128,106.66754,1,?,?)").bind(storeId, storeId.includes("quan-1") ? "LoopyCafe Quận 1 (Test Isolation)" : "LoopyCafe Local", "Dữ liệu thử trên máy", now, now).run();
   await db.prepare("INSERT OR IGNORE INTO attendance_rules(id,store_id,version,early_checkin_minutes,late_minutes,early_departure_minutes,absence_minutes,missing_checkout_minutes,evidence_retention_days,active,created_by,created_at) VALUES(?,?,1,30,10,15,60,180,90,1,'local-operator',?)").bind(`rules-${storeId}`, storeId, now).run();
   const catId = `drinks-${storeId}`;
   await db.prepare("INSERT OR IGNORE INTO menu_categories(id,store_id,name,sort_order,is_active,created_at,updated_at) VALUES(?,?,'Đồ uống thử',0,1,?,?)").bind(catId, storeId, now, now).run();
@@ -214,6 +215,12 @@ async function provision() {
         account.id, storeId, account.email, account.name, user.id, account.role, status,
         mustChange, resetPending, now, now
       ).run();
+      await db.prepare(
+        `UPDATE employees
+         SET auth_user_id = ?, updated_at = ?
+         WHERE id = ? AND store_id = ? AND lower(email) = lower(?)
+           AND (auth_user_id IS NULL OR auth_user_id <> ?)`,
+      ).bind(user.id, now, account.id, storeId, account.email, user.id).run();
     }
     console.log(`Provisioned ${merged.length} fixtures across 5 roles, lifecycle accounts, and Store 1/2. Existing records preserved.`);
     console.log("Local test credentials: .wrangler/local-readiness/accounts.json (ignored by Git).");

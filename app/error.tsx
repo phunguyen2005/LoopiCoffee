@@ -16,6 +16,19 @@ export default function ErrorPage({
     console.error("System Error caught:", error);
   }, [error]);
 
+  const isDynamicImportError =
+    error?.message?.includes("Failed to fetch dynamically imported module") ||
+    error?.message?.includes("Loading chunk") ||
+    error?.name === "ChunkLoadError";
+
+  const handleRetry = () => {
+    if (isDynamicImportError && typeof window !== "undefined") {
+      window.location.reload();
+    } else {
+      reset();
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#fffaf4] flex items-center justify-center p-6 text-center">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-2xl border border-[#eee3df] flex flex-col items-center">
@@ -31,13 +44,15 @@ export default function ErrorPage({
         </h1>
 
         <p className="text-sm text-[#635657] mt-2 leading-relaxed">
-          {error?.message || "Hệ thống gặp gián đoạn tạm thời. Đừng lo, dữ liệu chấm công và vận hành của bạn vẫn an toàn!"}
+          {isDynamicImportError
+            ? "Hệ thống vừa có bản cập nhật mới hoặc tài nguyên trang đã thay đổi. Bạn vui lòng bấm 'Thử tải lại trang' để nạp phiên bản mới nhất nhé!"
+            : error?.message || "Hệ thống gặp gián đoạn tạm thời. Đừng lo, dữ liệu chấm công và vận hành của bạn vẫn an toàn!"}
         </p>
 
         <div className="mt-6 flex flex-col gap-3 w-full">
           <button
-            onClick={() => reset()}
-            className="w-full py-3.5 bg-[#6f2939] hover:bg-[#4c1d29] text-white font-bold rounded-2xl transition flex items-center justify-center gap-2 text-sm shadow-md"
+            onClick={handleRetry}
+            className="w-full py-3.5 bg-[#6f2939] hover:bg-[#4c1d29] text-white font-bold rounded-2xl transition flex items-center justify-center gap-2 text-sm shadow-md cursor-pointer"
           >
             <RefreshCw size={17} /> Thử tải lại trang
           </button>
@@ -53,7 +68,7 @@ export default function ErrorPage({
             href="/"
             className="text-xs font-semibold text-[#7b6f70] hover:text-[#6f2939] transition mt-1 flex items-center justify-center gap-1"
           >
-            <Home size={14} /> Quay về Trang chủ LoopiCafe
+            <Home size={14} /> Quay về Trang chủ LoopyCafe
           </Link>
         </div>
       </div>

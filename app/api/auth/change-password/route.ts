@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { changePassword } from "@/modules/people/application/change-password";
 import { apiHandler, ApplicationError } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
+import { invalidateIdentityCache } from "@/server/auth";
 
 export const POST = apiHandler(async (request: Request) => {
   if (request.headers.get("origin") !== new URL(request.url).origin) {
@@ -17,5 +18,6 @@ export const POST = apiHandler(async (request: Request) => {
   if (error || !user?.email) throw new ApplicationError("Bạn cần đăng nhập lại.", 401, "unauthenticated");
   const result = await changePassword(await ensureDatabase(), { email: user.email, authUserId: user.id }, body.password,
     (password) => supabase.auth.updateUser({ password }));
+  invalidateIdentityCache();
   return Response.json(result, { headers: authHeaders });
 });

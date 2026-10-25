@@ -1,6 +1,6 @@
 # Sổ quyết định nghiệp vụ
 
-Cập nhật: 2026-10-13. Chủ quyết định: chủ dự án. Các quyết định `DEC-001..009` đã được chấp nhận ngày 2026-10-13 từ tài liệu “Đề xuất phương án xử lý cho 11 nghiệp vụ chưa chốt”.
+Cập nhật: 2026-10-25. Chủ quyết định: chủ dự án. Các quyết định `DEC-001..009` đã được chấp nhận ngày 2026-10-13 từ tài liệu “Đề xuất phương án xử lý cho 11 nghiệp vụ chưa chốt”.
 
 `ACCEPTED` nghĩa là chính sách sản phẩm đã chốt và là căn cứ cho thay đổi mới. Trạng thái này **không** có nghĩa code, schema, migration, UI hoặc test hiện tại đã triển khai xong. Chênh lệch được theo dõi tại [implementation status](implementation-status.md) và chỉ được coi là hoàn thành khi đạt [acceptance matrix](acceptance-matrix.md).
 
@@ -17,6 +17,9 @@ Cập nhật: 2026-10-13. Chủ quyết định: chủ dự án. Các quyết đ
 | DEC-007 | ACCEPTED | Có thể hủy đơn `preparing/ready` bởi role nội bộ được cấp quyền, lý do chuẩn hóa, ghi nhận hao hụt |
 | DEC-008 | ACCEPTED | Ảnh/GPS 90 ngày; công/lương/audit/vận hành 3 năm; PII đơn hàng ẩn danh sau 180 ngày |
 | DEC-009 | ACCEPTED | Pilot phải qua E2E lõi, kiểm tra integrity và một backup/restore drill trên staging |
+| DEC-010 | ACCEPTED | Tách quản trị hệ thống khỏi vận hành; System Admin quản lý tài khoản và RBAC |
+| DEC-011 | ACCEPTED | Vai trò tùy chỉnh theo cửa hàng, catalog quyền và phân công thay ca |
+| DEC-015 | ACCEPTED | Mỗi cửa hàng chỉ có một System Admin và một Owner; lỗi truy cập được khôi phục trên đúng tài khoản hiện có |
 
 ## DEC-001 — Tự duyệt và phạm vi role
 
@@ -86,7 +89,7 @@ Cập nhật: 2026-10-13. Chủ quyết định: chủ dự án. Các quyết đ
 
 - Checklist có hai loại: `daily_routine` cho việc chung theo business date và `shift_routine` gắn một shift cụ thể.
 - `shift_routine` phải có shift, người/role chịu trách nhiệm và trạng thái thực hiện. Chỉ thành viên ca, Trưởng ca vận hành, MANAGER hoặc OWNER có quyền phù hợp mới được cập nhật.
-- Checklist ca chưa hoàn thành phải được hiển thị trước khi bàn giao; không được tự đánh dấu hoàn thành vì ca kết thúc.
+- Checklist ca chưa hoàn thành phải được hiển thị trước khi bàn giao; không được tự đánh dấu hoàn thành vì ca kết thúc. Sau `shift.ends_at`, checklist ca chỉ còn trong lịch sử và mọi thao tác tạo mới/đánh dấu xong/mở lại cho ca đó phải bị server từ chối.
 - Bàn giao phải tham chiếu người nhận (`receiver_employee_id`) hoặc ca kế tiếp (`next_shift_id`), lưu người gửi, thời gian, summary và cờ manager attention.
 - Người/ca nhận phải `acknowledge` trước khi hoàn tất check-in ca mới. Nếu thiếu người nhận, lỗi hệ thống hoặc tình huống khẩn cấp, MANAGER/OWNER có thể bypass bằng lý do bắt buộc và audit; không được làm mất sự kiện chấm công đã ghi nhận.
 - Ngày của checklist daily dùng business date Việt Nam; checklist ca đêm đi theo shift đã gắn, không tách đôi chỉ vì qua 00:00.
@@ -137,6 +140,66 @@ Một bản build xanh không đủ điều kiện pilot. Trước khi dùng d�
 6. **Vận hành:** release record ghi tải pilot dự kiến, người trực, rollback owner, monitoring, RPO và RTO được chủ dự án chấp nhận. Các giá trị này thuộc từng môi trường pilot, không được agent tự điền bằng default giả.
 
 Chỉ các hàng acceptance thuộc phạm vi phát hành có evidence PASS tại đúng commit/môi trường mới được mở pilot. Bất kỳ release blocker bảo mật/toàn vẹn dữ liệu nào còn mở đều chặn phát hành; waiver phải có OWNER chấp thuận, lý do và thời hạn.
+
+## DEC-010 — Tách quản trị hệ thống và RBAC cố định
+
+**Trạng thái:** ACCEPTED — 2026-10-14. **Phần vai trò cố định được mở rộng và thay thế bởi DEC-011.**
+
+- Giữ năm role cố định: `system_admin`, `owner`, `manager`, `team_lead`, `employee`; một tài khoản có một role trong một cửa hàng ở v1.
+- `system_admin` quản trị danh tính đăng nhập, bộ quyền theo role và audit quản trị; không kế thừa quyền OWNER và không được đọc/thao tác công, lương, ảnh/GPS, menu, đơn hoặc cấu hình nghiệp vụ.
+- OWNER/MANAGER quản lý hồ sơ công việc và lương theo scope nhưng không tạo, khóa, reset hoặc đổi role tài khoản đăng nhập.
+- OWNER có bộ quyền nghiệp vụ cố định. Chỉ bộ quyền MANAGER và `team_lead` được cấu hình từ catalog trong code; không wildcard, custom role hoặc override theo người.
+- Permission không thay thế same-store, cấp bậc, self-approval, trạng thái/revision, khóa kỳ lương hoặc thời hạn bằng chứng.
+- Thao tác admin lên OWNER cần xác thực lại trong 5 phút, lý do, audit ưu tiên cao và thông báo cho OWNER active. Không được khóa/hạ role OWNER active cuối cùng; không sửa admin hoặc tự sửa quyền qua API thường.
+- Thay đổi quyền dùng revision và ghi nguyên tử; request mới thấy quyền mới không cần đăng nhập lại. Thiếu/lỗi tải bộ quyền phải fail closed.
+
+**Tác động:** thêm `role_permission_sets`, `role_permissions`, `employees.access_revision`, nhật ký thao tác account; tách `/api/admin/accounts` khỏi `/api/team`; thêm khu vực `/app/admin`. Migration triển khai trước ứng dụng, không tự chạy production. Rollback về bản cũ là thay đổi bảo mật vì có thể trả quyền quản trị đăng nhập cho OWNER.
+
+## DEC-011 — Vai trò tùy chỉnh theo cửa hàng và phân công thay ca
+
+**Trạng thái:** ACCEPTED — 2026-10-14. **Thay thế DEC-010 ở phần vai trò cố định; bổ sung chính sách phân công thay ca cho DEC-003.**
+
+### 1. Vai trò tùy chỉnh (Custom Roles)
+
+- System Admin được quyền tạo, đặt tên, mô tả và cấu hình quyền cho các vai trò tùy chỉnh theo từng cửa hàng (`custom_roles`).
+- Vai trò mới bắt đầu với 0 quyền nghiệp vụ (zero permissions by default). Quyền được chọn từ danh mục quyền nghiệp vụ chuẩn (`permissionCatalog`); mọi quyền chọn phải thỏa mãn quyền phụ thuộc (`dependsOn`). Không hỗ trợ wildcard (`*`) hoặc tự động cấp toàn quyền.
+- Một tài khoản nhân sự có đúng một vai trò tại một thời điểm (vai trò hệ thống hoặc vai trò tùy chỉnh qua `role_id`). Không hỗ trợ ghi đè quyền riêng lẻ theo từng người.
+- Giữ nguyên các vai trò hệ thống: `system_admin`, `owner`, `manager`, `team_lead`, `employee`.
+- Giới hạn bất khả xâm phạm của Owner và System Admin:
+  - Vai trò tùy chỉnh không thể tạo bản sao hoặc giả mạo các đặc quyền của Owner hoặc System Admin.
+  - Quản trị tài khoản, phân quyền hệ thống, bảo vệ Owner active cuối cùng (`last-owner guard`), và luồng ngoại lệ Owner tự sửa công (`sole_owner_self_correction`) không nằm trong catalog có thể cấp cho vai trò tùy chỉnh.
+- Phạm vi phê duyệt của vai trò tùy chỉnh:
+  - Nhân sự mang vai trò tùy chỉnh được cấp quyền tương ứng (ví dụ `requests.leave.review`, `requests.correction.review`, `attendance.review`) có quyền xem xét và phê duyệt các nhân sự khác cùng cửa hàng, bao gồm cả đồng cấp (peer approval).
+  - Nghiêm cấm tự duyệt chính mình (`assertNotSelfApproval`): actor không thể là người tạo yêu cầu hoặc người được hưởng lợi trực tiếp.
+  - Nghiêm cấm duyệt yêu cầu của Chủ quán (`owner`) hoặc Quản trị viên (`system_admin`).
+- Vòng đời vai trò tùy chỉnh:
+  - Hỗ trợ tạo, sửa tên/mô tả, sửa tập quyền và lưu trữ (`status: 'archived'`).
+  - Chặn lưu trữ vai trò khi còn tài khoản nhân sự đang được gán vai trò đó; quản trị viên bắt buộc phải chuyển các tài khoản sang vai trò khác trước.
+  - Thiếu vai trò, vai trò bị lưu trữ hoặc lỗi nạp quyền phải fail-closed (từ chối toàn bộ quyền nghiệp vụ).
+  - Mọi thao tác quản trị vai trò có `revision`, mã thao tác (`idempotencyKey`) và nhật ký kiểm toán (`audit_events`).
+  - Thay đổi quyền có hiệu lực ngay từ request tiếp theo; UI tự động nạp lại quyền khi đổi trang hoặc khi nhận mã lỗi 403.
+
+### 2. Chính sách phân công thay ca (Cover Shifts)
+
+- Sau khi đơn xin nghỉ nguyên ca được duyệt theo DEC-003, ca làm việc được đánh dấu `approved_leave_request_id` và giữ nguyên lịch sử. Trạng thái nghỉ có hiệu lực tức thì, không phụ thuộc vào việc đã tìm được người thay hay chưa.
+- Chủ quán hoặc nhân sự có quyền tạo và xuất bản ca (`shifts.create` & `shifts.publish`) có thể trực tiếp chỉ định người làm thay (cover shift) cho ca đã nghỉ mà không cần nhân viên nghỉ hoặc nhân viên thay xác nhận lại.
+- Tạo ca thay mới liên kết với ca gốc thông qua `cover_for_shift_id`. Không sửa đổi chủ sở hữu ban đầu hoặc gỡ dấu nghỉ trên ca gốc.
+- Mỗi ca nghỉ chỉ có tối đa một ca thay còn hiệu lực (`status <> 'cancelled'`) tại một thời điểm. Việc phân công, liên kết, audit và thông báo được ghi trong cùng một giao dịch để chống race condition.
+- Trạng thái hiển thị trên lịch: “Chưa bố trí” hoặc “Đã bố trí — [Tên người thay]”. Hủy ca thay hợp lệ sẽ tự động đưa ca gốc về trạng thái “Chưa bố trí”.
+- Không cho phép tự phân công thay ca cho ca đã kết thúc hoặc ca nằm trong kỳ lương đã khóa. Phân công khi ca đã bắt đầu yêu cầu lý do bắt buộc và audit, không tạo công lùi giờ.
+
+## DEC-015 — Một Admin, một Owner và khôi phục tài khoản đặc quyền
+
+**Trạng thái:** ACCEPTED — 2026-10-25. **Bổ sung DEC-010 ở phần quản trị tài khoản đặc quyền.**
+
+- Trong mỗi cửa hàng MVP chỉ tồn tại một membership `system_admin` và một membership `owner`, không phụ thuộc trạng thái kích hoạt. API/UI thông thường không được tạo Admin thứ hai; chỉ System Admin được gán Owner khi cửa hàng chưa có Owner.
+- Owner không được tự tạo hoặc nâng thêm Owner. Ghi tạo/nâng Owner phải có điều kiện nguyên tử để hai request đồng thời vẫn chỉ có một request thành công.
+- Owner duy nhất không được hạ vai trò, tạm khóa hoặc offboard. Được phép hoàn tất kích hoạt, gửi lại lời mời và đặt lại mật khẩu trên chính hồ sơ hiện có.
+- Khi Supabase Auth và membership D1 lệch định danh, phải đối chiếu email đã xác minh, sửa liên kết trên cùng hồ sơ và ghi audit/change record; không tạo tài khoản đặc quyền thay thế để che lỗi.
+- Recovery Admin dùng runbook server-side cùng service role, xác minh môi trường/store/backup và change record độc lập. Không mở endpoint công khai để tạo hoặc sửa `system_admin`.
+- Dữ liệu legacy có nhiều Owner phải được giảm về một Owner theo thao tác có lý do và audit, đồng thời luôn giữ ít nhất một Owner active trong quá trình xử lý.
+
+**Lý do:** giảm bề mặt đặc quyền và tránh mất kiểm soát khi tài khoản kích hoạt lỗi. **Tác động:** cập nhật policy server, ghi có điều kiện, UI quản trị, test race/recovery và runbook; không cần migration schema. Triển khai production vẫn cần kiểm tra backup và smoke test Auth/D1 tại đúng môi trường.
 
 ## Quyết định nền
 

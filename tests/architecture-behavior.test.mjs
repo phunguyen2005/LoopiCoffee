@@ -90,6 +90,23 @@ test("sign-in activates only an invited member, without creating owners or conse
   assert.equal(db.sqlite.prepare("SELECT status FROM employees WHERE id = ?").get(suspended.id).status, "suspended");
 });
 
+test("local sign-in repairs a stale Auth link but non-local sign-in stays fail-closed", async (t) => {
+  const { db } = setup(t);
+  const owner = seedEmployee(db, { id: "owner-relinked", role: "owner", status: "active" });
+  db.sqlite.prepare("UPDATE employees SET auth_user_id = 'stale-auth-id' WHERE id = ?").run(owner.id);
+
+  const identity = { email: owner.email, displayName: "Owner", authUserId: "current-auth-id" };
+  assert.equal(await completeSignIn(db, identity, { allowAuthRelink: false }), null);
+  assert.equal(db.sqlite.prepare("SELECT auth_user_id FROM employees WHERE id = ?").get(owner.id).auth_user_id, "stale-auth-id");
+
+  const member = await completeSignIn(db, identity, { allowAuthRelink: true });
+  assert.equal(member.id, owner.id);
+  assert.equal(db.sqlite.prepare("SELECT auth_user_id FROM employees WHERE id = ?").get(owner.id).auth_user_id, "current-auth-id");
+  const audit = db.sqlite.prepare("SELECT action, metadata FROM audit_events WHERE entity_id = ?").get(owner.email);
+  assert.equal(audit.action, "employee.local_auth_relinked");
+  assert.equal(JSON.parse(audit.metadata).localOnly, true);
+});
+
 test("request decisions, notifications and audit either commit together or roll back", async (t) => {
   const { db, owner } = setup(t);
   const staff = seedEmployee(db, { id: "staff-req", role: "employee" });

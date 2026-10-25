@@ -8,7 +8,7 @@
 
 # BÁO CÁO AUDIT CHUYÊN SÂU: TEST QUALITY, CI & REGRESSION COVERAGE
 
-**Dự án:** LoopiCafe Management System
+**Dự án:** LoopyCafe Management System
 **Mã kiểm toán:** `AUDIT-09-TEST-QUALITY`
 **Vai trò:** AGENT 5 — TEST QUALITY AUDITOR
 **Baseline Git Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
@@ -19,7 +19,7 @@
 
 ## 1. TỔNG QUAN ĐIỀU HÀNH (EXECUTIVE SUMMARY)
 
-Hệ thống kiểm thử tự động của LoopiCafe Management System hiện bao gồm **20 file kiểm thử unit/integration** chạy qua **Node Test Runner** (`node --test`) kết hợp SQLite in-memory (`DatabaseSync`), và **2 file kiểm thử End-to-End (E2E)** viết bằng **Playwright**.
+Hệ thống kiểm thử tự động của LoopyCafe Management System hiện bao gồm **20 file kiểm thử unit/integration** chạy qua **Node Test Runner** (`node --test`) kết hợp SQLite in-memory (`DatabaseSync`), và **2 file kiểm thử End-to-End (E2E)** viết bằng **Playwright**.
 
 ### Điểm mạnh đã xác minh:
 1. **Tốc độ thực thi Unit/Integration ấn tượng:** Toàn bộ **128 bài test** (chứa **696 assertions**) chạy hoàn tất chỉ trong **~7.08 giây** mà không cần Docker hay external services.
@@ -183,7 +183,7 @@ TEST-009  P3       CONFIRMED    playwright.config.ts                            
   ```javascript
   // tests/rendered-html.test.mjs (dòng 20-36)
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /LoopiCafe trong 10 giây/);
+  assert.match(page, /LoopyCafe trong 10 giây/);
   assert.match(page, /controls/);
   assert.match(page, /playsInline/);
 

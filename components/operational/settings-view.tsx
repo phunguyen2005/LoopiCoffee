@@ -4,29 +4,33 @@ import type { Map as LeafletMap, Marker, Circle, LeafletMouseEvent } from "leafl
 import "leaflet/dist/leaflet.css";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Check, CheckCircle2, MapPin, Building, Sliders, Shield, FileClock, ExternalLink } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, MapPin, Building, Sliders, Shield, FileClock, ExternalLink, Wifi } from "lucide-react";
 import { InputField, ViewHeader, readJson } from "./shared";
 const localOnly = process.env.NEXT_PUBLIC_LOCAL_ONLY === "true";
 
 export function PersistentStoreSettingsView() {
   const [activeTab, setActiveTab] = useState<"store" | "rules" | "system">("store");
+  const [detectedIp, setDetectedIp] = useState("");
   const [form, setForm] = useState({
     name: "",
     address: "",
     latitude: 10.754128,
     longitude: 106.66754,
     geofenceRadiusMeters: 100,
+    wifiSsid: "",
+    wifiPublicIp: "",
     timezone: "Asia/Ho_Chi_Minh",
-    earlyCheckinMinutes: "30",
-    lateMinutes: "10",
-    earlyDepartureMinutes: "15",
+    earlyCheckinMinutes: "15",
+    lateMinutes: "5",
+    earlyDepartureMinutes: "5",
     absenceMinutes: "60",
-    missingCheckoutMinutes: "180",
+    missingCheckoutMinutes: "240",
   });
 
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [message, setMessage] = useState<string | null>("Đang tải thiết lập…");
   const [isSuccess, setIsSuccess] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -37,30 +41,34 @@ export function PersistentStoreSettingsView() {
 
   useEffect(() => {
     fetch("/api/store", { cache: "no-store" })
-      .then(readJson<{ store?: { name?: string; address?: string; latitude?: number; longitude?: number; geofence_radius_meters?: number; timezone?: string }; rules?: Record<string, number> }>)
+      .then(readJson<{ store?: { name?: string; address?: string; latitude?: number; longitude?: number; geofence_radius_meters?: number; timezone?: string; wifi_ssid?: string; wifi_public_ip?: string }; rules?: Record<string, number>; detectedClientIp?: string }>)
       .then((payload) => {
         const store = payload.store ?? {};
         const rules = payload.rules ?? {};
         const lat = Number(store.latitude) || 10.754128;
         const lng = Number(store.longitude) || 106.66754;
         const radius = Number(store.geofence_radius_meters) || 100;
+        if (payload.detectedClientIp) setDetectedIp(payload.detectedClientIp);
 
         setForm({
-          name: store.name ?? "LoopiCafe Main Store",
+          name: store.name ?? "LoopyCafe Main Store",
           address: store.address ?? "Nguyễn Trãi, Quận 5, TP. Hồ Chí Minh",
           latitude: lat,
           longitude: lng,
           geofenceRadiusMeters: radius,
+          wifiSsid: store.wifi_ssid ?? "",
+          wifiPublicIp: store.wifi_public_ip ?? "",
           timezone: store.timezone ?? "Asia/Ho_Chi_Minh",
-          earlyCheckinMinutes: String(rules.early_checkin_minutes ?? 30),
-          lateMinutes: String(rules.late_minutes ?? 10),
-          earlyDepartureMinutes: String(rules.early_departure_minutes ?? 15),
+          earlyCheckinMinutes: String(rules.early_checkin_minutes ?? 15),
+          lateMinutes: String(rules.late_minutes ?? 5),
+          earlyDepartureMinutes: String(rules.early_departure_minutes ?? 5),
           absenceMinutes: String(rules.absence_minutes ?? 60),
-          missingCheckoutMinutes: String(rules.missing_checkout_minutes ?? 180),
+          missingCheckoutMinutes: String(rules.missing_checkout_minutes ?? 240),
         });
         setMessage(null);
       })
-      .catch(() => setMessage("Không tải được thiết lập."));
+      .catch(() => setMessage("Không tải được thiết lập. Hãy tải lại trang trước khi lưu để tránh ghi đè cấu hình hiện tại."))
+      .finally(() => setLoadingSettings(false));
   }, []);
 
   useEffect(() => {
@@ -201,7 +209,19 @@ export function PersistentStoreSettingsView() {
   }
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    let finalValue = value;
+    if (
+      key === "earlyCheckinMinutes" ||
+      key === "lateMinutes" ||
+      key === "earlyDepartureMinutes" ||
+      key === "absenceMinutes" ||
+      key === "missingCheckoutMinutes"
+    ) {
+      if (typeof value === "string") {
+        finalValue = value.replace(/\D/g, "") as (typeof form)[K];
+      }
+    }
+    setForm((current) => ({ ...current, [key]: finalValue }));
   }
 
   async function save(event: React.FormEvent) {
@@ -210,18 +230,45 @@ export function PersistentStoreSettingsView() {
     setMessage(null);
     setIsSuccess(false);
 
+    const earlyCheckin = Number.parseInt(form.earlyCheckinMinutes, 10);
+    const late = Number.parseInt(form.lateMinutes, 10);
+    const earlyDeparture = Number.parseInt(form.earlyDepartureMinutes, 10);
+    const absence = Number.parseInt(form.absenceMinutes, 10);
+    const missingCheckout = Number.parseInt(form.missingCheckoutMinutes, 10);
+
+    if (
+      Number.isNaN(earlyCheckin) || earlyCheckin < 0 || earlyCheckin > 180 ||
+      Number.isNaN(late) || late < 0 || late > 180 ||
+      Number.isNaN(earlyDeparture) || earlyDeparture < 0 || earlyDeparture > 240 ||
+      Number.isNaN(absence) || absence < 1 || absence > 720 ||
+      Number.isNaN(missingCheckout) || missingCheckout < 1 || missingCheckout > 720
+    ) {
+      setSubmitting(false);
+      setMessage("Vui lòng nhập các giá trị thời gian quy tắc chấm công là số hợp lệ.");
+      return;
+    }
+
+    const payload = {
+      ...form,
+      earlyCheckinMinutes: earlyCheckin,
+      lateMinutes: late,
+      earlyDepartureMinutes: earlyDeparture,
+      absenceMinutes: absence,
+      missingCheckoutMinutes: missingCheckout,
+    };
+
     try {
       const response = await fetch("/api/store", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
-      const payload = await readJson<{ error?: string; ruleVersion: number }>(response);
+      const data = await readJson<{ error?: string; ruleVersion: number }>(response);
       if (!response.ok) {
-        throw new Error(payload.error ?? "Không thể lưu thiết lập.");
+        throw new Error(data.error ?? "Không thể lưu thiết lập.");
       }
       setIsSuccess(true);
-      setMessage(`Đã lưu thiết lập cửa hàng thành công! (Quy tắc v${payload.ruleVersion})`);
+      setMessage(`Đã lưu thiết lập cửa hàng thành công! (Quy tắc v${data.ruleVersion})`);
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : "Đã có lỗi xảy ra.");
     } finally {
@@ -305,7 +352,7 @@ export function PersistentStoreSettingsView() {
           <section className="card">
             <ViewHeader
               title="1. Thông tin & Vị trí cửa hàng"
-              subtitle="Địa điểm chính thức và bán kính geofence cho phép nhân viên check-in"
+              subtitle="Địa điểm chính thức và bán kính tham khảo khi đối soát chấm công"
             />
 
             <div className="page-grid" style={{ marginTop: 16 }}>
@@ -318,7 +365,7 @@ export function PersistentStoreSettingsView() {
                     required
                     value={form.name}
                     onChange={(e) => update("name", e.target.value)}
-                    placeholder="Ví dụ: LoopiCafe Nguyễn Trãi"
+                    placeholder="Ví dụ: LoopyCafe Nguyễn Trãi"
                   />
                 </div>
 
@@ -384,6 +431,49 @@ export function PersistentStoreSettingsView() {
                     <MapPin size={15} /> {locating ? "Đang định vị…" : "Dùng vị trí hiện tại của tôi"}
                   </button>
                 </div>
+
+                <div className="field full" style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 14 }}>
+                  <label htmlFor="store-wifi-ssid" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Wifi size={14} className="text-[#6f2939]" /> Tên mạng Wi-Fi của quán (SSID)
+                  </label>
+                  <input
+                    id="store-wifi-ssid"
+                    type="text"
+                    value={form.wifiSsid}
+                    onChange={(e) => update("wifiSsid", e.target.value)}
+                    placeholder="Ví dụ: LoopyCafe_WiFi (sẽ hiện trên ảnh chấm công)"
+                  />
+                  <small style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, display: "block" }}>
+                    Tên Wi-Fi này sẽ được in trực tiếp lên ảnh chấm công khi nhân viên kết nối đúng mạng của quán.
+                  </small>
+                </div>
+
+                <div className="field full">
+                  <label htmlFor="store-wifi-ip">Địa chỉ IP mạng của quán (Định danh thiết bị)</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      id="store-wifi-ip"
+                      type="text"
+                      value={form.wifiPublicIp}
+                      onChange={(e) => update("wifiPublicIp", e.target.value)}
+                      placeholder="IP công cộng (VD: 14.161.x.x hoặc 127.0.0.1)"
+                      style={{ flex: 1 }}
+                    />
+                    {detectedIp && (
+                      <button
+                        type="button"
+                        onClick={() => update("wifiPublicIp", detectedIp)}
+                        className="button button-compact secondary"
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        Dùng IP hiện tại ({detectedIp})
+                      </button>
+                    )}
+                  </div>
+                  <small style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, display: "block" }}>
+                    Hệ thống đối soát IP của nhân viên khi vào ca để xác thực đang ở quán mà không phụ thuộc tên Wi-Fi ảo.
+                  </small>
+                </div>
               </div>
 
               <div
@@ -433,7 +523,7 @@ export function PersistentStoreSettingsView() {
             </div>
 
             <div className="form-actions" style={{ marginTop: 24 }}>
-              <button className="button button-compact" type="submit" disabled={submitting}>
+              <button className="button button-compact" type="submit" disabled={submitting || loadingSettings}>
                 {submitting ? "Đang lưu thiết lập…" : "Lưu vị trí cửa hàng"}
               </button>
             </div>
@@ -453,21 +543,36 @@ export function PersistentStoreSettingsView() {
                 label="Cho phép check-in trước ca tối đa (phút)"
                 value={form.earlyCheckinMinutes}
                 onChange={(value) => update("earlyCheckinMinutes", value)}
-                placeholder="30"
+                placeholder="15"
+                type="number"
+                min={0}
+                max={180}
+                step={1}
+                onlyNumbers
               />
               <InputField
                 id="late"
                 label="Tính đi trễ sau (phút)"
                 value={form.lateMinutes}
                 onChange={(value) => update("lateMinutes", value)}
-                placeholder="10"
+                placeholder="5"
+                type="number"
+                min={0}
+                max={180}
+                step={1}
+                onlyNumbers
               />
               <InputField
                 id="early-departure"
                 label="Tính về sớm trước (phút)"
                 value={form.earlyDepartureMinutes}
                 onChange={(value) => update("earlyDepartureMinutes", value)}
-                placeholder="15"
+                placeholder="5"
+                type="number"
+                min={0}
+                max={240}
+                step={1}
+                onlyNumbers
               />
               <InputField
                 id="absence"
@@ -475,6 +580,11 @@ export function PersistentStoreSettingsView() {
                 value={form.absenceMinutes}
                 onChange={(value) => update("absenceMinutes", value)}
                 placeholder="60"
+                type="number"
+                min={1}
+                max={720}
+                step={1}
+                onlyNumbers
               />
             </div>
           </section>
@@ -490,12 +600,17 @@ export function PersistentStoreSettingsView() {
                 label="Cảnh báo chưa check-out sau (phút)"
                 value={form.missingCheckoutMinutes}
                 onChange={(value) => update("missingCheckoutMinutes", value)}
-                placeholder="180"
+                placeholder="240"
+                type="number"
+                min={1}
+                max={720}
+                step={1}
+                onlyNumbers
               />
             </div>
 
             <div className="form-actions" style={{ marginTop: 24 }}>
-              <button className="button button-compact" type="submit" disabled={submitting}>
+              <button className="button button-compact" type="submit" disabled={submitting || loadingSettings}>
                 {submitting ? "Đang lưu thiết lập…" : "Lưu quy tắc chấm công"}
               </button>
             </div>
@@ -535,7 +650,7 @@ export function PersistentStoreSettingsView() {
               <div style={{ padding: 18, borderRadius: 14, border: "1px solid var(--border-subtle, #e2e8f0)", background: "var(--surface-subtle, #f8fafc)", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span className="mini-icon pink"><FileClock size={16} /></span>
-                  <strong style={{ fontSize: "1rem" }}>Nhật ký Kiểm toán (Audit Trail)</strong>
+                  <strong style={{ fontSize: "1rem" }}>Lịch sử hoạt động</strong>
                 </div>
                 <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--muted)" }}>
                   Theo dõi minh bạch toàn bộ các hành động sửa giờ công, khóa bảng lương và cập nhật phân quyền nhân sự.
@@ -545,7 +660,7 @@ export function PersistentStoreSettingsView() {
                   className="button-secondary"
                   style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: "0.85rem", padding: "8px 12px" }}
                 >
-                  Mở Nhật ký Kiểm toán <ExternalLink size={14} />
+                  Mở Lịch sử hoạt động <ExternalLink size={14} />
                 </Link>
               </div>
             </div>
@@ -555,7 +670,7 @@ export function PersistentStoreSettingsView() {
           <section className="card" style={{ padding: "18px 22px" }}>
             <h4 style={{ margin: "0 0 6px", fontSize: "0.92rem", fontWeight: 700 }}>Chính sách lưu trữ & Bảo vệ dữ liệu nhân viên</h4>
             <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--muted)", lineHeight: 1.6 }}>
-              Hệ thống tự động chạy tác vụ dọn dẹp định kỳ (cron retention): Tọa độ GPS chi tiết của nhân viên được xóa sau 30 ngày. Ảnh khuôn mặt được lưu trữ bảo vệ trong vùng an toàn có chữ ký điện tử và chỉ có thể truy xuất bởi tài khoản Chủ quán / Quản lý có thẩm quyền.
+              Hệ thống tự động chạy tác vụ dọn dẹp định kỳ (cron retention): ảnh và tọa độ GPS chi tiết của nhân viên được xóa sau 90 ngày, trong khi sự kiện chấm công gốc vẫn được giữ để đối soát. Bằng chứng chỉ có thể truy xuất bởi tài khoản có quyền phù hợp.
             </p>
           </section>
         </div>

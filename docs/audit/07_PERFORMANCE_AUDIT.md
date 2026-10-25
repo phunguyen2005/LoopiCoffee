@@ -7,7 +7,7 @@
 ---
 
 # BÁO CÁO AUDIT HIỆU NĂNG & ĐỘ TIN CẬY (PERFORMANCE & RELIABILITY AUDIT)
-## Dự án: LoopiCafe Management System
+## Dự án: LoopyCafe Management System
 **Baseline Git Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
 **Ngày thực hiện:** 12/10/2026
 **Đơn vị thực hiện:** AGENT 3 — Senior Performance Engineer & System Architect
@@ -17,7 +17,7 @@
 
 ## 1. Executive Summary
 
-Hệ thống LoopiCafe Management System được xây dựng theo kiến trúc **Modular Monolith** trên nền tảng **Next.js (Vinext) chạy trên Cloudflare Workers**, kết hợp với **Cloudflare D1 (SQLite)**, **Cloudflare R2** và **Supabase Auth**.
+Hệ thống LoopyCafe Management System được xây dựng theo kiến trúc **Modular Monolith** trên nền tảng **Next.js (Vinext) chạy trên Cloudflare Workers**, kết hợp với **Cloudflare D1 (SQLite)**, **Cloudflare R2** và **Supabase Auth**.
 
 Qua quá trình audit chuyên sâu dựa trên phân tích tĩnh (Static Analysis), kiểm thử hồi quy hành vi (Empirical Behavior Tests), kiểm tra bundle artifacts thực tế (`dist/client`, `dist/server`), nhóm kiểm toán đã phát hiện **11 vấn đề hiệu năng và độ tin cậy**, trong đó có **2 phát hiện P0 (Nghiêm trọng)**, **4 phát hiện P1 (Cao)**, **4 phát hiện P2 (Trung bình)** và **1 phát hiện P3 (Thấp)**:
 

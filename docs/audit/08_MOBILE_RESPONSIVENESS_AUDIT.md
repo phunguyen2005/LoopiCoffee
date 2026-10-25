@@ -7,7 +7,7 @@
 ---
 
 # BÁO CÁO AUDIT CHUYÊN SÂU: MOBILE RESPONSIVENESS & TOUCH USABILITY
-**LoopiCafe Management System**
+**LoopyCafe Management System**
 
 - **Mã báo cáo:** `AUDIT-MOB-2026-001`
 - **Tài liệu tham chiếu:** [`00_COMMON_RULES.md`](00_COMMON_RULES.md), [`AGENTS.md`](../../AGENTS.md) (Mục 7 — UI/UX Nguyên tắc thiết kế và cải thiện)
@@ -19,7 +19,7 @@
 
 ## 1. Tóm tắt điều hành (Executive Summary)
 
-Đợt audit này tập trung đánh giá mức độ thích ứng trên thiết bị di động (**Mobile Responsiveness**) và khả năng tương tác cảm ứng (**Touch Usability**) của toàn bộ hệ thống quản lý quán cà phê LoopiCafe theo định hướng **Mobile-first**. Phạm vi bao gồm cả luồng khách hàng công khai (**Customer Ordering**) và các phân hệ quản trị vận hành nội bộ (**Staff / Manager / Owner Operations**).
+Đợt audit này tập trung đánh giá mức độ thích ứng trên thiết bị di động (**Mobile Responsiveness**) và khả năng tương tác cảm ứng (**Touch Usability**) của toàn bộ hệ thống quản lý quán cà phê LoopyCafe theo định hướng **Mobile-first**. Phạm vi bao gồm cả luồng khách hàng công khai (**Customer Ordering**) và các phân hệ quản trị vận hành nội bộ (**Staff / Manager / Owner Operations**).
 
 ### 1.1. Đánh giá tổng quan
 Hệ thống đã có nhận thức và nỗ lực rõ ràng trong việc xây dựng trải nghiệm mobile:
@@ -604,4 +604,4 @@ Một bản vá cho các vấn đề Mobile UX chỉ được coi là hoàn tấ
 3. **Diện tích chạm chuẩn:** Không còn phần tử bấm tương tác chính nào có diện tích chạm dưới `44×44px`.
 4. **Không che khuất nội dung:** Các thanh điều hướng đáy và floating CTA không che lấp bất kỳ nội dung hoặc nút bấm nào khi cuộn kịch sàn.
 5. **An toàn thao tác nhạy cảm:** Mọi thao tác xoá/huỷ đơn đều có khoảng cách an toàn và cơ chế xác nhận.
-6. **Không làm thay đổi tech stack hay cấu trúc dữ liệu:** Tuyệt đối giữ vững kiến trúc chuẩn của LoopiCafe.
+6. **Không làm thay đổi tech stack hay cấu trúc dữ liệu:** Tuyệt đối giữ vững kiến trúc chuẩn của LoopyCafe.

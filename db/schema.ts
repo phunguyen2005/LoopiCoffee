@@ -9,15 +9,32 @@ export const stores = sqliteTable("stores", {
   latitude: real("latitude").notNull(),
   longitude: real("longitude").notNull(),
   geofenceRadiusMeters: integer("geofence_radius_meters").notNull().default(100),
+  wifiSsid: text("wifi_ssid"),
+  wifiPublicIp: text("wifi_public_ip"),
   attendanceEnabled: integer("attendance_enabled", { mode: "boolean" }).notNull().default(false),
   workforceRevision: integer("workforce_revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });
 
+export const customRoles = sqliteTable("custom_roles", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
+  revision: integer("revision").notNull().default(0),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("custom_roles_store_name_idx").on(table.storeId, table.name),
+]);
+
 export const employees = sqliteTable("employees", {
   id: text("id").primaryKey(),
   storeId: text("store_id").notNull().references(() => stores.id),
+  roleId: text("role_id").references(() => customRoles.id),
   email: text("email").notNull(),
   displayName: text("display_name").notNull(),
   jobTitle: text("job_title").default("Barista"),
@@ -28,6 +45,7 @@ export const employees = sqliteTable("employees", {
   mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
   passwordVersion: integer("password_version").notNull().default(0),
   passwordResetPending: integer("password_reset_pending", { mode: "boolean" }).notNull().default(false),
+  accessRevision: integer("access_revision").notNull().default(0),
   role: text("role", { enum: ["system_admin", "owner", "manager", "team_lead", "employee"] }).notNull(),
   status: text("status", { enum: ["invited", "active", "suspended", "offboarded", "inactive"] }).notNull().default("invited"),
   participatesAttendance: integer("participates_attendance", { mode: "boolean" }),
@@ -43,6 +61,34 @@ export const employees = sqliteTable("employees", {
   uniqueIndex("employees_email_lower_idx").on(sql`lower(${table.email})`),
   index("employees_store_status_idx").on(table.storeId, table.status),
 ]);
+
+export const rolePermissionSets = sqliteTable("role_permission_sets", {
+  storeId: text("store_id").notNull().references(() => stores.id),
+  role: text("role").notNull(),
+  revision: integer("revision").notNull().default(0),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.storeId, table.role] })]);
+
+export const rolePermissions = sqliteTable("role_permissions", {
+  storeId: text("store_id").notNull().references(() => stores.id),
+  role: text("role").notNull(),
+  permissionKey: text("permission_key").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.storeId, table.role, table.permissionKey] })]);
+
+export const adminAccountOperations = sqliteTable("admin_account_operations", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  actorEmail: text("actor_email").notNull(),
+  targetEmployeeId: text("target_employee_id").references(() => employees.id),
+  action: text("action").notNull(),
+  requestHash: text("request_hash").notNull(),
+  status: text("status", { enum: ["pending", "completed", "failed"] }).notNull(),
+  errorCode: text("error_code"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [uniqueIndex("admin_operations_actor_key_idx").on(table.storeId, table.actorEmail, table.id)]);
 
 export const employeeConsents = sqliteTable("employee_consents", {
   id: text("id").primaryKey(),
@@ -73,6 +119,7 @@ export const shifts = sqliteTable("shifts", {
   id: text("id").primaryKey(),
   revision: integer("revision").notNull().default(0),
   approvedLeaveRequestId: text("approved_leave_request_id").references((): AnySQLiteColumn => requests.id),
+  coverForShiftId: text("cover_for_shift_id").references((): AnySQLiteColumn => shifts.id),
   storeId: text("store_id").notNull().references(() => stores.id),
   employeeEmail: text("employee_email").notNull(),
   startsAt: text("starts_at").notNull(),
@@ -85,6 +132,7 @@ export const shifts = sqliteTable("shifts", {
 }, (table) => [
   index("shifts_employee_start_idx").on(table.employeeEmail, table.startsAt),
   index("shifts_store_status_ends_idx").on(table.storeId, table.status, table.endsAt),
+  index("shifts_cover_for_shift_idx").on(table.storeId, table.coverForShiftId),
 ]);
 
 export const attendanceCaptureSessions = sqliteTable("attendance_capture_sessions", {
@@ -226,11 +274,17 @@ export const checklistItems = sqliteTable("checklist_items", {
   storeId: text("store_id").notNull().references(() => stores.id),
   label: text("label").notNull(),
   assignee: text("assignee").notNull(),
+  routineType: text("routine_type", { enum: ["daily_routine", "shift_routine"] }).notNull().default("daily_routine"),
+  shiftId: text("shift_id").references(() => shifts.id),
+  responsibleRole: text("responsible_role"),
   required: integer("required", { mode: "boolean" }).notNull(),
   completed: integer("completed", { mode: "boolean" }).notNull(),
   completedAt: text("completed_at"),
   updatedAt: text("updated_at"),
-}, (table) => [index("checklist_items_store_idx").on(table.storeId)]);
+}, (table) => [
+  index("checklist_items_store_idx").on(table.storeId),
+  index("checklist_items_shift_idx").on(table.storeId, table.shiftId),
+]);
 
 export const checklistExecutions = sqliteTable("checklist_executions", {
   itemId: text("item_id").notNull().references(() => checklistItems.id),
@@ -259,12 +313,18 @@ export const handovers = sqliteTable("handovers", {
   authorEmail: text("author_email").notNull(),
   summary: text("summary").notNull(),
   managerAttention: integer("manager_attention", { mode: "boolean" }).notNull(),
+  shiftId: text("shift_id").references(() => shifts.id),
+  receiverEmployeeId: text("receiver_employee_id").references(() => employees.id),
+  nextShiftId: text("next_shift_id").references(() => shifts.id),
   acknowledgedAt: text("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
   clientRequestKey: text("client_request_key"),
   payloadHash: text("payload_hash"),
   createdAt: text("created_at").notNull(),
 }, (table) => [
   index("handovers_store_created_idx").on(table.storeId, table.createdAt),
+  index("handovers_receiver_idx").on(table.storeId, table.receiverEmployeeId, table.acknowledgedAt),
+  index("handovers_next_shift_idx").on(table.storeId, table.nextShiftId, table.acknowledgedAt),
   uniqueIndex("handovers_client_request_idx").on(table.storeId, table.authorEmail, table.clientRequestKey),
 ]);
 
@@ -274,6 +334,11 @@ export const requests = sqliteTable("requests", {
   shiftId: text("shift_id").references(() => shifts.id),
   startsAt: text("starts_at"),
   endsAt: text("ends_at"),
+  correctionEventId: text("correction_event_id").references(() => attendanceEvents.id),
+  correctionSessionId: text("correction_session_id").references(() => attendanceSessions.id),
+  correctionAction: text("correction_action", { enum: ["check_in", "check_out"] }),
+  correctionEffectiveTime: text("correction_effective_time"),
+  correctionExpectedRevision: integer("correction_expected_revision"),
   storeId: text("store_id").notNull().references(() => stores.id),
   employeeEmail: text("employee_email").notNull(),
   type: text("type", { enum: ["leave", "swap", "correction"] }).notNull(),
@@ -444,8 +509,14 @@ export const attendanceCorrections = sqliteTable("attendance_corrections", {
   effectiveTime: text("effective_time").notNull(),
   reason: text("reason").notNull(),
   actorEmail: text("actor_email").notNull(),
+  sourceRequestId: text("source_request_id").references(() => requests.id),
+  revision: integer("revision").notNull().default(1),
   createdAt: text("created_at").notNull(),
-}, table => [index("attendance_corrections_session_idx").on(table.sessionId, table.createdAt), check("attendance_corrections_action",sql`${table.action} IN ('check_in','check_out')`)]);
+}, table => [
+  index("attendance_corrections_session_idx").on(table.sessionId, table.createdAt),
+  uniqueIndex("attendance_corrections_source_request_idx").on(table.sourceRequestId).where(sql`${table.sourceRequestId} IS NOT NULL`),
+  check("attendance_corrections_action",sql`${table.action} IN ('check_in','check_out')`),
+]);
 
 export const payrollAdjustments = sqliteTable("payroll_adjustments", {
   id: text("id").primaryKey().notNull(),

@@ -144,7 +144,7 @@ export function TodayView() {
           <div className="hero-status-copy">
             <span className="status-label"><CalendarDays size={14} /> Thứ tư, 29 tháng 7</span>
             <h2>Ca sáng · 08:00 — 16:00</h2>
-            <p>Vị trí: LoopiCafe Nguyễn Trãi · Vai trò: Trưởng ca</p>
+            <p>Vị trí: LoopyCafe Nguyễn Trãi · Vai trò: Trưởng ca</p>
             <div className="status-metrics">
               <span><strong>08:02</strong><small>đã vào ca</small></span>
               <span><strong>3/6</strong><small>việc hoàn tất</small></span>
@@ -255,22 +255,14 @@ export function ScheduleView() {
 
 export function AttendanceView() {
   return (
-    <div className="page-grid attendance-page-grid">
+    <div className="page-grid attendance-page-grid pb-12 sm:pb-0">
       <AttendanceCapture />
-      <aside className="stack attendance-support">
-        <section className="card">
-          <CardHeader title="Quyền riêng tư" subtitle="Ảnh và vị trí chỉ được lấy khi bạn bấm chấm công" />
-          <div className="list">
-            <EvidenceLine icon={Camera} title="Ảnh trực tiếp" text="Không cho chọn ảnh có sẵn" />
-            <EvidenceLine icon={MapPin} title="Vị trí một lần" text="Không theo dõi nền" />
-            <EvidenceLine icon={Clock3} title="Giờ máy chủ" text="Không dùng đồng hồ điện thoại" />
-            <EvidenceLine icon={ShieldCheck} title="Lưu riêng tư" text="Theo thời hạn lưu trữ đã cấu hình" />
-          </div>
-          <Link href="/camera-location-notice" className="text-link">Đọc thông báo đầy đủ <ArrowRight size={11} /></Link>
-        </section>
+      <aside className="stack attendance-support mb-12 sm:mb-0" style={{ marginBottom: "calc(var(--bottom-nav-height, 80px) + 24px)" }}>
         <section className="card">
           <CardHeader title="Lịch làm việc" subtitle="Xem ca được phân công và giờ bắt đầu, kết thúc" />
-          <Link href="/app/schedule" className="text-link">Mở lịch của bạn <ArrowRight size={11} /></Link>
+          <Link href="/app/schedule" className="text-link min-h-[44px] inline-flex items-center gap-1.5">
+            Mở lịch của bạn <ArrowRight size={14} />
+          </Link>
         </section>
       </aside>
     </div>
@@ -451,7 +443,7 @@ export function TeamView() {
   return (
     <section className="card">
       <div className="section-row" style={{ marginBottom: 18 }}>
-        <div><h2 className="card-title">Đội ngũ LoopiCafe</h2><p className="card-subtitle">4 nhân viên đang hoạt động</p></div>
+        <div><h2 className="card-title">Đội ngũ LoopyCafe</h2><p className="card-subtitle">4 nhân viên đang hoạt động</p></div>
         <div className="header-actions"><button className="icon-button" aria-label="Tìm nhân viên"><Search size={16} /></button><button className="button button-compact"><Plus size={15} /> Mời nhân viên</button></div>
       </div>
       <div className="list">
@@ -505,7 +497,7 @@ export function StoreSettingsView() {
         <CardHeader title="Thông tin cửa hàng" subtitle="Dùng cho giờ địa phương và bằng chứng chấm công" />
         <form onSubmit={(event) => { event.preventDefault(); setSaved(true); }}>
           <div className="form-grid">
-            <div className="field full"><label htmlFor="store-name">Tên cửa hàng</label><input id="store-name" defaultValue="LoopiCafe Nguyễn Trãi" /></div>
+            <div className="field full"><label htmlFor="store-name">Tên cửa hàng</label><input id="store-name" defaultValue="LoopyCafe Nguyễn Trãi" /></div>
             <div className="field full"><label htmlFor="address">Địa chỉ</label><input id="address" defaultValue="Nguyễn Trãi, Quận 5, TP. Hồ Chí Minh" /></div>
             <div className="field"><label htmlFor="latitude">Vĩ độ</label><input id="latitude" defaultValue="10.754128" /></div>
             <div className="field"><label htmlFor="longitude">Kinh độ</label><input id="longitude" defaultValue="106.667540" /></div>
@@ -551,11 +543,3 @@ function PersonRow({ name, role, initials, status, time }: (typeof staff)[number
   );
 }
 
-function EvidenceLine({ icon: Icon, title, text }: { icon: React.ComponentType<{ size?: number }>; title: string; text: string }) {
-  return (
-    <div className="list-row">
-      <div className="person"><span className="mini-icon mint"><Icon size={15} /></span><span className="person-copy"><strong>{title}</strong><small>{text}</small></span></div>
-      <CheckCircle2 size={15} color="var(--mint-strong)" />
-    </div>
-  );
-}

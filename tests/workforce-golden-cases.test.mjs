@@ -75,8 +75,9 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       assert.equal(canManageEmployee(leadActor, staffTarget), false);
       assert.equal(canManageEmployee(staffActor, staffTarget), false);
 
-      // System admin cannot manage employees and employees cannot manage system admin
-      assert.equal(canManageEmployee(sysAdminActor, staffTarget), false);
+      // System admin manages business accounts only through the dedicated admin boundary.
+      assert.equal(canManageEmployee(sysAdminActor, staffTarget), true);
+      assert.equal(canManageEmployee(sysAdminActor, ownerTarget), true);
       assert.equal(canManageEmployee(ownerActor, sysAdminTarget), false);
       assert.equal(canManageEmployee(mgrActor, sysAdminTarget), false);
 
@@ -91,7 +92,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       const leadActor = { id: "lead-1", email: "lead@loopi.test", storeId: "store-a", role: ROLES.TEAM_LEAD };
 
       // Owner can assign business roles
-      assert.equal(canAssignRole(ownerActor, ROLES.OWNER), true);
+      assert.equal(canAssignRole(ownerActor, ROLES.OWNER), false);
       assert.equal(canAssignRole(ownerActor, ROLES.MANAGER), true);
       assert.equal(canAssignRole(ownerActor, ROLES.TEAM_LEAD), true);
       assert.equal(canAssignRole(ownerActor, ROLES.EMPLOYEE), true);
@@ -199,7 +200,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       });
       await assert.rejects(
         decideRequest(db, teamLead, leaveReq.id, "approved"),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 2. Team lead cannot approve correction requests
@@ -210,7 +211,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       });
       await assert.rejects(
         decideRequest(db, teamLead, corrReq.id, "approved"),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 3. Team lead cannot review attendance exceptions
@@ -230,7 +231,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
 
       await assert.rejects(
         reviewAttendance(db, teamLead, event.id, "approved"),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 4. Team lead cannot correct attendance time
@@ -241,13 +242,13 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
           adjustedTime: "2026-07-03T01:00:00.000Z",
           reason: "Điều chỉnh giờ vào ca cho nhân viên",
         }),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 5. Team lead CAN approve swap request between two regular employees
       const swapScenario = buildSwapScenario(db, fixture);
       const decision = await decideRequest(db, teamLead, swapScenario.request.id, "approved");
-      assert.equal(decision.status, "approved");
+      assert.equal(decision.status, "approved_pending_apply");
 
       // 5b. Team lead CAN atomically apply swap request
       const applied = await applySwap(db, teamLead, {
@@ -300,13 +301,13 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       });
       await assert.rejects(
         decideRequest(db, sysAdmin, req.id, "approved"),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 3. reviewAttendance rejects system_admin
       await assert.rejects(
         reviewAttendance(db, sysAdmin, "event-any", "approved"),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
 
       // 4. correctAttendance rejects system_admin
@@ -317,7 +318,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
           adjustedTime: "2026-07-03T01:00:00.000Z",
           reason: "Hạ tầng test",
         }),
-        { status: 403, code: "forbidden" }
+        { status: 403, code: "permission_denied" }
       );
     });
   });
@@ -598,6 +599,9 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       const ex = db.sqlite.prepare("SELECT employee_reason, status FROM attendance_exceptions WHERE event_id = 'ev-forgotten-checkin'").get();
       assert.ok(ex);
       assert.match(ex.employee_reason, /MISSING_CHECKOUT/);
+      const replay = await autoCloseForgottenSessions(db, fixture.storeId, "2026-07-03T10:05:00.000Z");
+      assert.equal(replay.closedCount, 0);
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM attendance_exceptions WHERE event_id = 'ev-forgotten-checkin'").get().count, 1);
 
       // Verify in payroll report: approvedMinutes is 0
       const rep = await loadPayrollReport(db, {
@@ -820,6 +824,15 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
       assert.equal(gateResult.allowed, false);
       assert.equal(gateResult.code, "handover_acknowledgment_required");
       assert.equal(gateResult.handoverId, scenario.handover.id);
+
+      // Bàn giao nhắm employee B không được chặn employee A hoặc ca khác trong cùng cửa hàng.
+      const unrelatedGate = await checkHandoverGate(db, fixture.storeId, employeeA.email, { shiftId: scenario.morningShift.id });
+      assert.equal(unrelatedGate.allowed, true);
+
+      await assert.rejects(
+        acknowledgeHandover(db, employeeA, scenario.handover.id),
+        { status: 403, code: "handover_receiver_mismatch" },
+      );
 
       // 2. Non-manager/owner (employee A) attempting bypass is rejected with 403 / manager_bypass_forbidden
       await assert.rejects(
@@ -1371,7 +1384,7 @@ describe("Workforce Golden Cases (C01 - C07)", () => {
           newStatus: "cancelled",
           reasonCode: "customer_abandoned",
         }),
-        { status: 403, code: "forbidden" },
+        { status: 403, code: "permission_denied" },
       );
 
       // Cancelling preparing order with invalid code throws 400 invalid_cancellation_reason

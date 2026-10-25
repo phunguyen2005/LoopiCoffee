@@ -37,7 +37,7 @@ Mock hợp lệ tại external boundary; không viết lại thuật toán rồi
 | Yêu cầu | duyệt trùng, rút pending, nghỉ nguyên ca, swap atomic apply/rollback, correction append-only |
 | Công | server time, ngưỡng 5/15 phút, overtime, auto-close +4 giờ, approved minutes=0 khi missing checkout, duplicate/retry/lost response, R2/D1 partial failure |
 | Lương | floor block 15 phút, round tổng 1.000 VND, chia tháng VN, rate đổi giữa kỳ/overlap/missing legacy, reopen, correction race, snapshot/version/export |
-| Vận hành | daily/shift checklist, ca đêm, handover receiver/ack/bypass, incident transition/audit rollback |
+| Vận hành | daily/shift checklist, ca đêm, checklist chỉ tính ca được giao và khóa mutation sau `shift.ends_at`, handover receiver/ack/bypass, incident transition/audit rollback |
 | Đặt món | giả giá, stale menu, receipt isolation, customer cancel denial, preparing/ready reason code, spoilage report, simultaneous status |
 | Retention | ảnh/GPS 90 ngày, event còn nguyên, order PII 180 ngày, operational history 3 năm, retry và restore reprocessing |
 | UI | narrow viewport, bàn phím/focus, trạng thái async, stale response, không che CTA |

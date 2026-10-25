@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
+import { createDatabase, seedStore, seedEmployee, seedShift } from "./helpers/database.mjs";
 import { loadModule } from "./helpers/load-module.mjs";
 import { auditStatement } from "../server/audit.ts";
 import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
@@ -289,10 +289,14 @@ test("R4 (CODE-004): Malformed/null/type-mismatched bodies to /api/handovers ret
   t.after(() => db.close());
   seedStore(db);
   const actor = seedEmployee(db, { id: "staff-hnd", role: "employee" });
+  const receiver = seedEmployee(db, { id: "staff-hnd-next", email: "staff-hnd-next@example.test", role: "employee" });
+  const shift = seedShift(db, { id: "staff-hnd-shift", employeeEmail: actor.email, startsAt: "2026-09-17T06:00:00.000Z", endsAt: "2026-09-17T12:00:00.000Z" });
+  const nextShift = seedShift(db, { id: "staff-hnd-next-shift", employeeEmail: receiver.email, startsAt: "2026-09-17T12:00:00.000Z", endsAt: "2026-09-17T18:00:00.000Z" });
 
   const loaded = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor }), auditStatement },
+    "@/modules/operations/domain/business-day": { businessDate: () => "2026-09-17" },
     "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
@@ -351,6 +355,9 @@ test("R4 (CODE-004): Malformed/null/type-mismatched bodies to /api/handovers ret
   const validPayload = {
     summary: "Đã hoàn thành kiểm kê nguyên liệu và vệ sinh máy pha espresso",
     managerAttention: true,
+    shiftId: shift.id,
+    receiverEmployeeId: receiver.id,
+    nextShiftId: nextShift.id,
     idempotencyKey,
   };
   const validRes = await route.POST(jsonRequest("http://localhost/api/handovers", "POST", validPayload));

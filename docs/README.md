@@ -1,6 +1,6 @@
-# Bộ tài liệu chuẩn LoopiCafe
+# Bộ tài liệu chuẩn LoopyCafe
 
-Cập nhật: 2026-10-13. Phạm vi: một cửa hàng, MVP/pilot.
+Cập nhật: 2026-10-17. Phạm vi: một cửa hàng, MVP/pilot.
 Đợt này chuẩn hóa tài liệu; không thay đổi code, schema, dependency hoặc chính sách chưa được chủ dự án quyết định.
 
 ## Cách xác định căn cứ
@@ -10,9 +10,9 @@ Cập nhật: 2026-10-13. Phạm vi: một cửa hàng, MVP/pilot.
 | Quy trình agent | Cách thực hiện yêu cầu | [AGENTS](../AGENTS.md), [commit](commit-conventions.md) |
 | Quy tắc nền đã có | Ràng buộc cần bảo toàn | [business](business-rules.md), [security](security.md), [architecture](architecture.md), [database](database.md) |
 | Hiện trạng source | Quan sát triển khai, chưa chứng nhận runtime | [implementation-status](implementation-status.md), [permissions](permissions.md) |
-| Quyết định sản phẩm | `DEC-001..009` đã ACCEPTED; không đồng nghĩa source đã triển khai | [decision-register](decision-register.md), [implementation-status](implementation-status.md) |
-| Thiết kế và kiểm chứng | Chuẩn cho thay đổi mới; không khẳng định UI hiện tại đã đạt | [design](design.md), [UI/UX](ui-ux-guidelines.md), [testing](testing.md), [acceptance](acceptance-matrix.md) |
-| Vận hành | Điều kiện, trình tự, rollback, evidence | [database operations](database-operations.md), [runbook](operational-runbook.md) |
+| Quyết định sản phẩm | `DEC-001..010` đã ACCEPTED; không đồng nghĩa source đã triển khai | [decision-register](decision-register.md), [implementation-status](implementation-status.md) |
+| Thiết kế và kiểm chứng | [Design](design.md) giữ quy tắc chung; [hướng dẫn màn hình](ui-ux-guidelines.md) giữ mục đích, nội dung và hành động; không khẳng định UI hiện tại đã đạt | [design](design.md), [UI/UX](ui-ux-guidelines.md), [testing](testing.md), [acceptance](acceptance-matrix.md) |
+| Vận hành | Điều kiện, trình tự, rollback, evidence | [database operations](database-operations.md), [runbook](operational-runbook.md), [admin/RBAC runbook](admin-rbac-runbook.md) |
 | Hợp đồng API | Nguyên tắc và bản đồ nguồn, không thay OpenAPI thực thi | [API contracts](api-contracts.md) |
 | Audit | Quy tắc, prompt tái sử dụng và kết quả theo baseline | [audit index](audit/README.md) |
 | Lịch sử | Không phải yêu cầu hiện hành | [archive](archive/README.md), [portfolio](portfolio-improvement-plan.md), [readiness audit](production-readiness-audit.md) |
@@ -25,7 +25,7 @@ Code/migrations là bằng chứng hiện trạng, không phải lý do tự tha
 
 - Mọi tác vụ: AGENTS → README này → business-rules → tài liệu module.
 - Backend: permissions → api-contracts → database → security → testing.
-- Frontend: design → ui-ux-guidelines → permissions → acceptance-matrix.
+- Frontend: design → ui-ux-guidelines → permissions → business-rules → acceptance-matrix.
 - Audit: audit/00_COMMON_RULES → prompt chuyên môn → source tại baseline mới.
 - Vận hành: database-operations → operational-runbook; xác nhận môi trường trước thao tác.
 
@@ -35,6 +35,7 @@ Code/migrations là bằng chứng hiện trạng, không phải lý do tự tha
 - Thay đổi rule/decision cần ID, lý do, ngày, người quyết định, tác động dữ liệu/API/test và liên kết task/PR nếu có; không sửa âm thầm con số/enum đã chốt.
 - Bằng chứng chạy cần commit, dirty-tree nếu có, môi trường, lệnh, kết quả pass/fail/skip và artifact không chứa bí mật.
 - Không sao chép lại bảng quyền, công thức hoặc thông số mặc định ở nhiều nơi; dẫn nguồn chuẩn.
+- Quy tắc giao diện dùng chung chỉ đặt tại `design.md`; tài liệu màn hình chỉ mô tả mục đích, nội dung, hành động và kết quả.
 - Dùng liên kết tương đối trong repo. Không dùng file:/// hoặc đường dẫn máy cá nhân làm liên kết dùng chung.
 - Không ghi “ĐẠT” từ việc thấy test/source tồn tại.
 - Không ghi đè prompt bằng báo cáo: prompt ở audit/prompts, báo cáo mới ở audit/reports/<date>-<commit>/.

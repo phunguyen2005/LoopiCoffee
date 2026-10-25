@@ -72,6 +72,7 @@ export function seedEmployee(db, {
   id = "owner-a",
   storeId = "store-a",
   role = "owner",
+  roleId = null,
   status = "active",
   email = `${id}@example.test`,
   displayName = id,
@@ -96,14 +97,14 @@ export function seedEmployee(db, {
   db.sqlite.prepare(`
     INSERT INTO employees (
       id, store_id, email, display_name, job_title, phone, start_date, auth_user_id,
-      must_change_password, password_version, password_reset_pending, role, status,
+      must_change_password, password_version, password_reset_pending, role, role_id, status,
       participates_attendance, payroll_eligible, compensation_type, hourly_rate, monthly_salary,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, storeId, email, displayName, jobTitle, phone, startDate, authUserId,
     mustChangePassword ? 1 : 0, passwordVersion, passwordResetPending ? 1 : 0,
-    role, status, participates, eligible,
+    role, roleId, status, participates, eligible,
     compensationType, hourlyRate, monthlySalary, createdAt, updatedAt
   );
   if (rateHistory !== false && (hourlyRate !== null || monthlySalary !== null)) {
@@ -278,12 +279,17 @@ export function seedHandover(db, {
   authorEmail,
   summary = "Biên bản bàn giao ca kiểm thử",
   managerAttention = 0,
+  shiftId = null,
+  receiverEmployeeId = null,
+  nextShiftId = null,
   acknowledgedAt = null,
+  acknowledgedBy = null,
   createdAt = "2026-07-01T14:00:00.000Z",
 } = {}) {
   db.sqlite.prepare(`
-    INSERT INTO handovers (id, store_id, author_email, summary, manager_attention, acknowledged_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, storeId, authorEmail, summary, managerAttention ? 1 : 0, acknowledgedAt, createdAt);
-  return { id, storeId, authorEmail, summary, managerAttention, acknowledgedAt };
+    INSERT INTO handovers
+      (id, store_id, author_email, summary, manager_attention, shift_id, receiver_employee_id, next_shift_id, acknowledged_at, acknowledged_by, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, storeId, authorEmail, summary, managerAttention ? 1 : 0, shiftId, receiverEmployeeId, nextShiftId, acknowledgedAt, acknowledgedBy, createdAt);
+  return { id, storeId, authorEmail, summary, managerAttention, shiftId, receiverEmployeeId, nextShiftId, acknowledgedAt, acknowledgedBy };
 }

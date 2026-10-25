@@ -406,28 +406,13 @@ test("Empirical RBAC: /api/team full role and method permission matrix", async (
   const managerAlpha = seedEmployee(db, { id: "mgr-alpha", storeId: "store-alpha", role: "manager", status: "active" });
   const ownerAlpha = seedEmployee(db, { id: "owner-alpha", storeId: "store-alpha", role: "owner", status: "active" });
 
-  // 1. Team lead GET -> 200, active store employees only
+  // 1. Team lead has no people.read grant in the v1 catalog.
   {
     const route = await setupTeamRoute(t, db, leadAlpha);
     const res = await route.GET();
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 403);
     const body = await res.json();
-    assert.ok(Array.isArray(body.employees));
-
-    const returnedIds = body.employees.map((e) => e.id);
-    assert.deepEqual(
-      returnedIds.sort(),
-      ["emp-active-alpha", "lead-alpha", "mgr-alpha", "owner-alpha"].sort(),
-      "Team lead must receive all active employees in the store",
-    );
-    assert.ok(!returnedIds.includes("emp-suspended-alpha"), "Team lead must NOT receive suspended employees");
-    assert.ok(!returnedIds.includes("emp-beta"), "Team lead must NOT receive employees from other stores");
-
-    // Strict projection check: no created_at or other non-lookup fields
-    for (const emp of body.employees) {
-      assert.equal(emp.created_at, undefined);
-      assert.equal(emp.status, "active");
-    }
+    assert.equal(body.code, "permission_denied");
   }
 
   // 2. Team lead PATCH -> 403 Forbidden
@@ -441,7 +426,7 @@ test("Empirical RBAC: /api/team full role and method permission matrix", async (
     const res = await route.PATCH(req);
     assert.equal(res.status, 403);
     const body = await res.json();
-    assert.equal(body.error, "forbidden");
+    assert.equal(body.code, "permission_denied");
   }
 
   // 3. Employee GET -> 403 Forbidden
@@ -450,7 +435,7 @@ test("Empirical RBAC: /api/team full role and method permission matrix", async (
     const res = await route.GET();
     assert.equal(res.status, 403);
     const body = await res.json();
-    assert.equal(body.error, "forbidden");
+    assert.equal(body.code, "permission_denied");
   }
 
   // 4. Employee PATCH -> 403 Forbidden
@@ -495,25 +480,26 @@ test("Empirical RBAC: /api/team full role and method permission matrix", async (
     assert.ok(!returnedIds.includes("emp-beta"), "Manager should NOT see other stores");
   }
 
-  // 8. Manager PATCH -> 403 Forbidden (restricted to owner)
+  // 8. Manager with people.update may edit a subordinate work profile, not account access.
   {
     const route = await setupTeamRoute(t, db, managerAlpha);
     const req = new Request("http://localhost/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "emp-active-alpha", role: "owner" }),
+      body: JSON.stringify({ id: "emp-active-alpha", expectedUpdatedAt: "2026-07-01T00:00:00.000Z", reason: "Cập nhật hồ sơ thử nghiệm" }),
     });
     const res = await route.PATCH(req);
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 200);
   }
 
   // 9. Owner PATCH -> 200 OK
   {
     const route = await setupTeamRoute(t, db, ownerAlpha);
+    const expectedUpdatedAt = db.sqlite.prepare("SELECT updated_at FROM employees WHERE id = 'emp-active-alpha'").get().updated_at;
     const req = new Request("http://localhost/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "emp-active-alpha", role: "manager" }),
+      body: JSON.stringify({ id: "emp-active-alpha", expectedUpdatedAt, reason: "Cập nhật hồ sơ bởi owner" }),
     });
     const res = await route.PATCH(req);
     assert.equal(res.status, 200);

@@ -60,13 +60,15 @@ export function AttendanceReviewView() {
   const [reviewError, setReviewError] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [actorEmail, setActorEmail] = useState("");
+  const [isSoleOwner, setIsSoleOwner] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoadingEvents(true); setReviewError("");
     try {
-      const payload = await readJson<{ events: typeof events; actorEmail?: string }>(await fetch("/api/attendance/review", { cache: "no-store" }));
+      const payload = await readJson<{ events: typeof events; actorEmail?: string; isSoleOwner?: boolean }>(await fetch("/api/attendance/review", { cache: "no-store" }));
       setEvents(payload.events ?? []);
       setActorEmail(payload.actorEmail ?? "");
+      setIsSoleOwner(Boolean(payload.isSoleOwner));
     } catch (cause) { setReviewError(cause instanceof Error ? cause.message : "Không thể tải chấm công."); }
     finally { setLoadingEvents(false); }
   }, []);
@@ -172,22 +174,33 @@ export function AttendanceReviewView() {
     }
   }
 
+  const [confirmApproveAll, setConfirmApproveAll] = useState(false);
+  const [confirmRejectEventId, setConfirmRejectEventId] = useState<string | null>(null);
+
   const filteredEvents = useMemo(() => {
-    return (events ?? []).filter((ev) => {
-      const matchesSearch =
-        search.trim() === "" ||
-        ev.employeeName.toLowerCase().includes(search.toLowerCase()) ||
-        (ev.employeeReason && ev.employeeReason.toLowerCase().includes(search.toLowerCase()));
+    return [...(events ?? [])]
+      .filter((ev) => {
+        const matchesSearch =
+          search.trim() === "" ||
+          ev.employeeName.toLowerCase().includes(search.toLowerCase()) ||
+          (ev.employeeReason && ev.employeeReason.toLowerCase().includes(search.toLowerCase()));
 
-      const isPending = ev.reviewRequired && ev.exceptionStatus === "pending";
-      const hasException = ev.reviewRequired || Boolean(ev.exceptionStatus);
-      const isCompleted = !ev.reviewRequired || ev.exceptionStatus === "approved";
+        const isPending = ev.reviewRequired && ev.exceptionStatus === "pending";
+        const hasException = ev.reviewRequired || Boolean(ev.exceptionStatus);
+        const isCompleted = !ev.reviewRequired || ev.exceptionStatus === "approved";
 
-      if (statusFilter === "pending") return matchesSearch && isPending;
-      if (statusFilter === "exceptions") return matchesSearch && hasException;
-      if (statusFilter === "completed") return matchesSearch && isCompleted;
-      return matchesSearch;
-    });
+        if (statusFilter === "pending") return matchesSearch && isPending;
+        if (statusFilter === "exceptions") return matchesSearch && hasException;
+        if (statusFilter === "completed") return matchesSearch && isCompleted;
+        return matchesSearch;
+      })
+      .sort((a, b) => {
+        const aPending = a.reviewRequired && a.exceptionStatus === "pending";
+        const bPending = b.reviewRequired && b.exceptionStatus === "pending";
+        if (aPending && !bPending) return -1;
+        if (!aPending && bPending) return 1;
+        return new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime();
+      });
   }, [events, search, statusFilter]);
 
   const pendingCount = (events ?? []).filter((e) => e.reviewRequired && e.exceptionStatus === "pending").length;
@@ -212,9 +225,44 @@ export function AttendanceReviewView() {
             <ViewHeader title="Bằng chứng chấm công & Đối soát" subtitle="Giữ nguyên thời gian chấm gốc; mỗi điều chỉnh đều có lý do và lịch sử" />
           </div>
           {pendingCount > 0 && (
-            <button className="button button-compact" disabled={reviewBusy} style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={approveAllPending}>
-              <CheckCircle2 size={15} /> Duyệt tất cả ({pendingCount})
-            </button>
+            confirmApproveAll ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.78rem", color: "var(--burgundy)", fontWeight: 700 }}>
+                  Duyệt toàn bộ {pendingCount} ngoại lệ?
+                </span>
+                <button
+                  type="button"
+                  className="button-secondary button-compact"
+                  style={{ minHeight: 44 }}
+                  disabled={reviewBusy}
+                  onClick={() => setConfirmApproveAll(false)}
+                >
+                  Huỷ
+                </button>
+                <button
+                  type="button"
+                  className="button button-compact"
+                  style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 6 }}
+                  disabled={reviewBusy}
+                  onClick={() => {
+                    setConfirmApproveAll(false);
+                    void approveAllPending();
+                  }}
+                >
+                  <CheckCircle2 size={15} /> Xác nhận duyệt ({pendingCount})
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="button button-compact"
+                disabled={reviewBusy}
+                style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 6 }}
+                onClick={() => setConfirmApproveAll(true)}
+              >
+                <CheckCircle2 size={15} /> Duyệt tất cả ({pendingCount})
+              </button>
+            )
           )}
         </div>
 
@@ -231,8 +279,8 @@ export function AttendanceReviewView() {
                 width: "100%",
                 paddingLeft: 36,
                 paddingRight: 12,
-                height: 38,
-                borderRadius: 8,
+                height: 44,
+                borderRadius: 10,
                 border: "1px solid var(--border-subtle, #e2e8f0)",
                 fontSize: "0.88rem",
               }}
@@ -252,7 +300,8 @@ export function AttendanceReviewView() {
                 className={`filter-chip ${statusFilter === chip.key ? "active" : ""}`}
                 onClick={() => setStatusFilter(chip.key as typeof statusFilter)}
                 style={{
-                  padding: "6px 14px",
+                  minHeight: 44,
+                  padding: "8px 14px",
                   borderRadius: 20,
                   fontSize: "0.82rem",
                   fontWeight: statusFilter === chip.key ? 700 : 500,
@@ -277,7 +326,17 @@ export function AttendanceReviewView() {
               const isPending = event.reviewRequired && event.exceptionStatus === "pending";
               const isCheckIn = event.action === "check_in";
               return (
-                <article className="review-card" key={event.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <article
+                  className="review-card"
+                  key={event.id}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                    border: isPending ? "1.5px solid #f2c6ce" : undefined,
+                    background: isPending ? "#fffafa" : undefined,
+                  }}
+                >
                   <div className="section-row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
                       <strong style={{ fontSize: "1rem" }}>{event.employeeName}</strong>
@@ -314,75 +373,119 @@ export function AttendanceReviewView() {
 
                   {/* Location readout */}
                   {event.location && (
-                    <div className="location-readout" style={{ fontSize: "0.78rem" }}>
-                      <MapPin size={13} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
-                      ±{Math.round(event.location.accuracy)}m · cách quán {Math.round(event.location.distance)}m
-                      <span style={{ marginLeft: 6 }}>Thông tin tham khảo để đối soát</span>
+                    <div className="location-readout" style={{ fontSize: "0.78rem", display: "flex", flexDirection: "column", gap: 2 }}>
+                      <div className="flex items-center gap-1.5 flex-wrap font-semibold text-[#332a2b]">
+                        <MapPin size={13} className="shrink-0 text-[#6f2939]" />
+                        <span>
+                          ±{Math.round(event.location.accuracy).toLocaleString("vi-VN")} m · Cách quán{" "}
+                          {Math.round(event.location.distance) >= 1000
+                            ? `${(event.location.distance / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} km (${Math.round(event.location.distance).toLocaleString("vi-VN")} m)`
+                            : `${Math.round(event.location.distance).toLocaleString("vi-VN")} m`}
+                        </span>
+                      </div>
+                      <small style={{ color: "var(--muted)", fontSize: "0.72rem", lineHeight: 1.35 }}>
+                        Thông tin tham khảo để đối soát
+                      </small>
                     </div>
                   )}
 
-                  {/* Action Bar */}
-                  <div className="row-actions" style={{ marginTop: "auto", paddingTop: 8, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.04))", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                  {/* Secondary Inspection Actions (Outline/Secondary Buttons) */}
+                  <div style={{ marginTop: "auto", paddingTop: 10, paddingBottom: 2, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.06))", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                     {event.photoPresent && (
                       <button
                         type="button"
-                        className="text-link"
-                        style={{ fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                        className="min-h-[40px] px-3 py-1.5 rounded-lg border border-[#e3d5d1] bg-white hover:bg-[#fff6f7] text-[#332a2b] text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition shadow-2xs"
                         onClick={() => setSelectedPhotoEventId(selectedPhotoEventId === event.id ? null : event.id)}
                       >
-                        <Camera size={13} /> {selectedPhotoEventId === event.id ? "Ẩn ảnh" : "Xem ảnh"}
+                        <Camera size={14} className="text-[#6f2939]" /> {selectedPhotoEventId === event.id ? "Ẩn ảnh" : "Xem ảnh"}
                       </button>
                     )}
 
                     <button
                       type="button"
-                      className="text-link"
-                      style={{ fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                      className="min-h-[44px] px-3 py-1.5 rounded-lg border border-[#e3d5d1] bg-white hover:bg-[#fff6f7] text-[#332a2b] text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition shadow-2xs"
                       onClick={() => openAdjustModal(event)}
                     >
-                      <Edit3 size={13} /> Điều chỉnh giờ
+                      <Edit3 size={14} className="text-[#6f2939]" /> Điều chỉnh giờ
                     </button>
 
                     <button
                       type="button"
-                      className="text-link"
-                      style={{ fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 4, color: "var(--muted)" }}
+                      className="min-h-[44px] px-3 py-1.5 rounded-lg border border-[#ebe2df] bg-[#faf6f3] hover:bg-[#f2eae6] text-[#7b6f70] text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition"
                       onClick={() => openHistoryModal(event)}
                     >
-                      <History size={13} /> Lịch sử
+                      <History size={14} /> Lịch sử
                     </button>
-
-                    {isPending && (
-                      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                        {actorEmail && event.employeeEmail?.toLowerCase() === actorEmail.toLowerCase() ? (
-                          <span className="badge warning" style={{ fontSize: "0.75rem" }}>
-                            Chờ duyệt độc lập
-                          </span>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="button button-compact"
-                              style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                              onClick={() => decide(event.id, "approved")}
-                              disabled={reviewBusy}
-                            >
-                              Phê duyệt
-                            </button>
-                            <button
-                              type="button"
-                              className="button-secondary"
-                              style={{ padding: "3px 8px", fontSize: "0.75rem", color: "#b91c1c" }}
-                              onClick={() => decide(event.id, "rejected")}
-                              disabled={reviewBusy}
-                            >
-                              Từ chối
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
+
+                  {/* Primary Approval Actions (Separated with >=44px touch targets) */}
+                  {isPending && (
+                    <div style={{ paddingTop: 8, borderTop: "1px dashed #efe4e0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                      {actorEmail && event.employeeEmail?.toLowerCase() === actorEmail.toLowerCase() ? (
+                        <span
+                          className="badge warning"
+                          style={{
+                            fontSize: "0.75rem",
+                            background: isSoleOwner ? "#fffbeb" : undefined,
+                            color: isSoleOwner ? "#92400e" : undefined,
+                            border: isSoleOwner ? "1px solid #fde68a" : undefined,
+                          }}
+                        >
+                          {isSoleOwner
+                            ? "Chủ quán tự điều chỉnh — sự kiện sẽ được ghi nhận vào nhật ký kiểm toán mức cao"
+                            : "Chờ quản lý khác duyệt độc lập"}
+                        </span>
+                      ) : confirmRejectEventId === event.id ? (
+                        <>
+                          <span style={{ fontSize: "0.78rem", color: "#991b1b", fontWeight: 600, marginRight: "auto" }}>
+                            Xác nhận từ chối bản ghi này?
+                          </span>
+                          <button
+                            type="button"
+                            className="button-secondary button-compact"
+                            style={{ minHeight: 44 }}
+                            disabled={reviewBusy}
+                            onClick={() => setConfirmRejectEventId(null)}
+                          >
+                            Huỷ
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-compact"
+                            style={{ minHeight: 44, background: "#dc2626" }}
+                            disabled={reviewBusy}
+                            onClick={() => {
+                              setConfirmRejectEventId(null);
+                              void decide(event.id, "rejected");
+                            }}
+                          >
+                            Xác nhận từ chối
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="button-secondary button-compact"
+                            style={{ minHeight: 44, color: "#b91c1c", borderColor: "#f3c7ce", flex: "1 1 110px" }}
+                            onClick={() => setConfirmRejectEventId(event.id)}
+                            disabled={reviewBusy}
+                          >
+                            Từ chối
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-compact"
+                            style={{ minHeight: 44, flex: "1 1 120px" }}
+                            onClick={() => decide(event.id, "approved")}
+                            disabled={reviewBusy}
+                          >
+                            Phê duyệt
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </article>
               );
             })
@@ -436,6 +539,12 @@ export function AttendanceReviewView() {
                   <strong>Giờ ghi nhận ban đầu:</strong> {formatDateTime(adjustingEvent.recordedAt)}
                 </div>
               </div>
+
+              {isSoleOwner && adjustingEvent.employeeEmail?.toLowerCase() === actorEmail.toLowerCase() && (
+                <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 8, fontSize: "0.82rem", fontWeight: 600 }}>
+                  ⚠️ Chủ quán tự điều chỉnh — sự kiện sẽ được ghi nhận vào nhật ký kiểm toán mức cao
+                </div>
+              )}
 
               {adjustError && (
                 <div style={{ padding: "10px 14px", background: "#fee2e2", color: "#b91c1c", borderRadius: 8, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 8 }}>

@@ -1,4 +1,4 @@
-# LoopiCafe Management System
+# LoopyCafe Management System
 
 Web app mobile-first quản lý vận hành một quán cà phê: phân ca, chấm công, xử lý yêu cầu, checklist, sự cố, bàn giao, tổng hợp công/lương giờ và đặt món không cần tài khoản.
 

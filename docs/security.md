@@ -8,6 +8,10 @@ Xác minh session/token Supabase tại server theo cấu hình provider. Members
 Không tin raw identity headers từ client, role/user/store tự khai, hoặc metadata người dùng có thể sửa để áp đặt quyền.
 Kiểm tra active status và resource scope; bảo vệ owner cuối cùng. Cờ bắt buộc đổi mật khẩu phải do server quản lý.
 Chặn self-approval tại server. `team_lead` chỉ có quyền Trưởng ca vận hành theo DEC-001; `system_admin` không có quyền business data và không được dùng làm bypass store.
+
+Theo DEC-010, quyền được tải từ D1 cho từng request và kiểm tra ở HTTP boundary lẫn application mutation. Không nhận permission/revision từ client làm nguồn tin cậy; thiếu bộ quyền hoặc lỗi tải phải từ chối. Mutation nhạy cảm dùng expected revision và điều kiện ghi nguyên tử.
+
+`system_admin` là trust position cao vì có thể reset tài khoản OWNER. Admin UI/API phải lọc tuyệt đối trường lương, công, ảnh/GPS và dữ liệu đơn/menu; thao tác OWNER cần recent re-auth, lý do, high-priority audit và thông báo nội bộ. Supabase service role chỉ dùng trong server boundary, không đưa vào browser bundle hoặc response.
 Sole-owner self-correction là ngoại lệ tách riêng, bắt buộc before/after, lý do, high-priority append-only audit và xuất hiện trong đối soát.
 Chính sách cache identity phải nêu độ trễ thu hồi được chấp nhận; không thay provider lookup bằng JWT-only mà bỏ kiểm tra vòng đời tài khoản.
 

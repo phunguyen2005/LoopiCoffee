@@ -1,6 +1,14 @@
 import { ApplicationError } from "./errors.ts";
 
-type FieldType = "string" | "number" | "boolean" | "money";
+type FieldType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "money"
+  | "string?"
+  | "number?"
+  | "boolean?"
+  | "money?";
 
 export const DEFAULT_JSON_MAX_BYTES = 65_536;
 export const ATTENDANCE_ACTION_MAX_BYTES = 3_145_728;
@@ -57,9 +65,15 @@ export async function readObject(
     throw new ApplicationError("Nội dung yêu cầu phải là một đối tượng.", 400, "invalid_body");
   }
   const record = body as Record<string, unknown>;
-  for (const [key, type] of Object.entries(fields)) {
+  for (const [key, fieldType] of Object.entries(fields)) {
     const value = record[key];
     if (value === undefined) continue;
+    const isNullable = fieldType.endsWith("?");
+    const type = (isNullable ? fieldType.slice(0, -1) : fieldType) as "string" | "number" | "boolean" | "money";
+    if (value === null) {
+      if (isNullable) continue;
+      throw new ApplicationError(`Trường ${key} không hợp lệ.`, 400, "invalid_field");
+    }
     const valid = type === "money"
       ? typeof value === "number" || typeof value === "string"
       : typeof value === type;

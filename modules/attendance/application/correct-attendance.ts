@@ -1,6 +1,7 @@
 import type { AccessActor, ActorRole } from "../../people/domain/access.ts";
 import { ApplicationError } from "../../../platform/http/errors.ts";
 import { auditStatement } from "../../../server/audit.ts";
+import { hasGrantedPermission } from "../../people/domain/permissions.ts";
 
 export function attendanceTime(value: unknown) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
@@ -11,7 +12,7 @@ export function attendanceTime(value: unknown) {
 }
 
 export async function correctAttendance(db: D1Database, actor: AccessActor, input: { eventId?: string; sessionId?: string; action?: "check_in" | "check_out"; adjustedTime: unknown; reason: unknown; expectedRevision?: number }) {
-  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "forbidden");
+  if (!hasGrantedPermission(actor, "attendance.correct")) throw new ApplicationError("Bạn không có quyền điều chỉnh chấm công.", 403, "permission_denied");
   const effectiveTime = attendanceTime(input.adjustedTime);
   if (Date.parse(effectiveTime) > Date.now() + 60_000) throw new ApplicationError("Không thể điều chỉnh công tới thời điểm tương lai.");
   if (typeof input.reason !== "string" || input.reason.trim().length < 5 || input.reason.length > 1000) throw new ApplicationError("Cần lý do điều chỉnh từ 5 đến 1000 ký tự.");
@@ -39,6 +40,9 @@ export async function correctAttendance(db: D1Database, actor: AccessActor, inpu
       throw new ApplicationError("Tự điều chỉnh công chỉ áp dụng khi cửa hàng chỉ có duy nhất 1 chủ quán đang hoạt động.", 403, "sole_owner_required");
     }
   } else {
+    if (actor.role !== "owner" && ["owner", "system_admin"].includes(session.employee_role || "")) {
+      throw new ApplicationError("Bạn không có quyền điều chỉnh công của Chủ quán hoặc Quản trị viên hệ thống.", 403, "forbidden");
+    }
     if (actor.role === "manager" && ["owner", "manager"].includes(session.employee_role || "")) {
       throw new ApplicationError("Quản lý không có quyền điều chỉnh công của Quản lý hoặc Chủ quán.", 403, "forbidden");
     }
@@ -71,9 +75,9 @@ export async function correctAttendance(db: D1Database, actor: AccessActor, inpu
        AND NOT EXISTS (SELECT 1 FROM payroll_periods WHERE store_id = ? AND status IN ('finalized', 'paid') AND period_start <= ? AND period_end > ?)`,
     ).bind(openedAt, closedAt, workedMinutes, openedAt, closedAt, session.id, actor.storeId, session.revision, closedAt, openedAt, closedAt, actor.storeId, affectedEnd, affectedStart),
     db.prepare(
-      `INSERT INTO attendance_corrections (id, session_id, event_id, action, previous_time, effective_time, reason, actor_email, created_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
-    ).bind(correctionId, session.id, session.event_id, action, previousTime, effectiveTime, input.reason.trim(), actor.email, now),
+      `INSERT INTO attendance_corrections (id, session_id, event_id, action, previous_time, effective_time, reason, actor_email, revision, created_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
+    ).bind(correctionId, session.id, session.event_id, action, previousTime, effectiveTime, input.reason.trim(), actor.email, session.revision + 1, now),
     auditStatement(
       db,
       actor.email,

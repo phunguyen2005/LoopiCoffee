@@ -45,7 +45,7 @@ export function createWorkforceFixture(db, {
   seedStore(db, {
     id: storeId,
     name: `Store ${storeId}`,
-    address: "LoopiCafe Nguyễn Trãi",
+    address: "LoopyCafe Nguyễn Trãi",
     latitude: 10.754128,
     longitude: 106.66754,
     timezone: "Asia/Ho_Chi_Minh",
@@ -467,6 +467,9 @@ export function buildHandoverScenario(db, fixture) {
     storeId: fixture.storeId,
     authorEmail: fixture.actors.employeeA.email,
     summary: "Bàn giao ca sáng kiểm thử",
+    shiftId: morningShift.id,
+    receiverEmployeeId: fixture.actors.employeeB.id,
+    nextShiftId: afternoonShift.id,
     acknowledgedAt: null,
   });
 

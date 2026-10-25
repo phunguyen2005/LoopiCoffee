@@ -120,6 +120,34 @@
       "when": 1791939497940,
       "tag": "0016_handover_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791954454550,
+      "tag": "0017_empty_cammi",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1791960000000,
+      "tag": "0018_custom_roles_and_cover_shifts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792224000000,
+      "tag": "0019_ops_shift_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792310400000,
+      "tag": "0020_attendance_exception_flow",
+      "breakpoints": true
     }
   ]
 }

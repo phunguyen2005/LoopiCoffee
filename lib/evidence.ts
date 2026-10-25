@@ -71,14 +71,14 @@ export function createServerStampedSvg(input: StampInput) {
   const actionLabel = input.action === "check_in" ? "VÀO CA" : "RA CA";
   const coordinateLine =
     `${input.latitude.toFixed(6)}, ${input.longitude.toFixed(6)} · ` +
-    `Độ chính xác ±${Math.round(input.accuracy)} m · Cách quán ${Math.round(input.distance)} m`;
+    `Độ chính xác ±${Math.round(input.accuracy)} m · Cách quán ${Math.round(input.distance / 1000)} km`;
   const eventLabel = `Mã sự kiện: ${input.eventId.slice(0, 8).toUpperCase()}`;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${photo.width}" height="${canvasHeight}" viewBox="0 0 ${photo.width} ${canvasHeight}">`,
     `<rect width="100%" height="100%" fill="#231418"/>`,
     `<image href="data:image/jpeg;base64,${photo.base64}" x="0" y="0" width="${photo.width}" height="${photo.height}" preserveAspectRatio="xMidYMid slice"/>`,
     `<rect x="0" y="${photo.height}" width="${photo.width}" height="${footerHeight}" fill="#231418"/>`,
-    `<text x="26" y="${photo.height + headlineSize + 22}" fill="#ffffff" font-family="Arial, sans-serif" font-size="${headlineSize}" font-weight="700">LoopiCafe · ${actionLabel}</text>`,
+    `<text x="26" y="${photo.height + headlineSize + 22}" fill="#ffffff" font-family="Arial, sans-serif" font-size="${headlineSize}" font-weight="700">LoopyCafe · ${actionLabel}</text>`,
     `<text x="26" y="${photo.height + headlineSize + bodySize + 42}" fill="#ffe1e7" font-family="Arial, sans-serif" font-size="${bodySize}" font-weight="600">${escapeXml(input.localTime)} GMT+7 · Giờ máy chủ</text>`,
     `<text x="26" y="${photo.height + headlineSize + bodySize * 2 + 60}" fill="#ffffff" font-family="Arial, sans-serif" font-size="${bodySize}">${escapeXml(coordinateLine)}</text>`,
     `<text x="26" y="${canvasHeight - 18}" fill="#d8c9cc" font-family="Arial, sans-serif" font-size="${Math.max(14, bodySize - 3)}">${escapeXml(eventLabel)} · Vị trí là bằng chứng tham khảo</text>`,

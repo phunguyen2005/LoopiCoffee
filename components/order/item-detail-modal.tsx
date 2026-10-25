@@ -48,11 +48,15 @@ export function ItemDetailModal({
   onAddToCart,
 }: ItemDetailModalProps) {
   const dialogRef = useModalDialog(Boolean(item), onClose);
+  // Helper to de-duplicate options by name
+  const dedupeByName = (arr: MenuOptionItem[]) =>
+    Array.from(new Map(arr.map((item) => [item.name, item])).values());
+
   // Available options filtered by group
-  const sizeOptions = options.filter((o) => o.group_type === "size" && o.is_available && item?.allows_size);
-  const sugarOptions = options.filter((o) => o.group_type === "sugar" && o.is_available && item?.allows_sugar);
-  const iceOptions = options.filter((o) => o.group_type === "ice" && o.is_available && item?.allows_ice);
-  const toppingOptions = options.filter((o) => o.group_type === "topping" && o.is_available && item?.allows_toppings);
+  const sizeOptions = dedupeByName(options.filter((o) => o.group_type === "size" && o.is_available && item?.allows_size));
+  const sugarOptions = dedupeByName(options.filter((o) => o.group_type === "sugar" && o.is_available && item?.allows_sugar));
+  const iceOptions = dedupeByName(options.filter((o) => o.group_type === "ice" && o.is_available && item?.allows_ice));
+  const toppingOptions = dedupeByName(options.filter((o) => o.group_type === "topping" && o.is_available && item?.allows_toppings));
 
   // Selection states
   const defaultSize = sizeOptions.find((o) => o.is_default) || sizeOptions[0] || { name: "Size M", price_modifier: 0 };

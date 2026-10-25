@@ -27,7 +27,7 @@ test.beforeAll(async () => {
   if (!Array.isArray(parsed) || parsed.some((account) => !account ||
     typeof account.id !== "string" || !account.id.startsWith("local-") ||
     typeof account.email !== "string" || !account.email.endsWith("@loopicafe.test") ||
-    typeof account.password !== "string" || account.password.length < 10 ||
+    typeof account.password !== "string" || account.password.length < 12 ||
     !["system_admin", "owner", "manager", "team_lead", "employee"].includes(account.role))) {
     throw new Error("Local account fixture format is invalid. Refusing to use unknown credentials.");
   }
@@ -83,7 +83,7 @@ async function signIn(page: Page, account: LocalAccount) {
   await page.locator("#login-email").fill(account.email);
   await page.locator("#login-password").fill(account.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  const expectedPath = ["employee", "team_lead"].includes(account.role) ? "/app/today" : "/app";
+  const expectedPath = account.role === "system_admin" ? "/app/admin" : ["employee", "team_lead"].includes(account.role) ? "/app/today" : "/app";
   await expect(page, "Fixture login must reach the real authenticated application without a bypass").toHaveURL(`${APP_ORIGIN}${expectedPath}`, { timeout: 20_000 });
   const response = await page.request.get(`${APP_ORIGIN}/api/profile`, { maxRedirects: 0 });
   expect(response.status()).toBe(200);
@@ -160,16 +160,29 @@ test("owner logs in, refreshes an authenticated page, and logs out through the U
 for (const role of ["system_admin", "owner", "manager", "team_lead", "employee"] as const) {
   test(`${role} page access and API permissions agree`, async ({ page }) => {
     await signIn(page, accountFor(role));
-    const managesAccounts = ["owner", "manager"].includes(role);
+    const managesAccounts = role === "system_admin";
+    const managesPeople = ["owner", "manager"].includes(role);
     const ownsStore = role === "owner";
     const accountsResponse = await page.request.get(`${APP_ORIGIN}/api/admin/accounts`, { maxRedirects: 0 });
     expect(accountsResponse.status()).toBe(managesAccounts ? 200 : 403);
+    if (managesAccounts) {
+      const accountsPayload = await accountsResponse.json();
+      expect(JSON.stringify(accountsPayload)).not.toMatch(/hourly_rate|monthly_salary|compensation_type|latitude|longitude|photo/i);
+    }
     const auditResponse = await page.request.get(`${APP_ORIGIN}/api/audit`, { maxRedirects: 0 });
     expect(auditResponse.status()).toBe(ownsStore ? 200 : 403);
+    const adminAuditResponse = await page.request.get(`${APP_ORIGIN}/api/admin/audit`, { maxRedirects: 0 });
+    expect(adminAuditResponse.status()).toBe(role === "system_admin" ? 200 : 403);
+    const rolesResponse = await page.request.get(`${APP_ORIGIN}/api/admin/roles`, { maxRedirects: 0 });
+    expect(rolesResponse.status()).toBe(role === "system_admin" ? 200 : 403);
+    if (role === "system_admin") {
+      expect((await page.request.get(`${APP_ORIGIN}/api/owner/orders`, { maxRedirects: 0 })).status()).toBe(403);
+    }
     await page.goto(`${APP_ORIGIN}/app/admin/accounts`);
     await expect(page).toHaveURL(`${APP_ORIGIN}${managesAccounts ? "/app/admin/accounts" : "/app"}`);
+    if (managesAccounts) await expect(page.getByRole("heading", { name: "Quản trị tài khoản", exact: true }).first()).toBeVisible();
     await page.goto(`${APP_ORIGIN}/app/team`);
-    await expect(page).toHaveURL(`${APP_ORIGIN}${managesAccounts ? "/app/team" : "/app"}`);
+    await expect(page).toHaveURL(`${APP_ORIGIN}${managesPeople ? "/app/team" : role === "system_admin" ? "/app/admin" : "/app"}`);
     // A forged owner header must not elevate an existing staff/manager session.
     const profile = await page.request.get(`${APP_ORIGIN}/api/profile`, {
       headers: { "oai-authenticated-user-email": "owner@loopicafe.test" }, maxRedirects: 0,
@@ -177,6 +190,43 @@ for (const role of ["system_admin", "owner", "manager", "team_lead", "employee"]
     expect((await profile.json()).user.role).toBe(role);
   });
 }
+
+test("admin UI keeps the single owner recoverable without offering a second owner", async ({ page }) => {
+  await signIn(page, accountFor("system_admin"));
+  const owner = accountFor("owner");
+  await page.goto(`${APP_ORIGIN}/app/admin/accounts`);
+  await expect(page.getByText(/Hiển thị \d+\/\d+ tài khoản/)).toBeVisible({ timeout: 15_000 });
+
+  const duplicateOwner = await page.request.post(`${APP_ORIGIN}/api/admin/accounts`, {
+    headers: { Origin: APP_ORIGIN },
+    data: {
+      email: "second.owner@loopicafe.test",
+      displayName: "Owner thứ hai",
+      role: "owner",
+      activationMethod: "invite",
+      mustChangePassword: true,
+      reason: "Xác minh giới hạn một Owner",
+      idempotencyKey: crypto.randomUUID(),
+    },
+    maxRedirects: 0,
+  });
+  expect(duplicateOwner.status()).toBe(409);
+  expect((await duplicateOwner.json()).code).toBe("owner_limit");
+
+  await page.getByRole("button", { name: "Tạo tài khoản", exact: true }).click();
+  const createDialog = page.getByRole("dialog", { name: "Tạo tài khoản đăng nhập" });
+  const createOwnerOption = createDialog.locator('option[value="owner"]');
+  await expect(createOwnerOption).toHaveAttribute("disabled", "");
+  await expect(createOwnerOption).toHaveText("Chủ quán (đã có)");
+  await expect(createDialog.getByText("Mỗi cửa hàng chỉ có một Chủ quán.", { exact: false })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.locator(".adm-row").filter({ hasText: owner.email }).click();
+  const ownerDialog = page.getByRole("dialog");
+  await expect(ownerDialog.getByLabel("Vai trò")).toBeDisabled();
+  await expect(ownerDialog.getByLabel("Trạng thái").locator('option[value="suspended"]')).toHaveAttribute("disabled", "");
+  await expect(ownerDialog.getByRole("button", { name: "Mật khẩu tạm" })).toBeVisible();
+});
 
 test("cookie-authenticated writes require the exact request origin", async ({ page }) => {
   await signIn(page, accountFor("employee"));

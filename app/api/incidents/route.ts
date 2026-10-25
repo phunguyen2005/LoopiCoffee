@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { auditStatement, requireApiUser } from "@/server/auth";
+import { auditStatement, requireApiPermission, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
@@ -103,7 +103,7 @@ const ALLOWED_PREVIOUS_STATUS: Record<string, string[]> = {
 const VALID_STATUSES = ["open", "acknowledged", "resolved", "closed"];
 
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
+  const auth = await requireApiPermission("incidents.transition");
   if (!auth.actor) return auth.response;
   const body = (await readObject(request, {
     id: "string",

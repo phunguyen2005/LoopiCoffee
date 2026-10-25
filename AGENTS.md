@@ -1,7 +1,8 @@
-# AGENTS — LoopiCafe Management System
+# AGENTS — LoopyCafe Management System
 
 Tài liệu quy trình cho AI Coding Agents. Cập nhật: 2026-10-13.
 Đọc [chỉ mục tài liệu](docs/README.md) và [quy tắc nghiệp vụ](docs/business-rules.md) trước khi làm việc.
+Với thay đổi giao diện, đọc [hệ thống thiết kế](docs/design.md) và [hướng dẫn màn hình](docs/ui-ux-guidelines.md); không chép lại các quy tắc này sang tài liệu khác.
 
 ## Phạm vi và thứ tự căn cứ
 

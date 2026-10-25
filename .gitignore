@@ -50,6 +50,7 @@ next-env.d.ts
 
 # Isolated local auth/runtime credentials and generated test output
 .dev.vars*
+TEST_ACCOUNTS.md
 tooling/local-auth/supabase/.temp/
 tooling/local-auth/supabase/.branches/
 playwright-report/

@@ -1,4 +1,6 @@
-# Audit UI/UX mobile-first — LoopiCafe
+# Audit UI/UX mobile-first — LoopyCafe
+
+> Báo cáo lịch sử tại baseline bên dưới, không phải đặc tả giao diện hiện hành. Dùng [hệ thống thiết kế](docs/design.md) và [hướng dẫn màn hình](docs/ui-ux-guidelines.md) khi thiết kế hoặc chỉnh sửa UI.
 
 **Ngày:** 2026-10-14 (Asia/Ho_Chi_Minh)  
 **Baseline:** `888495ba3fddf4798b80f9a1cbe4aec65c0991b8` + working tree đang dirty; xem `git status --short` tại thời điểm audit.  

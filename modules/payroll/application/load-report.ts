@@ -1,11 +1,13 @@
 import type { PayrollPeriod, PayrollException, PayrollReportRow } from "../contracts/report.ts";
 import { resolvePayrollPeriod } from "../domain/period.ts";
 import { loadLockedRows } from "./locked-report.ts";
+import { calculateHourlyPay } from "../domain/calculate-hourly-pay.ts";
 
 type LoadOptions = {
   storeId: string;
   actorEmail: string;
   actorRole: string;
+  canViewAll?: boolean;
   periodKey?: string | null;
 };
 
@@ -66,7 +68,8 @@ type SessionExceptionRow = {
 
 export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   const period = resolvePayrollPeriod(options.periodKey);
-  const ownOnly = options.actorRole === "employee" ? "AND lower(e.email) = lower(?)" : "";
+  const isOwnOnly = options.canViewAll !== undefined ? !options.canViewAll : options.actorRole === "employee";
+  const ownOnly = isOwnOnly ? "AND lower(e.email) = lower(?)" : "";
 
   const store = await db.prepare("SELECT name, timezone, workforce_revision FROM stores WHERE id = ?")
     .bind(options.storeId)
@@ -83,7 +86,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   }>();
 
   if (payrollPeriod?.status === "finalized" || payrollPeriod?.status === "paid") {
-    const rows = await loadLockedRows(db, payrollPeriod.id, options.actorRole === "employee" ? options.actorEmail : undefined);
+    const rows = await loadLockedRows(db, payrollPeriod.id, isOwnOnly ? options.actorEmail : undefined);
     return {
       period, sourceRevision: store?.workforce_revision ?? 0, storeName: store?.name ?? "Cửa hàng", timezone: store?.timezone ?? "Asia/Ho_Chi_Minh",
       generatedAt: new Date().toISOString(), dataThrough: payrollPeriod.finalized_at ?? period.endExclusiveIso,
@@ -94,8 +97,11 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   const aggregate = await db.prepare(
     `WITH period_window AS (SELECT ? AS start_at, ? AS end_at),
      session_data AS (
-       SELECT s.*, CAST(MAX(0, (julianday(MIN(s.closed_at, p.end_at)) - julianday(MAX(s.opened_at, p.start_at))) * 1440 + 0.000001) AS INTEGER) AS clipped_minutes
+       SELECT s.*,
+              CAST(MAX(0, (julianday(MIN(s.closed_at, p.end_at)) - julianday(MAX(s.opened_at, p.start_at))) * 1440 + 0.000001) AS INTEGER) AS clipped_minutes,
+              CAST(MAX(0, (julianday(MIN(s.closed_at, p.end_at, COALESCE(sh.ends_at, s.closed_at))) - julianday(MAX(s.opened_at, p.start_at, COALESCE(sh.starts_at, s.opened_at)))) * 1440 + 0.000001) AS INTEGER) AS approved_clipped_minutes
        FROM attendance_sessions s CROSS JOIN period_window p
+       LEFT JOIN shifts sh ON sh.id = s.shift_id AND sh.store_id = s.store_id
      ), event_flags AS (
        SELECT s.id AS session_id,
               COUNT(DISTINCT CASE WHEN ev.review_required = 1 OR ex.id IS NOT NULL THEN ev.id END) AS event_exception_count,
@@ -122,7 +128,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
                   AND s.status = 'completed'
                   AND COALESCE(f.pending_exception_count, 0) = 0
                   AND COALESCE(f.rejected_exception_count, 0) = 0
-                THEN s.clipped_minutes ELSE 0 END), 0) AS approved_minutes,
+                THEN s.approved_clipped_minutes ELSE 0 END), 0) AS approved_minutes,
               COALESCE(SUM(COALESCE(f.event_exception_count, 0) + CASE
                 WHEN s.opened_at IS NULL OR s.closed_at IS NULL OR s.worked_minutes IS NULL OR s.worked_minutes < 0 OR s.worked_minutes > 720 THEN 1
                 ELSE 0 END), 0) AS exception_count,
@@ -178,7 +184,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
     options.storeId, period.endExclusiveIso, period.startIso,
     options.storeId,
     period.key,
-    ...(options.actorRole === "employee" ? [options.actorEmail] : []),
+    ...(isOwnOnly ? [options.actorEmail] : []),
   ).all<AggregateRow>();
 
   const entryMap = new Map<string, PayrollEntryRow>();
@@ -227,19 +233,22 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   }
 
   let sessionIntervals: Array<{
+    session_id: string;
     employee_email: string;
-    opened_at: string;
-    closed_at: string;
-    clipped_minutes: number;
+    approved_start_at: string;
+    approved_end_at: string;
   }> = [];
   try {
     const sessResult = await db.prepare(
       `WITH period_window AS (SELECT ? AS start_at, ? AS end_at),
        session_data AS (
-         SELECT s.*, CAST(MAX(0, (julianday(MIN(s.closed_at, p.end_at)) - julianday(MAX(s.opened_at, p.start_at))) * 1440 + 0.000001) AS INTEGER) AS clipped_minutes
+         SELECT s.*,
+                MAX(s.opened_at, p.start_at, COALESCE(sh.starts_at, s.opened_at)) AS approved_start_at,
+                MIN(s.closed_at, p.end_at, COALESCE(sh.ends_at, s.closed_at)) AS approved_end_at
          FROM attendance_sessions s CROSS JOIN period_window p
+         LEFT JOIN shifts sh ON sh.id = s.shift_id AND sh.store_id = s.store_id
        )
-       SELECT lower(s.employee_email) AS employee_email, s.opened_at, s.closed_at, s.clipped_minutes
+       SELECT s.id AS session_id, lower(s.employee_email) AS employee_email, s.approved_start_at, s.approved_end_at
        FROM session_data s
        WHERE s.store_id = ?
          AND s.closed_at IS NOT NULL
@@ -252,15 +261,16 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
          )
          AND COALESCE(s.opened_at, s.closed_at) < ?
          AND COALESCE(s.closed_at, '9999-12-31T23:59:59.999Z') >= ?
+         AND s.approved_end_at > s.approved_start_at
        ORDER BY s.opened_at ASC`
     ).bind(
       period.startIso, period.endExclusiveIso,
       options.storeId, period.endExclusiveIso, period.startIso
     ).all<{
+      session_id: string;
       employee_email: string;
-      opened_at: string;
-      closed_at: string;
-      clipped_minutes: number;
+      approved_start_at: string;
+      approved_end_at: string;
     }>();
     sessionIntervals = sessResult.results;
   } catch {
@@ -270,7 +280,9 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
   const rows: PayrollReportRow[] = aggregate.results.map((row: AggregateRow) => {
     const entry = entryMap.get(row.email.toLowerCase());
     const approvedMinutes = row.approved_minutes;
-    const overtimeMinutes = Math.max(0, approvedMinutes - row.scheduled_minutes);
+    // Overtime is never inferred from monthly totals. Until an explicit approval
+    // record exists, work outside the linked shift contributes zero payable minutes.
+    const overtimeMinutes = 0;
     const employeeAdjustments = adjustments.results.filter((adjustment) => adjustment.employee_email.toLowerCase() === row.email.toLowerCase());
     const allowanceAmount = 0;
     const bonusAmount = employeeAdjustments.reduce((total, item) => total + Math.max(0, item.amount), 0);
@@ -293,39 +305,29 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
     );
 
     let baseSalary = 0;
+    let baseSalaryExact = 0;
+    let payableMinutes = 0;
+    let missingRateMinutes = 0;
+    let rateSegments: PayrollReportRow["rateSegments"] = [];
     if (row.compensation_type === "hourly") {
-      if (entry?.row_snapshot) {
-        const snapMinutes = Math.floor(approvedMinutes / 15) * 15;
-        baseSalary = Math.round((snapMinutes / 60) * effectiveHourlyRate);
-      } else if (empRateHistory.length > 0) {
-        const empSessions = sessionIntervals.filter((s) => s.employee_email === row.email.toLowerCase());
-        if (empSessions.length > 0) {
-          let calculatedBase = 0;
-          for (const sess of empSessions) {
-            const applicableRate = empRateHistory.find((rh) => {
-              const fromMatch = rh.effective_from <= sess.opened_at;
-              const toMatch = !rh.effective_to || sess.opened_at < rh.effective_to;
-              return fromMatch && toMatch;
-            }) ?? empRateHistory[empRateHistory.length - 1];
-
-            const rate = applicableRate?.hourly_rate ?? effectiveHourlyRate;
-            const sessionFloorMinutes = Math.floor(sess.clipped_minutes / 15) * 15;
-            calculatedBase += (sessionFloorMinutes / 60) * rate;
-          }
-          baseSalary = Math.round(calculatedBase);
-        } else {
-          const flooredMinutes = Math.floor(approvedMinutes / 15) * 15;
-          baseSalary = Math.round((flooredMinutes / 60) * effectiveHourlyRate);
-        }
-      } else {
-        const flooredMinutes = Math.floor(approvedMinutes / 15) * 15;
-        baseSalary = Math.round((flooredMinutes / 60) * effectiveHourlyRate);
-      }
+      const empSessions = sessionIntervals
+        .filter((session) => session.employee_email === row.email.toLowerCase())
+        .map((session) => ({ sessionId: session.session_id, startAt: session.approved_start_at, endAt: session.approved_end_at }));
+      const calculation = calculateHourlyPay(empSessions, empRateHistory.map((rate) => ({
+        hourlyRate: rate.hourly_rate,
+        effectiveFrom: rate.effective_from,
+        effectiveTo: rate.effective_to,
+      })));
+      payableMinutes = calculation.payableMinutes;
+      missingRateMinutes = calculation.missingRateMinutes;
+      rateSegments = calculation.segments;
+      baseSalaryExact = calculation.baseSalaryExact;
+      baseSalary = Math.round(baseSalaryExact);
     }
 
     // Basic hourly payroll only. Any additional payment needs an explicit reasoned adjustment.
     const overtimePay = 0;
-    const rawTotal = Math.max(0, baseSalary + overtimePay + allowanceAmount + bonusAmount - deductionAmount);
+    const rawTotal = Math.max(0, baseSalaryExact + overtimePay + allowanceAmount + bonusAmount - deductionAmount);
     const calculatedTotal = Math.round(rawTotal / 1000) * 1000;
     const status: PayrollReportRow["status"] = row.pending_exception_count > 0
       ? "exception" : approvedMinutes > 0 ? "attendance_approved" : "unchecked";
@@ -342,6 +344,7 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
       scheduledMinutes: row.scheduled_minutes,
       recordedMinutes: row.recorded_minutes,
       approvedMinutes,
+      payableMinutes,
       overtimeMinutes,
       shiftCount: row.shift_count,
       lateCount: row.late_count,
@@ -354,6 +357,8 @@ export async function loadPayrollReport(db: D1Database, options: LoadOptions) {
       baseSalary,
       overtimePay,
       totalSalary: calculatedTotal,
+      missingRateMinutes,
+      rateSegments,
       status,
       exceptions: exceptionMap.get(row.email.toLowerCase()) ?? [],
       adjustments: employeeAdjustments.map((item) => ({ id: item.id, amount: item.amount, reason: item.reason, actorEmail: item.actor_email, createdAt: item.created_at })),

@@ -60,7 +60,7 @@ export function LoopyPreloader({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: shouldReduceMotion ? 0 : 0.24, delay: 0.06 }}
             >
-              LoopiCafe
+              LoopyCafe
             </motion.h1>
 
             <div
@@ -83,7 +83,7 @@ export function LoopyPreloader({
           </div>
 
           <p className="loopy-preloader__footer">
-            Hệ thống quản lý vận hành LoopiCafe <span aria-hidden="true">•</span> Phiên bản v2026.10
+            Hệ thống quản lý vận hành LoopyCafe <span aria-hidden="true">•</span> Phiên bản v2026.10
           </p>
         </motion.div>
       )}

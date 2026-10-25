@@ -1,12 +1,12 @@
 import { ensureDatabase } from "@/db/runtime";
-import { requireApiUser } from "@/server/auth";
+import { requireApiPermission } from "@/server/auth";
 import { apiHandler, ApplicationError } from "@/platform/http/errors";
 import { readOrderBody, text } from "@/modules/ordering/application/input";
 import { auditStatement } from "@/server/audit";
 
 export const dynamic = "force-dynamic";
 export const GET = apiHandler(async () => {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiPermission("orders.read");
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const settings = await db.prepare("SELECT is_ordering_open, announcement, opening_hours_notice FROM store_ordering_settings WHERE store_id = ?")
@@ -14,7 +14,7 @@ export const GET = apiHandler(async () => {
   return Response.json({ isOrderingOpen: Boolean(settings?.is_ordering_open), announcement: settings?.announcement ?? "", openingHoursNotice: settings?.opening_hours_notice ?? "08:00 - 22:30" }, { headers: { "Cache-Control": "private, no-store" } });
 });
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiPermission("ordering.availability.manage");
   if (!auth.actor) return auth.response;
   const body = await readOrderBody(request);
   if (body.isOrderingOpen !== undefined && typeof body.isOrderingOpen !== "boolean") throw new ApplicationError("Trạng thái quán không hợp lệ.");

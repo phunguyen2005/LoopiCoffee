@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
+import { createDatabase, seedStore, seedEmployee, seedShift } from "./helpers/database.mjs";
 import { loadModule } from "./helpers/load-module.mjs";
 import { readObject, ATTENDANCE_ACTION_MAX_BYTES } from "../platform/http/input.ts";
 import { apiHandler, ApplicationError } from "../platform/http/errors.ts";
@@ -244,6 +244,10 @@ test("DIMENSION 3: Fuzzing /api/incidents and /api/handovers with malformed and 
   t.after(() => db.close());
   seedStore(db);
   const manager = seedEmployee(db, { id: "mgr-fuzz", role: "manager" });
+  const receiver = seedEmployee(db, { id: "staff-fuzz", email: "staff-fuzz@example.test", role: "employee" });
+  const sourceShift = seedShift(db, { id: "fuzz-source-shift", employeeEmail: manager.email, startsAt: "2026-09-17T06:00:00.000Z", endsAt: "2026-09-17T12:00:00.000Z" });
+  const targetShift = seedShift(db, { id: "fuzz-target-shift", employeeEmail: receiver.email, startsAt: "2026-09-17T12:00:00.000Z", endsAt: "2026-09-17T18:00:00.000Z" });
+  const handoverTarget = { shiftId: sourceShift.id, receiverEmployeeId: receiver.id, nextShiftId: targetShift.id };
 
   const loadedInc = await loadModule("../../app/api/incidents/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
@@ -257,6 +261,7 @@ test("DIMENSION 3: Fuzzing /api/incidents and /api/handovers with malformed and 
   const loadedHnd = await loadModule("../../app/api/handovers/route.ts", {
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/server/auth": { requireApiUser: async () => ({ actor: manager }), auditStatement },
+    "@/modules/operations/domain/business-day": { businessDate: () => "2026-09-17" },
     "@/platform/http/errors": { apiHandler, ApplicationError },
     "@/platform/http/input": { readObject },
   });
@@ -304,10 +309,10 @@ test("DIMENSION 3: Fuzzing /api/incidents and /api/handovers with malformed and 
   const sum9 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "123456789", managerAttention: false }));
   assert.equal(sum9.status, 400);
 
-  const sum10 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "1234567890", managerAttention: false, idempotencyKey: crypto.randomUUID() }));
+  const sum10 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "1234567890", managerAttention: false, idempotencyKey: crypto.randomUUID(), ...handoverTarget }));
   assert.equal(sum10.status, 200);
 
-  const sum2000 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2000), managerAttention: false, idempotencyKey: crypto.randomUUID() }));
+  const sum2000 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2000), managerAttention: false, idempotencyKey: crypto.randomUUID(), ...handoverTarget }));
   assert.equal(sum2000.status, 200);
 
   const sum2001 = await hndRoute.POST(jsonRequest("http://localhost/api/handovers", "POST", { summary: "x".repeat(2001), managerAttention: false }));
@@ -384,8 +389,8 @@ test("DIMENSION 4: Complete role matrix across /api/team and /api/incidents with
   // Test Matrix:
   const matrix = [
     { actor: owner1, getTeam: 200, patchTeam: 200, patchInc: 200 },
-    { actor: manager1, getTeam: 200, patchTeam: 403, patchInc: 200 },
-    { actor: lead1, getTeam: 200, patchTeam: 403, patchInc: 200 },
+    { actor: manager1, getTeam: 200, patchTeam: 200, patchInc: 200 },
+    { actor: lead1, getTeam: 403, patchTeam: 403, patchInc: 200 },
     { actor: staff1, getTeam: 403, patchTeam: 403, patchInc: 403 },
     { actor: customer, getTeam: 403, patchTeam: 403, patchInc: 403 },
     { actor: null, getTeam: 401, patchTeam: 401, patchInc: 401 },
@@ -406,7 +411,10 @@ test("DIMENSION 4: Complete role matrix across /api/team and /api/incidents with
     assert.equal(getRes.status, tc.getTeam, `GET /api/team for ${tc.actor?.role ?? "unauth"} should be ${tc.getTeam}`);
 
     // PATCH /api/team
-    const patchTeamReq = jsonRequest("http://localhost/api/team", "PATCH", { id: "staff-1", role: "manager" });
+    const employeeVersion = db.sqlite.prepare("SELECT updated_at FROM employees WHERE id = 'staff-1'").get().updated_at;
+    const patchTeamReq = jsonRequest("http://localhost/api/team", "PATCH", {
+      id: "staff-1", expectedUpdatedAt: employeeVersion, reason: "Kiểm thử cập nhật hồ sơ",
+    });
     const patchTeamRes = await teamRoute.PATCH(patchTeamReq);
     assert.equal(patchTeamRes.status, tc.patchTeam, `PATCH /api/team for ${tc.actor?.role ?? "unauth"} should be ${tc.patchTeam}`);
 
@@ -416,10 +424,8 @@ test("DIMENSION 4: Complete role matrix across /api/team and /api/incidents with
     assert.equal(patchIncRes.status, tc.patchInc, `PATCH /api/incidents for ${tc.actor?.role ?? "unauth"} should be ${tc.patchInc}`);
   }
 
-  // Verify store isolation for lead:
+  // Team lead is denied the people directory in RBAC v1.
   currentActor = lead1;
   const leadTeamRes = await teamRoute.GET();
-  const leadTeamData = await leadTeamRes.json();
-  const visibleIds = leadTeamData.employees.map((e) => e.id);
-  assert.ok(!visibleIds.includes("staff-2"), "Lead of store-1 MUST NOT see staff-2 from store-2");
+  assert.equal(leadTeamRes.status, 403);
 });

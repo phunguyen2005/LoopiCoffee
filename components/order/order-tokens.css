@@ -52,6 +52,14 @@
   overflow-x: hidden;
 }
 
+/* Customer Heading Font Declarations per docs/design.md */
+.laboong-page h1,
+.laboong-page h2,
+.laboong-page h3,
+.laboong-page .font-heading {
+  font-family: "Trebuchet MS", "Lucida Grande", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 @media (min-width: 1024px) {
   .laboong-page {
     padding-bottom: 48px;
@@ -121,14 +129,14 @@
 
 .laboong-tab-pill {
   flex-shrink: 0;
-  min-height: 44px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 18px;
+  padding: 6px 14px;
   border-radius: var(--lb-radius-full);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   border: 1px solid var(--lb-cream-300);
   background: var(--lb-cream-50);
   color: var(--lb-text-muted);
@@ -144,11 +152,16 @@
   color: var(--lb-text-main);
 }
 
+.laboong-tab-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--lb-olive-700);
+}
+
 .laboong-tab-pill.active {
   background: var(--lb-olive-800);
   color: #ffffff;
   border-color: var(--lb-olive-800);
-  box-shadow: 0 4px 12px rgba(43, 62, 45, 0.2);
+  box-shadow: 0 2px 6px rgba(43, 62, 45, 0.15);
 }
 
 /* Glassmorphism Sticky Header */

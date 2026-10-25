@@ -4,6 +4,6 @@ import { redirect } from "next/navigation";
 
 export default async function AttendanceReviewPage() {
   const user = await getLoopiUser("/app/attendance/review");
-  if (user.role !== "owner" && user.role !== "manager") redirect("/app/attendance");
+  if (!user.permissions.includes("attendance.review")) redirect("/app/attendance");
   return <AttendanceReviewView />;
 }

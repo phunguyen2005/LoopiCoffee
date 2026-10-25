@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isMagicLink, setIsMagicLink] = useState(false);
+  const [focusMode, setFocusMode] = useState<'idle' | 'email' | 'password'>('idle');
   const [preloaderVisible, setPreloaderVisible] = useState(false);
   const [loginProgress, setLoginProgress] = useState(0);
   const [loginProgressMessage, setLoginProgressMessage] = useState('Đang kiểm tra quyền truy cập...');
@@ -74,11 +75,17 @@ export default function LoginPage() {
         await waitFor(Math.max(0, 960 - (performance.now() - transitionStartedAt)));
         setLoginProgress(100);
         setLoginProgressMessage('Đăng nhập thành công, đang mở không gian làm việc...');
-        await waitFor(480);
+        await waitFor(720);
         window.location.replace(membership.mustChangePassword ? '/auth/change-password' : membership.landingPath ?? '/app');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.';
+      const rawMessage = err instanceof Error ? err.message : '';
+      let message = rawMessage || 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin.';
+      if (/failed to fetch|networkerror|load failed/i.test(rawMessage)) {
+        message = 'Không kết nối được dịch vụ xác thực (cổng 54321). Vui lòng bật Docker Desktop và chạy lệnh: npm run local:auth:start';
+      } else if (/invalid login credentials|invalid_grant/i.test(rawMessage)) {
+        message = 'Email hoặc mật khẩu chưa chính xác. Bạn kiểm tra lại nhé!';
+      }
       setErrorMsg(message);
       setPreloaderVisible(false);
       setLoginProgress(0);
@@ -100,7 +107,7 @@ export default function LoginPage() {
         <div className="absolute top-6 left-6 hidden sm:block">
           <Link
             href="/order"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29] bg-white border border-[#eee3df] hover:bg-[#fff2f4] px-4 py-2.5 rounded-full transition shadow-sm"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29] bg-white border border-[#eee3df] hover:bg-[#fff2f4] px-4 py-2.5 rounded-full transition shadow-sm min-h-[44px]"
           >
             <Coffee size={16} /> Đặt món ngay
           </Link>
@@ -111,7 +118,7 @@ export default function LoginPage() {
         <div className="mb-3 sm:hidden text-left">
           <Link
             href="/order"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29]"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6f2939] hover:text-[#4c1d29] min-h-[44px]"
           >
             <Coffee size={14} /> Đặt món ngay
           </Link>
@@ -120,17 +127,23 @@ export default function LoginPage() {
         {/* Interactive mascot & brand header */}
         <div className="text-center mb-6">
           <div className="flex items-center justify-center mx-auto mb-2">
-            <InteractiveLoopyMascot size={104} />
+            <InteractiveLoopyMascot
+              size={112}
+              focusMode={focusMode}
+              emailProgress={Math.min(1, email.length / 26)}
+              isPasswordVisible={showPassword}
+              statusMood={errorMsg ? 'error' : successMsg ? 'success' : loading ? 'loading' : 'idle'}
+            />
           </div>
           <h1 className="text-xl font-bold text-[#6f2939] flex items-center justify-center gap-1.5">
-            LoopiCafe <Sparkles className="w-4 h-4 text-[#f4b85f]" />
+            LoopyCafe <Sparkles className="w-4 h-4 text-[#f4b85f]" />
           </h1>
           <p className="text-xs text-[#7b6f70] mt-0.5">Đăng nhập để xem ca làm, checklist và tình hình cửa hàng.</p>
         </div>
 
         {/* Feedback Alerts */}
         {errorMsg && (
-          <div role="alert" className="mb-5 p-3.5 rounded-2xl bg-[#fff2f4] border border-[#ffe1e7] text-[#c75865] text-xs font-medium flex items-center gap-2">
+          <div role="alert" className="mb-5 p-3.5 rounded-2xl bg-[#fff2f4] border border-[#ffe1e7] text-[#A83D4C] text-xs font-medium flex items-center gap-2">
             <span>⚠️</span> {errorMsg}
           </div>
         )}
@@ -160,8 +173,10 @@ export default function LoginPage() {
                 required
                 disabled={!hydrated}
                 value={email}
+                onFocus={() => setFocusMode('email')}
+                onBlur={() => setFocusMode((prev) => (prev === 'email' ? 'idle' : prev))}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="nhanvien@loopicafe.com"
+                placeholder="nhanvien@loopycafe.com"
                 className="w-full pl-10 pr-4 py-3 bg-[#fffaf4] border border-[#eee3df] rounded-2xl focus:outline-none focus:border-[#d96d83] transition text-[#332a2b] text-xs sm:text-sm"
               />
             </div>
@@ -169,13 +184,13 @@ export default function LoginPage() {
 
           {!isMagicLink && (
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1">
                 <label htmlFor="login-password" className="block text-xs font-semibold text-[#6b4b3e] uppercase tracking-wider">
                   Mật khẩu
                 </label>
                 <Link
                   href="/auth/forgot-password"
-                  className="text-[11px] text-[#d96d83] hover:underline font-semibold"
+                  className="text-xs text-[#d96d83] hover:underline font-semibold min-h-[44px] inline-flex items-center px-1"
                 >
                   Quên mật khẩu?
                 </Link>
@@ -190,15 +205,18 @@ export default function LoginPage() {
                   required
                   disabled={!hydrated}
                   value={password}
+                  onFocus={() => setFocusMode('password')}
+                  onBlur={() => setFocusMode((prev) => (prev === 'password' ? 'idle' : prev))}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-3 bg-[#fffaf4] border border-[#eee3df] rounded-2xl focus:outline-none focus:border-[#d96d83] transition text-[#332a2b] text-xs sm:text-sm"
+                  className="w-full pl-10 pr-12 py-3 bg-[#fffaf4] border border-[#eee3df] rounded-2xl focus:outline-none focus:border-[#d96d83] transition text-[#332a2b] text-xs sm:text-sm"
                 />
                 <button
                   type="button"
                   disabled={!hydrated}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7b6f70] hover:text-[#6f2939] p-1 transition cursor-pointer"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[#7b6f70] hover:text-[#6f2939] min-w-[44px] min-h-[44px] flex items-center justify-center transition cursor-pointer"
                   title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                 >
@@ -209,8 +227,8 @@ export default function LoginPage() {
           )}
 
           {/* Remember Me & Persistent Login Session Checkbox */}
-          <div className="flex items-center justify-between pt-1">
-            <label className="flex items-center gap-2 text-xs font-semibold text-[#6b4b3e] cursor-pointer select-none">
+          <div className="flex items-center justify-between">
+            <label className="min-h-[44px] inline-flex items-center gap-2.5 text-xs font-semibold text-[#6b4b3e] cursor-pointer select-none">
               <input
                 type="checkbox"
                 disabled={!hydrated}
@@ -241,7 +259,7 @@ export default function LoginPage() {
             type="button"
             disabled={!hydrated}
             onClick={() => setIsMagicLink(!isMagicLink)}
-            className="text-xs text-[#7b6f70] hover:text-[#6f2939] hover:underline font-medium"
+            className="text-xs text-[#7b6f70] hover:text-[#6f2939] hover:underline font-medium min-h-[44px] flex items-center justify-center mx-auto px-3"
           >
             {isMagicLink ? 'Đăng nhập bằng Email & Mật khẩu' : 'Gửi liên kết đăng nhập qua email'}
           </button>
@@ -252,7 +270,7 @@ export default function LoginPage() {
           <p className="text-xs text-[#7b6f70] mb-2">Bạn là khách hàng muốn gọi món?</p>
           <Link
             href="/order"
-            className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-[#fffaf4] hover:bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7] font-semibold rounded-2xl text-xs transition"
+            className="inline-flex items-center justify-center gap-2 w-full min-h-[44px] py-2.5 px-4 bg-[#fffaf4] hover:bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7] font-semibold rounded-2xl text-xs transition"
           >
             <Coffee size={15} /> Xem thực đơn & Đặt món ngay
           </Link>

@@ -5,7 +5,9 @@ import ts from "typescript";
 import { createDatabase, seedStore } from "./helpers/database.mjs";
 import { createOrder } from "../modules/ordering/application/create-order.ts";
 import { trackOrder } from "../modules/ordering/application/track-order.ts";
-import { changeOrderStatus } from "../modules/ordering/application/change-status.ts";
+import { changeOrderStatus, advanceOrderStatusPipeline, getSpoilageMetrics, getWastageReport } from "../modules/ordering/application/change-status.ts";
+import { importMenuItems } from "../modules/ordering/application/import-menu.ts";
+import { hasGrantedPermission } from "../modules/people/domain/permissions.ts";
 import { limitOrderRequests } from "../modules/ordering/application/rate-limit.ts";
 import * as input from "../modules/ordering/application/input.ts";
 import * as errors from "../platform/http/errors.ts";
@@ -30,14 +32,20 @@ async function place(db, body=payload(), key=crypto.randomUUID(), token=receipt(
   return { ...await createOrder(db,"store-test",body,key,token), key, token };
 }
 function route(path, db, currentActor=actor) {
+  const requireApiUser = async roles => currentActor ? !roles || roles.includes(currentActor.role)
+    ? {actor:currentActor} : {response:Response.json({error:"forbidden"},{status:403})}
+    : {response:Response.json({error:"unauthorized"},{status:401})};
   const dependencies = {
     "@/db/runtime": { ensureDatabase: async()=>db, STORE_ID: "store-test" },
-    "@/server/auth": { requireApiUser: async roles => currentActor ? !roles || roles.includes(currentActor.role)
-      ? {actor:currentActor} : {response:Response.json({error:"forbidden"},{status:403})}
-      : {response:Response.json({error:"unauthorized"},{status:401})} },
+    "@/server/auth": { requireApiUser, requireApiPermission: async permission => {
+      const auth = await requireApiUser();
+      if (!auth.actor || auth.response) return auth;
+      return hasGrantedPermission(auth.actor, permission) ? auth : { response: Response.json({ error: "permission_denied" }, { status: 403 }) };
+    } },
     "@/platform/http/errors":errors, "@/server/audit":audit,
     "@/modules/ordering/application/create-order":{createOrder}, "@/modules/ordering/application/track-order":{trackOrder},
     "@/modules/ordering/application/change-status":{changeOrderStatus}, "@/modules/ordering/application/rate-limit":{limitOrderRequests},
+    "@/modules/ordering/application/import-menu":{importMenuItems},
     "@/modules/ordering/application/input":input,
   };
   const code=ts.transpileModule(readFileSync(new URL(`../${path}`,import.meta.url),"utf8"),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
@@ -138,13 +146,40 @@ test("status races allow one winner with exactly one history; terminal status ca
   await assert.rejects(changeOrderStatus(db,actor,order.order.id,{expectedStatus:"cancelled",newStatus:"accepted"}),{code:"invalid_transition"});
 });
 
-test("status changes enforce roles/store, cancellation reason, and roll back if history fails",async t=>{
+test("status changes enforce roles/store and roll back if history fails",async t=>{
   const db=fixture(t);const order=await place(db);const change={expectedStatus:"pending",newStatus:"accepted"};
   await assert.rejects(changeOrderStatus(db,{...actor,role:"employee"},order.order.id,change),{status:403});
   await assert.rejects(changeOrderStatus(db,{...actor,storeId:"store-other"},order.order.id,change),{code:"order_conflict"});
-  await assert.rejects(changeOrderStatus(db,actor,order.order.id,{expectedStatus:"pending",newStatus:"cancelled"}),{status:400});
   db.failOn(/INSERT INTO order_status_history/);await assert.rejects(changeOrderStatus(db,actor,order.order.id,change));
   assert.equal(db.sqlite.prepare("SELECT status FROM customer_orders").get().status,"pending");
+});
+
+test("pending cancellation needs no wastage reason while preparing cancellation requires the exact reason-code enum",async t=>{
+  const db=fixture(t);const early=await place(db);
+  await changeOrderStatus(db,actor,early.order.id,{expectedStatus:"pending",newStatus:"cancelled"});
+  assert.equal(db.sqlite.prepare("SELECT cancel_reason FROM customer_orders WHERE id=?").get(early.order.id).cancel_reason,null);
+
+  const preparing=await place(db,payload(),crypto.randomUUID(),receipt());
+  await changeOrderStatus(db,actor,preparing.order.id,{expectedStatus:"pending",newStatus:"accepted"});
+  await changeOrderStatus(db,actor,preparing.order.id,{expectedStatus:"accepted",newStatus:"preparing"});
+  await assert.rejects(
+    changeOrderStatus(db,actor,preparing.order.id,{expectedStatus:"preparing",newStatus:"cancelled",cancelReason:"free text only"}),
+    {code:"cancellation_reason_required"},
+  );
+  await assert.rejects(
+    changeOrderStatus(db,actor,preparing.order.id,{expectedStatus:"preparing",newStatus:"cancelled",reasonCode:"other"}),
+    {code:"invalid_cancellation_reason"},
+  );
+  await changeOrderStatus(db,actor,preparing.order.id,{expectedStatus:"preparing",newStatus:"cancelled",reasonCode:"item_preparation_error",cancelReason:"Pha nhầm"});
+
+  const metrics=await getSpoilageMetrics(db,"store-test");
+  assert.deepEqual(metrics.byReason,{customer_abandoned:0,item_preparation_error:1,store_incident:0});
+  assert.equal(metrics.estimatedRetailValue,112000);
+  const report=await getWastageReport(db,"store-test");
+  assert.equal(report.length,1);
+  assert.equal(report[0].reasonCode,"item_preparation_error");
+  assert.equal(report[0].note,"Pha nhầm");
+  assert.equal(report[0].estimatedRetailValue,112000);
 });
 
 test("actual status service completes the preparation workflow and refuses jumps or repeats",async t=>{
@@ -156,6 +191,37 @@ test("actual status service completes the preparation workflow and refuses jumps
   }
   assert.equal((await trackOrder(db,"store-test",order.token)).order.status,"completed");
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM order_status_history").get().n,5);
+});
+
+test("advanceOrderStatusPipeline completes multiple status stages cleanly with full audit history", async t => {
+  const db = fixture(t);
+  const order = await place(db);
+  // Fast forward from pending directly to preparing (2 stages: pending -> accepted -> preparing)
+  const midResult = await advanceOrderStatusPipeline(db, actor, order.order.id, { newStatus: "preparing" });
+  assert.equal(midResult.toStatus, "preparing");
+  assert.equal(midResult.stagesAdvanced, 2);
+  assert.equal(db.sqlite.prepare("SELECT status FROM customer_orders WHERE id=?").get(order.order.id).status, "preparing");
+
+  // Fast forward from preparing to completed (2 stages: preparing -> ready -> completed)
+  const finalResult = await advanceOrderStatusPipeline(db, actor, order.order.id, { newStatus: "completed" });
+  assert.equal(finalResult.toStatus, "completed");
+  assert.equal(finalResult.stagesAdvanced, 2);
+  assert.equal(db.sqlite.prepare("SELECT status FROM customer_orders WHERE id=?").get(order.order.id).status, "completed");
+
+  // Verify full history has all 4 transitions (+ 1 initial creation = 5 history entries)
+  assert.equal(db.sqlite.prepare("SELECT count(*) n FROM order_status_history WHERE order_id=?").get(order.order.id).n, 5);
+
+  // Reject advancing when already at target or completed
+  await assert.rejects(
+    advanceOrderStatusPipeline(db, actor, order.order.id, { newStatus: "completed" }),
+    { code: "order_conflict" },
+  );
+
+  // Reject invalid target
+  await assert.rejects(
+    advanceOrderStatusPipeline(db, actor, order.order.id, { newStatus: "invalid_state" }),
+    { code: "invalid_target_status" },
+  );
 });
 
 test("durable throttling shares counters across calls, expires windows and stores no raw IP",async t=>{
@@ -267,3 +333,117 @@ test("owner menu handlers create and update valid items with audit and reject cr
   assert.equal((await foreign.PATCH(request({itemId:item.id,basePrice:1}))).status,404);
   assert.equal(db.sqlite.prepare("SELECT count(*) n FROM audit_events").get().n,2);
 });
+
+test("batch menu import creates items, maps existing categories, auto-creates new categories and enforces store boundaries", async t => {
+  const db = fixture(t);
+
+  // 1. Rejects empty list
+  await assert.rejects(
+    importMenuItems(db, actor, { items: [] }),
+    { status: 400 }
+  );
+
+  // 2. Rejects foreign fallback category
+  await assert.rejects(
+    importMenuItems(db, actor, {
+      items: [{ name: "Drink A", basePrice: 35000 }],
+      fallbackCategoryId: "other-cat",
+    }),
+    { status: 400 }
+  );
+
+  // 3. Batch import items with:
+  // - mapped to existing category "Tea" (case-insensitive "tea")
+  // - auto-creating a new category "Coffee Special"
+  // - missing category -> uses fallback "cat"
+  const importResult = await importMenuItems(db, actor, {
+    items: [
+      { name: "Oolong Tea", basePrice: 40000, categoryName: "tea", allowsSize: true, allowsToppings: true },
+      { name: "Espresso Roman", basePrice: 48000, categoryName: "Coffee Special", badge: "Mới" },
+      { name: "House Special Tea", basePrice: 52000 },
+    ],
+    fallbackCategoryId: "cat",
+    createMissingCategories: true,
+  });
+
+  assert.equal(importResult.success, true);
+  assert.equal(importResult.createdItems, 3);
+  assert.equal(importResult.createdCategories, 1);
+
+  // Verify new category created in DB with correct store_id
+  const newCat = db.sqlite.prepare("SELECT * FROM menu_categories WHERE store_id = 'store-test' AND name = 'Coffee Special'").get();
+  assert.ok(newCat);
+
+  // Verify items inserted with correct category_id and values
+  const oolong = db.sqlite.prepare("SELECT * FROM menu_items WHERE store_id = 'store-test' AND name = 'Oolong Tea'").get();
+  assert.equal(oolong.category_id, "cat");
+  assert.equal(oolong.base_price, 40000);
+  assert.equal(oolong.allows_size, 1);
+  assert.equal(oolong.allows_toppings, 1);
+
+  const espresso = db.sqlite.prepare("SELECT * FROM menu_items WHERE store_id = 'store-test' AND name = 'Espresso Roman'").get();
+  assert.equal(espresso.category_id, newCat.id);
+  assert.equal(espresso.base_price, 48000);
+  assert.equal(espresso.badge, "Mới");
+
+  const houseSpecial = db.sqlite.prepare("SELECT * FROM menu_items WHERE store_id = 'store-test' AND name = 'House Special Tea'").get();
+  assert.equal(houseSpecial.category_id, "cat");
+
+  // Verify audit event
+  const auditLog = db.sqlite.prepare("SELECT * FROM audit_events WHERE action = 'menu.imported'").get();
+  assert.ok(auditLog);
+  assert.equal(JSON.parse(auditLog.metadata).importedCount, 3);
+});
+
+test("POST /api/owner/menu/import route checks permissions and imports correctly", async t => {
+  const db = fixture(t);
+
+  // Rejects unauthenticated
+  const unauth = route("app/api/owner/menu/import/route.ts", db, null);
+  assert.equal((await unauth.POST(request({ items: [{ name: "Drink", basePrice: 30000 }] }))).status, 401);
+
+  // Rejects role without menu.manage permission (e.g. employee)
+  const employeeRoute = route("app/api/owner/menu/import/route.ts", db, { ...actor, role: "employee" });
+  assert.equal((await employeeRoute.POST(request({ items: [{ name: "Drink", basePrice: 30000 }] }))).status, 403);
+
+  // Manager has menu.manage -> succeeds (201)
+  const managerRoute = route("app/api/owner/menu/import/route.ts", db, actor);
+  const res = await managerRoute.POST(request({
+    items: [
+      { name: "Cold Brew Orange", basePrice: 45000, categoryName: "Cold Brew" }
+    ],
+    createMissingCategories: true
+  }));
+  assert.equal(res.status, 201);
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.createdItems, 1);
+  assert.equal(data.createdCategories, 1);
+});
+
+test("importMenuItems updates base_price of existing items and creates new items (Upsert)", async t => {
+  const db = fixture(t);
+
+  // Existing item in fixture: name = "Canonical Tea", base_price = 45000, id = 'tea'
+  const result = await importMenuItems(db, actor, {
+    items: [
+      { name: "Canonical Tea", basePrice: 49000, categoryName: "tea" }, // Should update existing
+      { name: "Newly Added Drink", basePrice: 38000, categoryName: "tea" }, // Should insert new
+    ],
+    createMissingCategories: true,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.createdItems, 1);
+  assert.equal(result.updatedItems, 1);
+
+  // Verify DB updated Canonical Tea price
+  const updatedTea = db.sqlite.prepare("SELECT * FROM menu_items WHERE id = 'tea'").get();
+  assert.equal(updatedTea.base_price, 49000);
+
+  // Verify newly created item
+  const newDrink = db.sqlite.prepare("SELECT * FROM menu_items WHERE name = 'Newly Added Drink'").get();
+  assert.ok(newDrink);
+  assert.equal(newDrink.base_price, 38000);
+});
+

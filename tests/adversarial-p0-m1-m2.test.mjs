@@ -348,9 +348,9 @@ test("M1-ADV-03: Concurrency & D1 Zero Write Invariant on /api/order/track (30 c
 // =============================================================================
 // 4. M2 ADVERSARIAL VERIFICATION: DRIZZLE MIGRATION PREFLIGHT & RECOGNITION
 // =============================================================================
-test("M2-ADV-01: Drizzle migration preflight parses 29 statements in 0011, creates 31 tables & 15 triggers with 0 FK errors", (t) => {
+test("M2-ADV-01: Drizzle migration preflight includes RBAC schema with 0 FK errors", (t) => {
   const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
-  assert.equal(migrations.length, 17, "Expected exactly 17 registered migrations");
+  assert.equal(migrations.length, 21, "Expected exactly 21 registered migrations");
 
   const m11 = migrations.find((m) => m.folderMillis === 1789640575611);
   assert.ok(m11, "Migration 0011_workforce_integrity must be present");
@@ -376,12 +376,12 @@ test("M2-ADV-01: Drizzle migration preflight parses 29 statements in 0011, creat
     }
   }
 
-  // Verify 32 physical tables
+  // Verify 35 physical tables, including the three DEC-010 RBAC/account tables.
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all()
     .map((r) => r.name);
-  assert.equal(tables.length, 32, "Catalog must contain exactly 32 physical tables");
+  assert.equal(tables.length, 36, "Catalog must contain exactly 36 physical tables");
 
   // Verify 16 triggers
   const triggers = db

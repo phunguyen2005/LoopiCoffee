@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 
 import type { ActorRole, EmployeeStatus } from "@/modules/people/domain/access";
 import type { VerifiedIdentity } from "@/modules/people/application/complete-sign-in";
+import { loadRolePermissions } from "@/modules/people/application/rbac";
+import { defaultPermissionsForRole, type PermissionKey } from "@/modules/people/domain/permissions";
 export type { ActorRole } from "@/modules/people/domain/access";
 export { auditStatement } from "./audit";
 
@@ -15,6 +17,10 @@ export type ApiActor = {
   storeId: string;
   hasAttendanceConsent: boolean;
   mustChangePassword: boolean;
+  permissions: PermissionKey[];
+  permissionRevision: number;
+  authenticatedAt: string | null;
+  roleId?: string | null;
 };
 
 type Identity = VerifiedIdentity;
@@ -41,7 +47,7 @@ export async function getApiUser(options?: AuthOptions): Promise<ApiActor | null
 
   const db = await ensureDatabase();
   const employee = await db.prepare(
-    `SELECT e.id, e.email, e.display_name, e.role, e.status, e.store_id, e.must_change_password,
+    `SELECT e.id, e.email, e.display_name, e.role, e.role_id, e.status, e.store_id, e.must_change_password,
             EXISTS(
               SELECT 1 FROM employee_consents c
               WHERE lower(c.employee_email) = lower(e.email) AND c.notice_version = ?
@@ -53,6 +59,7 @@ export async function getApiUser(options?: AuthOptions): Promise<ApiActor | null
     email: string;
     display_name: string;
     role: ActorRole;
+    role_id: string | null;
     status: EmployeeStatus;
     store_id: string;
     has_consent: number;
@@ -63,16 +70,69 @@ export async function getApiUser(options?: AuthOptions): Promise<ApiActor | null
 
   if (employee.status !== "active") return null;
 
+  let permissionSet: { permissions: PermissionKey[]; revision: number; configured: boolean };
+  if (employee.role === "system_admin") {
+    permissionSet = { permissions: [], revision: 0, configured: true };
+  } else if (employee.role === "owner") {
+    permissionSet = { permissions: [...defaultPermissionsForRole("owner")], revision: 0, configured: true };
+  } else if (employee.role_id) {
+    const customRole = await db.prepare(
+      "SELECT id, status FROM custom_roles WHERE id = ? AND store_id = ?",
+    ).bind(employee.role_id, employee.store_id).first<{ id: string; status: string }>();
+    if (!customRole || customRole.status !== "active") {
+      permissionSet = { permissions: [], revision: 0, configured: false };
+    } else {
+      permissionSet = await loadRolePermissions(db, employee.store_id, employee.role_id);
+    }
+  } else {
+    permissionSet = await loadRolePermissions(db, employee.store_id, employee.role);
+  }
+
   return {
     id: employee.id,
     email: employee.email,
     displayName: employee.display_name,
     role: employee.role,
+    roleId: employee.role_id ?? null,
     status: "active",
     storeId: employee.store_id,
     hasAttendanceConsent: Boolean(employee.has_consent),
     mustChangePassword: Boolean(employee.must_change_password),
+    permissions: permissionSet.permissions,
+    permissionRevision: permissionSet.revision,
+    authenticatedAt: identity.authenticatedAt ?? null,
   };
+}
+
+export async function requireApiPermission(permission: PermissionKey, options?: AuthOptions): Promise<
+  { actor: ApiActor; response: null } | { actor: null; response: Response }
+> {
+  const auth = await requireApiUser(undefined, options);
+  if (!auth.actor) return auth;
+  if (auth.actor.role === "system_admin" || !hasPermission(auth.actor, permission)) {
+    return {
+      actor: null,
+      response: Response.json(
+        { error: "Bạn không có quyền thực hiện thao tác này.", code: "permission_denied", permission },
+        { status: 403 },
+      ),
+    };
+  }
+  return auth;
+}
+
+export function hasPermission(
+  actor: { permissions?: readonly string[]; role?: ActorRole },
+  permission: PermissionKey,
+) {
+  if (actor.role === "owner") return true;
+  if (actor.role === "system_admin") return false;
+  return Boolean(actor.permissions?.includes(permission));
+}
+
+export function hasRecentAuthentication(actor: Pick<ApiActor, "authenticatedAt">, maxAgeMs = 5 * 60_000) {
+  const value = actor.authenticatedAt ? Date.parse(actor.authenticatedAt) : NaN;
+  return Number.isFinite(value) && Date.now() - value <= maxAgeMs;
 }
 
 export async function requireApiUser(roles?: ActorRole[], options?: AuthOptions): Promise<
@@ -99,7 +159,7 @@ export async function getVerifiedIdentity(options?: AuthOptions) {
   if (supabaseIdentity) return supabaseIdentity;
 
   if (process.env.NODE_ENV !== "production" && process.env.ALLOW_DEMO_AUTH === "true") {
-    return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh" };
+    return { email: "linh.nguyen@loopicafe.local", displayName: "Nguyễn Minh Linh", authenticatedAt: new Date().toISOString() };
   }
   return null;
 }
@@ -136,6 +196,7 @@ async function getValidatedSupabaseIdentity(options?: AuthOptions): Promise<Iden
         email: user.email,
         authUserId: user.id,
         displayName: user.user_metadata?.full_name || user.user_metadata?.display_name || user.email.split("@")[0],
+        authenticatedAt: user.last_sign_in_at ?? (typeof session.user?.last_sign_in_at === "string" ? session.user.last_sign_in_at : undefined),
       };
       if (validatedIdentityCache.size >= AUTH_CACHE_LIMIT) {
         const oldestKey = validatedIdentityCache.keys().next().value;

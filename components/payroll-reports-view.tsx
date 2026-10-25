@@ -40,12 +40,16 @@ type ReportPayload = {
   finalizedAt: string | null;
   finalizedBy: string | null;
   canViewPayroll: boolean;
-  canManagePayroll: boolean;
+  canFinalizePayroll: boolean;
+  canReopenPayroll: boolean;
+  canAdjustPayroll: boolean;
+  canRestoreRateHistory: boolean;
+  canExportReports: boolean;
   canReviewAttendance: boolean;
   finalizationEligibility: PayrollFinalizationEligibility;
   rows: ReportRow[];
 };
-type SortKey = "displayName" | "scheduledMinutes" | "recordedMinutes" | "approvedMinutes" | "overtimeMinutes" | "exceptionCount" | "totalSalary" | "status";
+type SortKey = "displayName" | "scheduledMinutes" | "recordedMinutes" | "approvedMinutes" | "payableMinutes" | "overtimeMinutes" | "exceptionCount" | "totalSalary" | "status";
 
 export function PayrollReportsView() {
   const initialPeriod = useMemo(() => new Intl.DateTimeFormat("en-CA", {
@@ -74,6 +78,11 @@ export function PayrollReportsView() {
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
   const [adjustmentReason, setAdjustmentReason] = useState("");
   const adjustmentKeyRef = useRef("");
+  const [restoreRate, setRestoreRate] = useState("");
+  const [restoreFrom, setRestoreFrom] = useState("");
+  const [restoreTo, setRestoreTo] = useState("");
+  const [restoreReason, setRestoreReason] = useState("");
+  const restoreRateKeyRef = useRef("");
   const exportRef = useRef<HTMLDivElement>(null);
 
   const loadReport = useCallback(async (signal?: AbortSignal) => {
@@ -143,7 +152,7 @@ export function PayrollReportsView() {
     const bValue = b[sort.key];
     const comparison = typeof aValue === "string"
       ? aValue.localeCompare(String(bValue), "vi")
-      : Number(aValue) - Number(bValue);
+      : Number(aValue ?? 0) - Number(bValue ?? 0);
     return sort.direction === "asc" ? comparison : -comparison;
   }), [filteredRows, sort]);
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
@@ -165,6 +174,7 @@ export function PayrollReportsView() {
     setDrawerFocus(focus);
     setReviewNote("");
     setAdjustmentAmount(""); setAdjustmentReason(""); adjustmentKeyRef.current = "";
+    setRestoreRate(""); setRestoreFrom(""); setRestoreTo(""); setRestoreReason(""); restoreRateKeyRef.current = "";
   }
 
   async function mutatePeriod(action: "finalize" | "reopen") {
@@ -220,13 +230,37 @@ export function PayrollReportsView() {
     finally { setMutating(false); }
   }
 
+  async function restoreHistoricalRate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!selectedRow || mutating) return;
+    setMutating(true); setError("");
+    try {
+      if (!restoreRateKeyRef.current) restoreRateKeyRef.current = crypto.randomUUID();
+      await readJson(await fetch("/api/reports/payroll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "restore_rate",
+          id: restoreRateKeyRef.current,
+          employeeEmail: selectedRow.email,
+          hourlyRate: Number(restoreRate),
+          effectiveFrom: vietnamLocalTimestamp(restoreFrom),
+          effectiveTo: restoreTo ? vietnamLocalTimestamp(restoreTo) : "",
+          reason: restoreReason,
+        }),
+      }));
+      restoreRateKeyRef.current = "";
+      await loadReport();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể khôi phục lịch sử đơn giá."); }
+    finally { setMutating(false); }
+  }
+
   return (
     <div className="stack payroll-report-page">
       <section className="card report-heading-card">
         <div className="report-title-row">
           <div>
             <span className="report-eyebrow"><SlidersHorizontal size={14} /> Trung tâm đối soát nhân sự</span>
-            <h2 className="card-title">Báo cáo</h2>
             <p className="card-subtitle">Theo dõi chấm công và chi phí nhân sự theo từng kỳ.</p>
           </div>
           {report && (
@@ -251,17 +285,17 @@ export function PayrollReportsView() {
         </div>
 
         <div className="report-filter-grid">
-          <label>
+          <label className="report-period-field">
             <span>Kỳ lương</span>
             <input type="month" value={draftPeriod} onChange={(event) => setDraftPeriod(event.target.value)} />
           </label>
-          <label>
+          <label className="report-store-field hidden sm:grid">
             <span>Cửa hàng</span>
             <select value={report?.storeName ?? ""} disabled aria-label="Cửa hàng hiện tại">
               <option>{report?.storeName ?? "Đang tải…"}</option>
             </select>
           </label>
-          <label>
+          <label className="report-status-field">
             <span>Trạng thái</span>
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="all">Tất cả trạng thái</option>
@@ -272,14 +306,14 @@ export function PayrollReportsView() {
               <option value="paid">Đã thanh toán</option>
             </select>
           </label>
-          <label>
+          <label className="report-job-field">
             <span>Chức danh</span>
             <select value={jobTitle} onChange={(event) => setJobTitle(event.target.value)}>
               <option value="all">Tất cả chức danh</option>
               {jobTitles.map((title) => <option key={title} value={title}>{title}</option>)}
             </select>
           </label>
-          <button className="button button-compact report-apply-button" onClick={() => setPeriod(draftPeriod)} disabled={!draftPeriod || draftPeriod === period}>
+          <button className="button button-compact report-apply-button" style={{ minHeight: 42 }} onClick={() => setPeriod(draftPeriod)} disabled={!draftPeriod || draftPeriod === period}>
             Áp dụng
           </button>
         </div>
@@ -293,7 +327,7 @@ export function PayrollReportsView() {
         )}
       </section>
 
-      <section className="report-metric-grid">
+      <section className="report-metric-grid grid-cols-2 gap-2.5">
         {loading ? Array.from({ length: 4 }, (_, index) => <MetricSkeleton key={index} label="chỉ số báo cáo" />) : report ? <>
           {report.canViewPayroll && <ReportMetric icon={Banknote} tone="pink" value={formatMoney(totalSalary)} label="Tổng lương tạm tính" />}
           <ReportMetric icon={UserCheck} tone="mint" value={`${finalizedCount}/${payrollRows.length}`} label="Đã chốt công" />
@@ -311,8 +345,8 @@ export function PayrollReportsView() {
             <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm nhân viên hoặc email…" />
           </label>
           <div className="report-toolbar-actions">
-            <div className="export-menu" ref={exportRef}>
-              <button className="button-secondary button-compact" onClick={() => setExportOpen((open) => !open)} aria-expanded={exportOpen}>
+            {report?.canExportReports && <div className="export-menu" ref={exportRef}>
+              <button className="button-secondary button-compact" style={{ minHeight: 42 }} onClick={() => setExportOpen((open) => !open)} aria-expanded={exportOpen}>
                 <Download size={15} /> Xuất dữ liệu <ChevronDown size={14} />
               </button>
               {exportOpen && (
@@ -323,18 +357,50 @@ export function PayrollReportsView() {
                   <button onClick={() => { setExportOpen(false); window.print(); }}><Printer size={15} /> In báo cáo</button>
                 </div>
               )}
-            </div>
-            {report?.canManagePayroll && report.periodStatus === "reviewing" && (
-              <button className="button button-compact" onClick={() => setPeriodAction("finalize")} disabled={mutating || !report.finalizationEligibility.canFinalize} title={report.finalizationEligibility.reasons.map((reason) => reason.message).join(" ") || undefined}>
+            </div>}
+            {report?.canFinalizePayroll && report.periodStatus === "reviewing" && (
+              <button className="button button-compact" style={{ minHeight: 42 }} onClick={() => setPeriodAction("finalize")} disabled={mutating || !report.finalizationEligibility.canFinalize} title={report.finalizationEligibility.reasons.map((reason) => reason.message).join(" ") || undefined}>
                 <LockKeyhole size={15} /> Chốt kỳ lương
               </button>
             )}
-            {report?.canManagePayroll && report.periodStatus === "finalized" && (
-              <button className="button-secondary button-compact" onClick={() => setPeriodAction("reopen")} disabled={mutating}>
+            {report?.canReopenPayroll && report.periodStatus === "finalized" && (
+              <button className="button-secondary button-compact" style={{ minHeight: 42 }} onClick={() => setPeriodAction("reopen")} disabled={mutating}>
                 <RotateCcw size={15} /> Mở lại kỳ
               </button>
             )}
           </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} role="group" aria-label="Lọc nhanh trạng thái nhân sự">
+            <button
+              type="button"
+              className={status === "all" ? "button button-compact" : "button-secondary button-compact"}
+              style={{ minHeight: 38, padding: "6px 12px" }}
+              onClick={() => setStatus("all")}
+            >
+              Tất cả ({baseRows.length})
+            </button>
+            <button
+              type="button"
+              className={status === "exception" ? "button button-compact" : "button-secondary button-compact"}
+              style={{ minHeight: 38, padding: "6px 12px" }}
+              onClick={() => setStatus(status === "exception" ? "all" : "exception")}
+            >
+              Có ngoại lệ ({baseRows.filter((row) => row.status === "exception").length})
+            </button>
+            <button
+              type="button"
+              className={status === "unchecked" ? "button button-compact" : "button-secondary button-compact"}
+              style={{ minHeight: 38, padding: "6px 12px" }}
+              onClick={() => setStatus(status === "unchecked" ? "all" : "unchecked")}
+            >
+              Chưa kiểm tra ({baseRows.filter((row) => row.status === "unchecked").length})
+            </button>
+          </div>
+          <small className="supporting-copy" style={{ fontSize: 12 }}>
+            Chạm vào từng dòng nhân viên để mở phiếu chi tiết & duyệt ngoại lệ
+          </small>
         </div>
 
         {report?.rows.some((row) => row.snapshotComplete === false) && <p className="attention-card" role="status">Kỳ lương cũ giữ nguyên tổng tiền đã lưu. Các chi tiết không được lưu trước đây được đánh dấu “—”, không tính lại theo đơn giá hiện tại.</p>}
@@ -356,7 +422,7 @@ export function PayrollReportsView() {
               ) : (
                 <tr>
                   <SortableHeader label="Nhân viên" sortKey="displayName" current={sort} onSort={updateSort} sticky />
-                  <SortableHeader label="Giờ duyệt" sortKey="approvedMinutes" current={sort} onSort={updateSort} numeric />
+                   <SortableHeader label="Giờ trả lương" sortKey="payableMinutes" current={sort} onSort={updateSort} numeric />
                   <SortableHeader label="Tăng ca" sortKey="overtimeMinutes" current={sort} onSort={updateSort} numeric />
                   <th className="numeric-cell">Đơn giá</th>
                   <th className="numeric-cell">Điều chỉnh</th>
@@ -371,7 +437,7 @@ export function PayrollReportsView() {
                 <tr key={row.email} tabIndex={0} onClick={() => openDetails(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openDetails(row); }} aria-label={`Mở chi tiết ${row.displayName}`}>
                   <td className="employee-cell">
                     <span className="employee-avatar">{initials(row.displayName)}</span>
-                    <span><strong>{row.displayName}</strong><small>{row.jobTitle} · {row.email}</small></span>
+                    <span><strong>{row.displayName}</strong><small>{row.jobTitle}<span className="employee-email-meta"> · {row.email}</span></small></span>
                   </td>
                   {activeTab === "attendance" ? (
                     <>
@@ -381,7 +447,7 @@ export function PayrollReportsView() {
                       <td className="numeric-cell">{formatMinutes(row.overtimeMinutes)}</td>
                       <td>{row.snapshotComplete === false ? "—" : `${row.lateCount} lần / ${row.earlyLeaveCount} lần`}</td>
                       <td className="numeric-cell">
-                        <button className={`exception-button ${row.pendingExceptionCount > 0 ? "has-exception" : ""}`} onClick={(event) => { event.stopPropagation(); openDetails(row, "exceptions"); }}>
+                        <button className={`exception-button ${row.pendingExceptionCount > 0 ? "has-exception" : ""}`} style={{ minHeight: 38 }} onClick={(event) => { event.stopPropagation(); openDetails(row, "exceptions"); }}>
                           {row.snapshotComplete === false ? "—" : row.exceptionCount > 0 ? `${row.exceptionCount} ngoại lệ` : "Không có"}
                         </button>
                       </td>
@@ -389,9 +455,9 @@ export function PayrollReportsView() {
                     </>
                   ) : (
                     <>
-                      <td className="numeric-cell">{formatMinutes(row.approvedMinutes)}</td>
+                       <td className="numeric-cell">{formatMinutes(row.payableMinutes ?? row.approvedMinutes)}</td>
                       <td className="numeric-cell">{formatMinutes(row.overtimeMinutes)}</td>
-                      <td className="numeric-cell">{row.snapshotComplete === false ? "—" : row.compensationType === "monthly" ? `${formatMoney(row.monthlySalary)}/tháng` : `${formatMoney(row.hourlyRate)}/h`}</td>
+                       <td className="numeric-cell">{rateLabel(row)}</td>
                       <td className="numeric-cell">{formatSignedMoney(row.allowanceAmount + row.bonusAmount - row.deductionAmount)}</td>
                       <td className="numeric-cell salary-cell"><strong>{formatMoney(row.totalSalary)}</strong></td>
                       <td><StatusBadge status={row.status} /></td>
@@ -407,12 +473,12 @@ export function PayrollReportsView() {
           <span>Hiển thị {sortedRows.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, sortedRows.length)} trong {sortedRows.length} nhân viên</span>
           <div>
             <label>Số dòng <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option>10</option><option>25</option><option>50</option></select></label>
-            <button onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} aria-label="Trang trước"><ChevronLeft size={16} /></button>
+            <button style={{ minWidth: 40, minHeight: 40 }} onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} aria-label="Trang trước"><ChevronLeft size={16} /></button>
             <strong>{page}/{pageCount}</strong>
-            <button onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page >= pageCount} aria-label="Trang sau"><ChevronRight size={16} /></button>
+            <button style={{ minWidth: 40, minHeight: 40 }} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page >= pageCount} aria-label="Trang sau"><ChevronRight size={16} /></button>
           </div>
         </div>
-        {report?.canManagePayroll && report.periodStatus === "reviewing" && !report.finalizationEligibility.canFinalize && (
+        {report?.canFinalizePayroll && report.periodStatus === "reviewing" && !report.finalizationEligibility.canFinalize && (
           <div className="attention-card" role="status">
             <strong>Chưa thể chốt kỳ lương</strong>
             <ul>{report.finalizationEligibility.reasons.map((reason) => <li key={reason.code}>{reason.message}</li>)}</ul>
@@ -441,7 +507,7 @@ export function PayrollReportsView() {
                 <span className="employee-avatar large">{initials(selectedRow.displayName)}</span>
                 <div><span className="report-eyebrow">Chi tiết kỳ {report?.period.key}</span><h3 id="employee-detail-title">{selectedRow.displayName}</h3><p>{selectedRow.jobTitle} · {selectedRow.email}</p></div>
               </div>
-              <button className="drawer-close" onClick={() => setSelectedRow(null)} aria-label="Đóng"><X size={19} /></button>
+              <button className="drawer-close" style={{ minWidth: 42, minHeight: 42 }} onClick={() => setSelectedRow(null)} aria-label="Đóng"><X size={19} /></button>
             </div>
             <div className="drawer-body">
               {drawerFocus === "exceptions" && <div className="drawer-anchor-note"><AlertTriangle size={15} /> Đang mở danh sách ngoại lệ cần xử lý.</div>}
@@ -470,13 +536,27 @@ export function PayrollReportsView() {
                     <MoneyLine label="Tổng khấu trừ" value={selectedRow.deductionAmount} negative />
                   </DrawerSection>
                   <div className="net-pay-row"><span>Thực nhận</span><strong>{formatMoney(selectedRow.totalSalary)}</strong></div>
+                  {(selectedRow.missingRateMinutes ?? 0) > 0 && <p className="attention-card" role="status">Thiếu lịch sử đơn giá cho {formatMinutes(selectedRow.missingRateMinutes ?? 0)} giờ trả lương. Kỳ sẽ không thể chốt cho đến khi OWNER khôi phục đơn giá có căn cứ.</p>}
+                  {(selectedRow.missingRateMinutes ?? 0) > 0 && report.canRestoreRateHistory && report.periodStatus === "reviewing" && <form className="operation-form" onSubmit={restoreHistoricalRate}>
+                    <p>Khôi phục đúng khoảng lịch sử còn thiếu. Thao tác này chỉ dành cho OWNER và luôn ghi audit.</p>
+                    <label>Đơn giá giờ (đồng)<input type="number" min="1" max="1000000000" step="1" required value={restoreRate} onChange={(event) => { setRestoreRate(event.target.value); restoreRateKeyRef.current = ""; }} /></label>
+                    <label>Hiệu lực từ (giờ Việt Nam)<input type="datetime-local" required value={restoreFrom} onChange={(event) => { setRestoreFrom(event.target.value); restoreRateKeyRef.current = ""; }} /></label>
+                    <label>Hiệu lực đến (để trống nếu chưa kết thúc)<input type="datetime-local" value={restoreTo} onChange={(event) => { setRestoreTo(event.target.value); restoreRateKeyRef.current = ""; }} /></label>
+                    <label>Căn cứ khôi phục<textarea minLength={5} maxLength={1000} required value={restoreReason} onChange={(event) => { setRestoreReason(event.target.value); restoreRateKeyRef.current = ""; }} /></label>
+                    <button className="button-secondary button-compact" style={{ minHeight: 42 }} disabled={mutating}>{mutating ? "Đang lưu…" : "Khôi phục đơn giá"}</button>
+                  </form>}
+                  {(selectedRow.rateSegments ?? []).length > 0 && <DrawerSection title="Các đoạn đơn giá">
+                    {(selectedRow.rateSegments ?? []).map((segment, index) => <p key={`${segment.sessionId}:${segment.startAt}:${index}`}>
+                      {formatDateTime(segment.startAt)} – {formatDateTime(segment.endAt)} · {formatMinutes(segment.minutes)} · {segment.hourlyRate ? `${formatMoney(segment.hourlyRate)}/h` : "Thiếu đơn giá"}
+                    </p>)}
+                  </DrawerSection>}
                   <DrawerSection title="Điều chỉnh có lý do">
                     {(selectedRow.adjustments ?? []).map((item) => <p key={item.id}>{formatMoney(item.amount)} · {item.reason} · {item.actorEmail}</p>)}
-                    {report.canManagePayroll && report.periodStatus === "reviewing" && <form className="operation-form" onSubmit={addAdjustment}>
+                   {report.canAdjustPayroll && report.periodStatus === "reviewing" && <form className="operation-form" onSubmit={addAdjustment}>
                       <p>Lương cơ bản = giờ được duyệt × đơn giá. Số tiền dương để cộng, âm để trừ; sửa sai bằng một điều chỉnh bù.</p>
                       <label>Số tiền (đồng)<input type="number" step="1" min="-100000000" max="100000000" required value={adjustmentAmount} onChange={(event) => { setAdjustmentAmount(event.target.value); adjustmentKeyRef.current = ""; }} /></label>
                       <label>Lý do<textarea minLength={5} maxLength={1000} required value={adjustmentReason} onChange={(event) => { setAdjustmentReason(event.target.value); adjustmentKeyRef.current = ""; }} /></label>
-                      <button className="button-secondary button-compact" disabled={mutating}>Lưu điều chỉnh</button>
+                      <button className="button-secondary button-compact" style={{ minHeight: 42 }} disabled={mutating}>Lưu điều chỉnh</button>
                     </form>}
                   </DrawerSection>
                 </>
@@ -493,12 +573,12 @@ export function PayrollReportsView() {
                     {exception.canReview ? (
                       <div className="exception-review-actions">
                         <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Thêm ghi chú xử lý (không bắt buộc)" maxLength={500} />
-                        <div><button className="button-secondary button-compact" disabled={mutating} onClick={() => void reviewException(exception, "rejected")}>Từ chối</button><button className="button button-compact" disabled={mutating} onClick={() => void reviewException(exception, "approved")}>Phê duyệt</button></div>
+                        <div><button className="button-secondary button-compact" style={{ minHeight: 44 }} disabled={mutating} onClick={() => void reviewException(exception, "rejected")}>Từ chối</button><button className="button button-compact" style={{ minHeight: 44 }} disabled={mutating} onClick={() => void reviewException(exception, "approved")}>Phê duyệt</button></div>
                       </div>
                     ) : exception.status === "pending" && report?.canReviewAttendance && report.periodStatus === "reviewing" && exception.sessionId && exception.correctionAction ? (
                       <AttendanceCorrectionForm sessionId={exception.sessionId} revision={exception.revision} action={exception.correctionAction} onSaved={loadReport} />
                     ) : exception.status === "pending" && report?.canReviewAttendance ? (
-                      <Link href="/app/attendance/review" className="text-link">Mở màn hình kiểm tra để chỉnh giờ</Link>
+                      <Link href="/app/attendance/review" className="button-secondary button-compact" style={{ minHeight: 42, display: "inline-flex" }}>Mở màn hình kiểm tra để chỉnh giờ</Link>
                     ) : null}
                   </article>
                 ))}
@@ -571,6 +651,19 @@ function formatMoney(amount: number) {
 function formatSignedMoney(amount: number) {
   if (!amount) return "0đ";
   return `${amount > 0 ? "+" : "−"}${formatMoney(Math.abs(amount))}`;
+}
+
+function rateLabel(row: ReportRow) {
+  if (row.snapshotComplete === false) return "—";
+  if ((row.missingRateMinutes ?? 0) > 0) return "Thiếu lịch sử giá";
+  if (row.compensationType === "monthly") return `${formatMoney(row.monthlySalary)}/tháng`;
+  const rates = new Set((row.rateSegments ?? []).map((segment) => segment.hourlyRate).filter((rate): rate is number => typeof rate === "number"));
+  if (rates.size > 1) return "Nhiều đơn giá";
+  return `${formatMoney(rates.values().next().value ?? row.hourlyRate)}/h`;
+}
+
+function vietnamLocalTimestamp(value: string) {
+  return value ? new Date(`${value}:00+07:00`).toISOString() : "";
 }
 
 function formatDateTime(value: string) {

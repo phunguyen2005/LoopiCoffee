@@ -1,13 +1,13 @@
 import { ensureDatabase, getBindings } from "@/db/runtime";
 import { loadUnexpiredPhoto } from "@/modules/attendance/application/load-photo";
 import { apiHandler } from "@/platform/http/errors";
-import { auditStatement, requireApiUser } from "@/server/auth";
+import { auditStatement, requireApiPermission } from "@/server/auth";
 
 export const GET = apiHandler(async (
   _request: Request,
   context: { params: Promise<{ eventId: string }> },
 ) => {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiPermission("attendance.evidence.read");
   if (!auth.actor) return auth.response;
   const { eventId } = await context.params;
   const db = await ensureDatabase();

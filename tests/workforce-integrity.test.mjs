@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs";
+import { createDatabase, seedStore, seedEmployee, seedShift } from "./helpers/database.mjs";
 import { loadPayrollReport } from "../modules/payroll/application/load-report.ts";
-import { changePayrollPeriod } from "../modules/payroll/application/change-period.ts";
+import { changePayrollPeriod, evaluatePayrollFinalizationEligibility } from "../modules/payroll/application/change-period.ts";
 import { addPayrollAdjustment } from "../modules/payroll/application/add-adjustment.ts";
 import { attendanceTime, correctAttendance } from "../modules/attendance/application/correct-attendance.ts";
 import { reviewAttendance } from "../modules/attendance/application/review-attendance.ts";
 import { createShifts, changeShift } from "../modules/operations/application/manage-shifts.ts";
 import { createRequest } from "../modules/operations/application/create-request.ts";
 import { decideRequest } from "../modules/operations/application/decide-request.ts";
+import { applySwap } from "../modules/operations/application/apply-swap.ts";
 
 function setup(t) {
   const db = createDatabase(); t.after(() => db.close()); seedStore(db);
@@ -44,6 +45,7 @@ test("offboarding before finalization keeps earned work and frozen history", asy
 test("unsupported/missing pay rates cannot silently finalize", async (t) => {
   const { db, owner, staff } = setup(t); session(db, staff);
   db.sqlite.prepare("UPDATE employees SET hourly_rate = NULL WHERE id = ?").run(staff.id);
+  db.sqlite.prepare("DELETE FROM employee_rate_history WHERE lower(employee_email) = lower(?)").run(staff.email);
   await assert.rejects(changePayrollPeriod(db, owner, "finalize", "2026-07"), { code: "pay_rate_required" });
 });
 
@@ -66,6 +68,37 @@ test("missing checkout can be corrected without fabricating a raw capture", asyn
   await correctAttendance(db, owner, { sessionId: "session", action: "check_out", adjustedTime: "2026-07-03T09:00:00Z", reason: "Quản lý đối soát cuối ca" });
   assert.equal((await report(db, owner)).rows[0].approvedMinutes, 480);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM attendance_events").get().n, 1);
+});
+
+test("REQ-005: approving a structured missing-checkout request appends a correction and updates approved time", async (t) => {
+  const { db, owner, staff } = setup(t);
+  session(db, staff, { closed: "2026-07-03T13:00:00.000Z", minutes: 0, status: "review_required" });
+  event(db, staff);
+  db.sqlite.prepare(
+    "INSERT INTO attendance_exceptions (id, event_id, employee_reason, status, created_at) VALUES ('missing-x', 'event', 'MISSING_CHECKOUT: auto-close', 'pending', '2026-07-03T13:00:00.000Z')",
+  ).run();
+
+  const created = await createRequest(db, staff, {
+    type: "correction",
+    title: "Bổ sung giờ chấm ra",
+    reason: "Quên chấm ra, đối soát theo biên bản cuối ca",
+    correctionSessionId: "session",
+    correctionAction: "check_out",
+    adjustedTime: "2026-07-03T09:00:00.000Z",
+    expectedRevision: 0,
+    idempotencyKey: "req-005-missing-checkout",
+  });
+  const result = await decideRequest(db, owner, created.request.id, "approved");
+
+  assert.equal(result.status, "applied");
+  assert.equal(db.sqlite.prepare("SELECT recorded_at FROM attendance_events WHERE id = 'event'").get().recorded_at, "2026-07-03T01:00:00.000Z");
+  const correction = db.sqlite.prepare("SELECT source_request_id, effective_time, revision FROM attendance_corrections").get();
+  assert.equal(correction.source_request_id, created.request.id);
+  assert.equal(correction.effective_time, "2026-07-03T09:00:00.000Z");
+  assert.equal(correction.revision, 1);
+  assert.equal(db.sqlite.prepare("SELECT status FROM requests WHERE id = ?").get(created.request.id).status, "applied");
+  assert.equal(db.sqlite.prepare("SELECT status FROM attendance_exceptions WHERE id = 'missing-x'").get().status, "approved");
+  assert.equal((await report(db, owner)).rows[0].approvedMinutes, 480);
 });
 
 test("checkout-only sessions appear as pending and can receive a reasoned missing check-in", async (t) => {
@@ -108,6 +141,20 @@ test("weekly shifts are all-or-nothing, adjacent shifts valid, overlapping concu
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM shifts").get().n, 2);
 });
 
+test("suspended and offboarded employees cannot receive new shifts", async (t) => {
+  const { db, owner, staff } = setup(t);
+
+  for (const status of ["suspended", "offboarded"]) {
+    db.sqlite.prepare("UPDATE employees SET status = ? WHERE id = ?").run(status, staff.id);
+    await assert.rejects(
+      createShifts(db, owner, staff.email, [shiftInput]),
+      (error) => error?.status === 404 && error?.code === "not_found",
+    );
+  }
+
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM shifts").get().n, 0);
+});
+
 test("shift edits and cancellations enforce revision, role and attendance guard", async (t) => {
   const { db, owner, staff } = setup(t);
   const futureShift = { ...shiftInput, startsAt: "2027-07-03T01:00:00Z", endsAt: "2027-07-03T09:00:00Z" };
@@ -130,6 +177,95 @@ test("structured leave links only the employee's shift, approval updates schedul
   assert.equal(db.sqlite.prepare("SELECT approved_leave_request_id FROM shifts").get().approved_leave_request_id, request.request.id);
   assert.equal((await report(db, owner)).rows[0].scheduledMinutes, 0);
   await assert.rejects(decideRequest(db, owner, request.request.id, "rejected"), { code: "request_conflict" });
+});
+
+test("approved leave pays only the replacement employee who actually works the cover shift", async (t) => {
+  const { db, owner, staff } = setup(t);
+  const replacement = seedEmployee(db, { id: "replacement", role: "employee", hourlyRate: 30000 });
+  const original = await createShifts(db, owner, staff.email, [shiftInput]);
+  const request = await createRequest(db, staff, {
+    type: "leave", title: "Nghỉ ca", reason: "Có việc gia đình", shiftId: original.shifts[0].id,
+    idempotencyKey: "leave-payroll-cover",
+  });
+  await decideRequest(db, owner, request.request.id, "approved");
+  const cover = await createShifts(db, owner, replacement.email, [shiftInput]);
+  db.sqlite.prepare("UPDATE shifts SET cover_for_shift_id = ? WHERE id = ?").run(original.shifts[0].id, cover.shifts[0].id);
+  session(db, replacement, { id: "cover-session", opened: shiftInput.startsAt, closed: shiftInput.endsAt, minutes: 480 });
+  db.sqlite.prepare("UPDATE attendance_sessions SET shift_id = ? WHERE id = 'cover-session'").run(cover.shifts[0].id);
+
+  const rows = (await report(db, owner)).rows;
+  const absentRow = rows.find((row) => row.email === staff.email);
+  const replacementRow = rows.find((row) => row.email === replacement.email);
+  assert.ok(absentRow); assert.ok(replacementRow);
+  assert.equal(absentRow.scheduledMinutes, 0);
+  assert.equal(absentRow.approvedMinutes, 0);
+  assert.equal(absentRow.totalSalary, 0);
+  assert.equal(replacementRow.scheduledMinutes, 480);
+  assert.equal(replacementRow.approvedMinutes, 480);
+  assert.equal(replacementRow.totalSalary, 240000);
+});
+
+test("swap blocks finalization until applied, then payroll follows the new shift owners", async (t) => {
+  const { db, owner, staff } = setup(t);
+  const staffB = seedEmployee(db, { id: "staff-b", role: "employee", hourlyRate: 30000 });
+  await assert.rejects(createRequest(db, staff, {
+    type: "swap", title: "Đổi ca", reason: "Bận việc gia đình", idempotencyKey: "swap-missing-source",
+  }), { code: "shift_required" });
+  const shiftA = seedShift(db, { id: "swap-a", employeeEmail: staff.email, startsAt: "2026-07-03T01:00:00.000Z", endsAt: "2026-07-03T05:00:00.000Z" });
+  const shiftB = seedShift(db, { id: "swap-b", employeeEmail: staffB.email, startsAt: "2026-07-03T06:00:00.000Z", endsAt: "2026-07-03T10:00:00.000Z" });
+  const request = await createRequest(db, staff, {
+    type: "swap", title: "Đổi ca", reason: "Bận việc gia đình", shiftId: shiftA.id,
+    idempotencyKey: "swap-payroll-owner",
+  });
+  await decideRequest(db, owner, request.request.id, "approved");
+  const beforeApply = await evaluatePayrollFinalizationEligibility(db, owner, "2026-07");
+  assert.ok(beforeApply.reasons.some((reason) => reason.code === "pending_swap"));
+
+  await applySwap(db, owner, { requestId: request.request.id, shift1Id: shiftA.id, shift2Id: shiftB.id });
+  session(db, staffB, { id: "worked-a", opened: shiftA.startsAt, closed: shiftA.endsAt, minutes: 240 });
+  db.sqlite.prepare("UPDATE attendance_sessions SET shift_id = ? WHERE id = 'worked-a'").run(shiftA.id);
+  session(db, staff, { id: "worked-b", opened: shiftB.startsAt, closed: shiftB.endsAt, minutes: 240 });
+  db.sqlite.prepare("UPDATE attendance_sessions SET shift_id = ? WHERE id = 'worked-b'").run(shiftB.id);
+
+  const rows = (await report(db, owner)).rows;
+  const rowA = rows.find((row) => row.email === staff.email);
+  const rowB = rows.find((row) => row.email === staffB.email);
+  assert.equal(rowA.approvedMinutes, 240);
+  assert.equal(rowA.totalSalary, 100000);
+  assert.equal(rowB.approvedMinutes, 240);
+  assert.equal(rowB.totalSalary, 120000);
+  assert.equal(db.sqlite.prepare("SELECT status FROM requests WHERE id = ?").get(request.request.id).status, "applied");
+});
+
+test("failed swap rolls back both shift ownership changes and leaves the request unapplied", async (t) => {
+  const { db, owner, staff } = setup(t);
+  const staffB = seedEmployee(db, { id: "staff-b-rollback", role: "employee" });
+  const shiftA = seedShift(db, { id: "rollback-a", employeeEmail: staff.email, startsAt: "2026-07-03T01:00:00.000Z", endsAt: "2026-07-03T05:00:00.000Z" });
+  const shiftB = seedShift(db, { id: "rollback-b", employeeEmail: staffB.email, startsAt: "2026-07-03T06:00:00.000Z", endsAt: "2026-07-03T10:00:00.000Z" });
+  const request = await createRequest(db, staff, {
+    type: "swap", title: "Đổi ca", reason: "Bận việc gia đình", shiftId: shiftA.id,
+    idempotencyKey: "swap-rollback",
+  });
+  await decideRequest(db, owner, request.request.id, "approved");
+  session(db, staff, { id: "already-worked", opened: shiftA.startsAt, closed: shiftA.endsAt, minutes: 240 });
+  db.sqlite.prepare("UPDATE attendance_sessions SET shift_id = ? WHERE id = 'already-worked'").run(shiftA.id);
+
+  await assert.rejects(
+    applySwap(db, owner, { requestId: request.request.id, shift1Id: shiftA.id, shift2Id: shiftB.id }),
+    { code: "swap_conflict" },
+  );
+  assert.equal(db.sqlite.prepare("SELECT employee_email FROM shifts WHERE id = ?").get(shiftA.id).employee_email, staff.email);
+  assert.equal(db.sqlite.prepare("SELECT employee_email FROM shifts WHERE id = ?").get(shiftB.id).employee_email, staffB.email);
+  assert.equal(db.sqlite.prepare("SELECT status FROM requests WHERE id = ?").get(request.request.id).status, "approved_pending_apply");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'request.applied' AND entity_id = ?").get(request.request.id).count, 0);
+});
+
+test("a payroll period cannot be finalized before its end date", async (t) => {
+  const { db, owner, staff } = setup(t);
+  session(db, staff, { id: "future-period-session", opened: "2999-01-03T01:00:00.000Z", closed: "2999-01-03T02:00:00.000Z", minutes: 60 });
+  const eligibility = await evaluatePayrollFinalizationEligibility(db, owner, "2999-01");
+  assert.ok(eligibility.reasons.some((reason) => reason.code === "period_not_ended"));
+  await assert.rejects(changePayrollPeriod(db, owner, "finalize", "2999-01"), { code: "period_not_ended" });
 });
 
 test("payroll adjustments are reasoned/idempotent, survive snapshots and are not doubled after reopen", async (t) => {

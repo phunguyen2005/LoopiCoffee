@@ -4,6 +4,6 @@ import { redirect } from "next/navigation";
 
 export default async function AdminAccountsPage() {
   const user = await getLoopiUser("/app/admin/accounts");
-  if (!["owner", "manager"].includes(user.role)) redirect("/app");
+  if (user.role !== "system_admin") redirect("/app");
   return <AdminAccountsView />;
 }

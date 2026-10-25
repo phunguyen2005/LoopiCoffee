@@ -23,7 +23,7 @@ async function actual(t, path, dependencies) {
 test("post-login destinations match each role's primary workspace", () => {
   assert.equal(defaultAppPath("owner"), "/app");
   assert.equal(defaultAppPath("manager"), "/app");
-  assert.equal(defaultAppPath("system_admin"), "/app");
+  assert.equal(defaultAppPath("system_admin"), "/app/admin");
   assert.equal(defaultAppPath("team_lead"), "/app/today");
   assert.equal(defaultAppPath("employee"), "/app/today");
 });
@@ -60,6 +60,7 @@ test("password completion verifies membership and provider result before clearin
   const { db, actor, identity } = fixture(t);
   await assert.rejects(changePassword(db, { ...identity, authUserId: "other" }, "a-long-password", async () => ({ error: null })), { status: 403 });
   await assert.rejects(changePassword(db, identity, "short", async () => ({ error: null })), { status: 400 });
+  await assert.rejects(changePassword(db, identity, "TenChars1!", async () => ({ error: null })), { status: 400 });
   await assert.rejects(changePassword(db, identity, "a-long-password", async () => ({ error: "provider rejected" })), { code: "password_update_failed" });
   assert.equal(db.sqlite.prepare("SELECT must_change_password FROM employees WHERE id = ?").get(actor.id).must_change_password, 1);
   await changePassword(db, identity, "a-long-password", async () => ({ error: null }));
@@ -99,6 +100,7 @@ test("password route rejects foreign origin, unauthenticated and malformed reque
     "@/db/runtime": { ensureDatabase: async () => db },
     "@/lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => { providerCalls++; return { data: { user: null }, error: "none" }; } } }) },
     "@/modules/people/application/change-password": { changePassword },
+    "@/server/auth": { invalidateIdentityCache: () => {} },
     "@/platform/http/errors": { apiHandler, ApplicationError }, "@/platform/http/input": { readObject },
   });
   const request = (origin, body) => new Request("https://local.test/api/auth/change-password", { method: "POST", headers: { origin }, body });
@@ -106,6 +108,42 @@ test("password route rejects foreign origin, unauthenticated and malformed reque
   assert.equal((await route.POST(request("https://local.test", '{"password":42}'))).status, 400);
   assert.equal(providerCalls, 0);
   assert.equal((await route.POST(request("https://local.test", '{"password":"a-long-password"}'))).status, 401);
+});
+
+test("employee self-service password change verifies the current password first", async (t) => {
+  const { db, actor } = fixture(t);
+  db.sqlite.prepare("UPDATE employees SET must_change_password = 0 WHERE id = ?").run(actor.id);
+  let updateCalls = 0;
+  const route = await actual(t, "../../app/api/auth/verify-change-password/route.ts", {
+    "@/db/runtime": { ensureDatabase: async () => db },
+    "@/lib/supabase/server": { createClient: async () => ({ auth: {
+      getUser: async () => ({ data: { user: { id: "auth-owner", email: actor.email } }, error: null }),
+      signInWithPassword: async ({ password }) => password === "correct-current-password"
+        ? { data: { user: { id: "auth-owner", email: actor.email } }, error: null }
+        : { data: { user: null }, error: { message: "Invalid login credentials" } },
+      updateUser: async ({ password }) => { updateCalls++; assert.equal(password, "new-secure-password"); return { error: null }; },
+    } }) },
+    "@/modules/people/application/change-password": { changePassword },
+    "@/server/auth": { invalidateIdentityCache: () => {} },
+    "@/platform/http/errors": { apiHandler, ApplicationError },
+    "@/platform/http/input": { readObject },
+  });
+  const request = (currentPassword, newPassword = "new-secure-password") => new Request("https://local.test/api/auth/verify-change-password", {
+    method: "POST",
+    headers: { origin: "https://local.test", "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  const rejected = await route.POST(request("wrong-password"));
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).code, "current_password_invalid");
+  assert.equal(updateCalls, 0);
+
+  const accepted = await route.POST(request("correct-current-password"));
+  assert.equal(accepted.status, 200);
+  assert.equal(updateCalls, 1);
+  assert.equal(db.sqlite.prepare("SELECT password_version FROM employees WHERE id = ?").get(actor.id).password_version, 1);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'account.password_changed'").get().count, 1);
 });
 
 test("callback verifies invite token hashes, sends required changes to password setup and rejects external redirects", async (t) => {

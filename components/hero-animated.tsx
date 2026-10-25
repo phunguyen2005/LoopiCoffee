@@ -231,7 +231,7 @@ export function HeroAnimated() {
             Đăng nhập <ArrowRight size={18} />
           </Link>
           <a href="#video-demo" className="button-secondary button-large">
-            Khám phá LoopiCafe
+            Khám phá LoopyCafe
           </a>
         </motion.div>
 
@@ -247,7 +247,7 @@ export function HeroAnimated() {
             className="nav-link"
             style={{ fontSize: 13, textDecoration: "underline" }}
           >
-            Cách LoopiCafe bảo vệ dữ liệu
+            Cách LoopyCafe bảo vệ dữ liệu
           </Link>
         </motion.div>
       </motion.div>
@@ -255,7 +255,7 @@ export function HeroAnimated() {
       {/* Right-side Loopy Mascot & 3 Outward Floating Cards */}
       <div
         className="hero-visual"
-        aria-label="Minh họa trạng thái vận hành LoopiCafe"
+        aria-label="Minh họa trạng thái vận hành LoopyCafe"
       >
         <motion.div
           className="hero-glow"
@@ -312,7 +312,7 @@ export function HeroAnimated() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={currentExpr.src}
-              alt="Linh vật LoopiCafe HD"
+              alt="Linh vật LoopyCafe HD"
               width={260}
               height={220}
               style={{

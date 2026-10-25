@@ -1,12 +1,12 @@
 import { ensureDatabase } from "@/db/runtime";
-import { requireApiUser } from "@/server/auth";
+import { requireApiPermission } from "@/server/auth";
 import { type NextRequest } from "next/server";
 import { apiHandler, ApplicationError } from "@/platform/http/errors";
 
 export const dynamic = "force-dynamic";
 
 export const GET = apiHandler(async (request: NextRequest) => {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiPermission("orders.read");
   if (!auth.actor) return auth.response;
 
     const { searchParams } = new URL(request.url);
@@ -188,8 +188,13 @@ export const GET = apiHandler(async (request: NextRequest) => {
       items: orderItemsMap.get(o.id) ?? [],
     }));
 
-    const { getSpoilageMetrics } = await import("@/modules/ordering/application/change-status");
-    const spoilage = await getSpoilageMetrics(db, auth.actor.storeId, startDate || dateFilter, endDate || dateFilter);
+    const { getSpoilageMetrics, getWastageReport } = await import("@/modules/ordering/application/change-status");
+    const reportStartDate = startDate || dateFilter;
+    const reportEndDate = endDate || dateFilter;
+    const [spoilage, wastageReport] = await Promise.all([
+      getSpoilageMetrics(db, auth.actor.storeId, reportStartDate, reportEndDate),
+      getWastageReport(db, auth.actor.storeId, reportStartDate, reportEndDate),
+    ]);
 
     return Response.json({
       orders: enrichedOrders,
@@ -203,6 +208,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
         cancelled: Number(countsResult?.cancelled || 0),
       },
       spoilage,
+      wastageReport,
       pagination: {
         page,
         limit,

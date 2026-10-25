@@ -1,10 +1,12 @@
 import { ensureDatabase } from "@/db/runtime";
 import { loadPayrollReport } from "@/lib/payroll-report";
 import { apiHandler } from "@/platform/http/errors";
-import { requireApiUser } from "@/server/auth";
+import { requireApiPermission } from "@/server/auth";
+import { auditStatement } from "@/server/audit";
+import { sanitizeSpreadsheetText } from "@/modules/payroll/domain/export-safety";
 
 export const GET = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser();
+  const auth = await requireApiPermission("reports.export");
   if (!auth.actor) return auth.response;
   const url = new URL(request.url);
   const db = await ensureDatabase();
@@ -12,11 +14,12 @@ export const GET = apiHandler(async (request: Request) => {
     storeId: auth.actor.storeId,
     actorEmail: auth.actor.email,
     actorRole: auth.actor.role,
+    canViewAll: true,
     periodKey: url.searchParams.get("period"),
   });
 
   const rows = [
-    ["Nhân viên", "Email", "Chức danh", "Kỳ báo cáo", "Giờ lịch", "Giờ ghi nhận", "Giờ đã duyệt", "Tăng ca", "Đi muộn", "Về sớm", "Ngoại lệ", "Trạng thái"],
+    ["Nhân viên", "Email", "Chức danh", "Kỳ báo cáo", "Giờ lịch", "Giờ ghi nhận", "Giờ đã duyệt", "Giờ trả lương", "Tăng ca", "Đi muộn", "Về sớm", "Ngoại lệ", "Trạng thái"],
     ...report.rows.map((row) => [
       row.displayName,
       row.email,
@@ -25,6 +28,7 @@ export const GET = apiHandler(async (request: Request) => {
       row.snapshotComplete === false ? "" : formatMinutes(row.scheduledMinutes),
       row.snapshotComplete === false ? "" : formatMinutes(row.recordedMinutes),
       formatMinutes(row.approvedMinutes),
+      formatMinutes(row.payableMinutes ?? row.approvedMinutes),
       formatMinutes(row.overtimeMinutes),
       row.snapshotComplete === false ? "" : String(row.lateCount),
       row.snapshotComplete === false ? "" : String(row.earlyLeaveCount),
@@ -32,11 +36,16 @@ export const GET = apiHandler(async (request: Request) => {
       statusLabel(row.status),
     ]),
   ];
+  await auditStatement(db, auth.actor.email, "payroll_period", report.period.key, "reports.attendance_exported", {
+    format: "csv",
+    period: report.period.key,
+    rowCount: report.rows.length,
+  }, new Date().toISOString(), false, crypto.randomUUID(), auth.actor.storeId).run();
   const csv = `\uFEFF${rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n")}`;
   return new Response(csv, {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="loopicafe-attendance-${report.period.key}.csv"`,
+      "content-disposition": `attachment; filename="loopycafe-attendance-${report.period.key}.csv"`,
       "cache-control": "private, no-store",
     },
   });
@@ -55,12 +64,7 @@ function statusLabel(status: string) {
 }
 
 export function sanitizeCsvCell(value: string): string {
-  if (!value || typeof value !== "string") return "";
-  const trimmed = value.trimStart();
-  if (/^[=+\-@\t\r]/.test(value) || /^[=+\-@]/.test(trimmed)) {
-    return `'${value}`;
-  }
-  return value;
+  return typeof value === "string" ? sanitizeSpreadsheetText(value) : "";
 }
 
 export function escapeCsv(value: string) {

@@ -257,7 +257,7 @@ export function CartDrawer({
                       onClick={() => onUpdateQuantity(idx, it.quantity - 1)}
                       disabled={it.quantity <= 1}
                       aria-label="Giảm số lượng món"
-                      className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-stone-600 hover:bg-stone-200 disabled:opacity-30"
+                      className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-600 hover:bg-stone-200 disabled:opacity-30"
                     >
                       <Minus size={15} />
                     </button>
@@ -269,7 +269,7 @@ export function CartDrawer({
                       onClick={() => onUpdateQuantity(idx, it.quantity + 1)}
                       disabled={it.quantity >= 20}
                       aria-label="Tăng số lượng món"
-                      className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-stone-600 hover:bg-stone-200"
+                      className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-600 hover:bg-stone-200"
                     >
                       <Plus size={15} />
                     </button>

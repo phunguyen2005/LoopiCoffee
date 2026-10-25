@@ -6,7 +6,7 @@
 
 ---
 
-# LoopiCafe — local production-readiness audit
+# LoopyCafe — local production-readiness audit
 
 Audit date: 2026-09-17. Baseline: the existing working tree, including its uncommitted changes. This report precedes implementation. Findings below describe that baseline; remediation results are recorded separately. No deployment, remote Git write, cloud database change, or cloud account operation is authorized.
 

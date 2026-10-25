@@ -1,4 +1,4 @@
-# LoopiCafe — Source Code Quality & Architecture Audit
+# LoopyCafe — Source Code Quality & Architecture Audit
 
 Ngày: **2026-10-14**, múi giờ Asia/Saigon. Run ID: `2026-10-14-888495b-source`.
 

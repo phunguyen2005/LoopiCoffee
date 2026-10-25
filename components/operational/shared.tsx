@@ -17,6 +17,11 @@ export type ScheduleShift = {
   status: string;
   revision: number;
   approved_leave_request_id: string | null;
+  has_attendance?: number;
+  has_payroll_lock?: number;
+  cover_for_shift_id?: string | null;
+  cover_employee_name?: string | null;
+  cover_employee_email?: string | null;
 };
 
 export const DAY_CHIP_LABELS = [
@@ -124,6 +129,12 @@ export function InputField({
   onChange,
   full,
   placeholder,
+  type = "text",
+  min,
+  max,
+  step,
+  onlyNumbers = false,
+  autoComplete,
 }: {
   id: string;
   label: string;
@@ -131,15 +142,91 @@ export function InputField({
   onChange: (value: string) => void;
   full?: boolean;
   placeholder?: string;
+  type?: string;
+  min?: number | string;
+  max?: number | string;
+  step?: number | string;
+  onlyNumbers?: boolean;
+  autoComplete?: string;
 }) {
+  const isNumeric = type === "number" || onlyNumbers;
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isNumeric) return;
+    // Allow keyboard shortcuts (Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z, Meta+...)
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    // Block scientific notation / signs / decimal point
+    if (["e", "E", "+", "-", "."].includes(event.key)) {
+      event.preventDefault();
+      return;
+    }
+    // If a single printable character is pressed and is not a digit 0-9, prevent it
+    if (event.key.length === 1 && !/^\d$/.test(event.key)) {
+      event.preventDefault();
+    }
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    if (!isNumeric) return;
+    const pasted = event.clipboardData.getData("text");
+    if (!pasted) return;
+    if (/\D/.test(pasted)) {
+      event.preventDefault();
+      const digitsOnly = pasted.replace(/\D/g, "");
+      if (digitsOnly) {
+        const input = event.currentTarget;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? 0;
+        const nextValue = value.slice(0, start) + digitsOnly + value.slice(end);
+        onChange(nextValue);
+      }
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLInputElement>) => {
+    if (!isNumeric) return;
+    event.preventDefault();
+    const dropped = event.dataTransfer.getData("text");
+    const digitsOnly = dropped.replace(/\D/g, "");
+    if (digitsOnly) {
+      const input = event.currentTarget;
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? 0;
+      const nextValue = value.slice(0, start) + digitsOnly + value.slice(end);
+      onChange(nextValue);
+    }
+  };
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value;
+    if (isNumeric) {
+      const sanitized = raw.replace(/\D/g, "");
+      onChange(sanitized);
+    } else {
+      onChange(raw);
+    }
+  };
+
   return (
     <div className={`field ${full ? "full" : ""}`}>
       <label htmlFor={id}>{label}</label>
       <input
         id={id}
+        type={type}
         value={value}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
+        min={min}
+        max={max}
+        step={step}
+        inputMode={isNumeric ? "numeric" : undefined}
+        pattern={isNumeric ? "[0-9]*" : undefined}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onDrop={handleDrop}
+        onChange={handleChange}
+        autoComplete={autoComplete}
         required
       />
     </div>
@@ -151,19 +238,24 @@ export function MetricCard({
   tone,
   value,
   label,
+  sublabel,
 }: {
   icon: React.ComponentType<{ size?: number }>;
   tone: string;
   value: string;
   label: string;
+  sublabel?: string;
 }) {
   return (
     <article className="metric-card">
       <span className={`metric-icon ${tone}`}>
         <Icon size={17} />
       </span>
-      <strong>{value}</strong>
-      <span>{label}</span>
+      <div className="metric-card-body">
+        <strong>{value}</strong>
+        <span>{label}</span>
+        {sublabel && <small className="metric-card-sublabel">{sublabel}</small>}
+      </div>
     </article>
   );
 }
@@ -265,7 +357,8 @@ export function roleLabel(value: string) {
   return "Nhân viên";
 }
 
-export function getShiftStatus(startsAt: string, endsAt: string) {
+export function getShiftStatus(startsAt: string, endsAt: string, options?: { approvedLeaveRequestId?: string | null }) {
+  if (options?.approvedLeaveRequestId) return { label: "Nghỉ đã duyệt", badge: "warning", tone: "is-leave" };
   const now = Date.now();
   const start = new Date(startsAt).getTime();
   const end = new Date(endsAt).getTime();

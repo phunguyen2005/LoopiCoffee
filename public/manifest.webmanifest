@@ -1,6 +1,6 @@
 {
-  "name": "LoopiCafe",
-  "short_name": "LoopiCafe",
+  "name": "LoopyCafe",
+  "short_name": "LoopyCafe",
   "description": "Quản lý ca làm và vận hành hàng ngày cho quán cà phê.",
   "start_url": "/app/today",
   "display": "standalone",

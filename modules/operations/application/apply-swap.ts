@@ -1,6 +1,6 @@
 import type { AccessActor } from "../../people/domain/access.ts";
 import { ApplicationError } from "../../../platform/http/errors.ts";
-import { auditStatement } from "../../../server/audit.ts";
+import { hasGrantedPermission } from "../../people/domain/permissions.ts";
 
 export async function applySwap(
   db: D1Database,
@@ -14,9 +14,12 @@ export async function applySwap(
   if (!input.requestId || !input.shift1Id || !input.shift2Id) {
     throw new ApplicationError("Thiếu thông tin yêu cầu đổi ca hoặc mã ca làm.");
   }
+  if (input.shift1Id === input.shift2Id) {
+    throw new ApplicationError("Phải chọn hai ca khác nhau để đổi.", 400, "swap_details_required");
+  }
 
-  if (!["owner", "manager", "team_lead"].includes(actor.role)) {
-    throw new ApplicationError("Bạn không có quyền áp dụng đổi ca.", 403, "forbidden");
+  if (!hasGrantedPermission(actor, "requests.swap.apply")) {
+    throw new ApplicationError("Bạn không có quyền áp dụng đổi ca.", 403, "permission_denied");
   }
 
   // 1. Fetch request
@@ -37,6 +40,9 @@ export async function applySwap(
 
   if (request.status !== "pending" && request.status !== "approved_pending_apply" && request.status !== "approved") {
     throw new ApplicationError("Yêu cầu không ở trạng thái hợp lệ để áp dụng đổi ca.", 409, "request_conflict");
+  }
+  if (!request.shift_id || (request.shift_id !== input.shift1Id && request.shift_id !== input.shift2Id)) {
+    throw new ApplicationError("Yêu cầu đổi ca chưa gắn đúng ca nguồn. Nhân viên cần gửi lại yêu cầu từ ca muốn đổi.", 409, "swap_details_required");
   }
 
   // 2. Fetch shifts
@@ -69,6 +75,13 @@ export async function applySwap(
   if (shift1.emp_status !== "active" || shift2.emp_status !== "active") {
     throw new ApplicationError("Cả hai nhân viên trong ca phải đang hoạt động.", 409, "employee_not_active");
   }
+  const sourceShift = request.shift_id === shift1.id ? shift1 : shift2;
+  if (sourceShift.employee_email.trim().toLowerCase() !== request.employee_email.trim().toLowerCase()) {
+    throw new ApplicationError("Ca nguồn không còn thuộc người gửi yêu cầu. Hãy tải lại và tạo yêu cầu mới.", 409, "swap_conflict");
+  }
+  if (shift1.employee_email.trim().toLowerCase() === shift2.employee_email.trim().toLowerCase()) {
+    throw new ApplicationError("Hai ca phải thuộc hai nhân viên khác nhau.", 409, "swap_conflict");
+  }
 
   // Anti-self-approval (DEC-001)
   if (
@@ -79,8 +92,18 @@ export async function applySwap(
     throw new ApplicationError("Bạn không thể tự duyệt hoặc áp dụng đổi ca của chính mình.", 403, "self_approval_blocked");
   }
 
+  // DEC-014: Non-owner cannot swap owner or system_admin shifts
+  if (actor.role !== "owner") {
+    if (
+      (shift1.role && ["owner", "system_admin"].includes(shift1.role)) ||
+      (shift2.role && ["owner", "system_admin"].includes(shift2.role))
+    ) {
+      throw new ApplicationError("Bạn không có quyền đổi ca của Chủ quán hoặc Quản trị viên hệ thống.", 403, "forbidden");
+    }
+  }
+
   // Team lead scoping (DEC-001)
-  if (actor.role === "team_lead") {
+  if (actor.role === "team_lead" && !actor.roleId) {
     if ((shift1.role && shift1.role !== "employee") || (shift2.role && shift2.role !== "employee")) {
       throw new ApplicationError("Trưởng ca chỉ có quyền đổi ca giữa các nhân viên.", 403, "forbidden");
     }
@@ -100,7 +123,7 @@ export async function applySwap(
   const commandId = crypto.randomUUID();
 
   try {
-    await db.batch([
+    const results = await db.batch([
       // Update shift 1 to employee 2
       db.prepare(
         `UPDATE shifts SET employee_email = ?, revision = revision + 1
@@ -120,19 +143,36 @@ export async function applySwap(
       // Update request status to 'applied'
       db.prepare(
         `UPDATE requests SET status = 'applied', reviewer_email = ?, reviewed_at = ?
-         WHERE id = ? AND store_id = ? AND status IN ('pending', 'approved_pending_apply', 'approved')`
-      ).bind(actor.email, now, input.requestId, actor.storeId),
+         WHERE id = ? AND store_id = ? AND status IN ('pending', 'approved_pending_apply', 'approved')
+           AND shift_id IN (?, ?)
+           AND EXISTS (SELECT 1 FROM shifts WHERE id = ? AND store_id = ? AND lower(employee_email) = lower(?) AND revision = ?)
+           AND EXISTS (SELECT 1 FROM shifts WHERE id = ? AND store_id = ? AND lower(employee_email) = lower(?) AND revision = ?)`
+      ).bind(actor.email, now, input.requestId, actor.storeId, shift1.id, shift2.id,
+        shift1.id, actor.storeId, shift2.employee_email, shift1.revision + 1,
+        shift2.id, actor.storeId, shift1.employee_email, shift2.revision + 1),
 
-      // Audit and notifications
-      auditStatement(db, actor.email, "request", input.requestId, "request.applied", { shift1Id: shift1.id, shift2Id: shift2.id, employee1: shift1.employee_email, employee2: shift2.employee_email }, now, true, commandId),
+      // A zero-row request update makes this INSERT violate NOT NULL and rolls back
+      // the whole D1 batch, including either shift update that may have succeeded.
       db.prepare(
-        "INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at) VALUES (?, ?, 'shift_swapped', 'Ca làm việc của bạn đã được đổi thành công.', '/app/schedule', ?)"
-      ).bind(crypto.randomUUID(), shift1.employee_email, now),
+        `INSERT INTO audit_events (id, actor_email, entity_type, entity_id, action, metadata, created_at, store_id)
+         VALUES (CASE WHEN changes() = 1 THEN ? ELSE NULL END, ?, 'request', ?, 'request.applied', ?, ?, ?)`
+      ).bind(commandId, actor.email, input.requestId, JSON.stringify({ shift1Id: shift1.id, shift2Id: shift2.id, employee1: shift1.employee_email, employee2: shift2.employee_email }), now, actor.storeId),
       db.prepare(
-        "INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at) VALUES (?, ?, 'shift_swapped', 'Ca làm việc của bạn đã được đổi thành công.', '/app/schedule', ?)"
-      ).bind(crypto.randomUUID(), shift2.employee_email, now),
+        `INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at)
+         SELECT ?, ?, 'shift_swapped', 'Ca làm việc của bạn đã được đổi thành công.', '/app/schedule', ?
+         WHERE EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
+      ).bind(crypto.randomUUID(), shift1.employee_email, now, commandId),
+      db.prepare(
+        `INSERT INTO notifications (id, recipient_email, type, title, entity_href, created_at)
+         SELECT ?, ?, 'shift_swapped', 'Ca làm việc của bạn đã được đổi thành công.', '/app/schedule', ?
+         WHERE EXISTS (SELECT 1 FROM audit_events WHERE id = ?)`
+      ).bind(crypto.randomUUID(), shift2.employee_email, now, commandId),
     ]);
-  } catch {
+    if (!results[0].meta.changes || !results[1].meta.changes || !results[2].meta.changes || !results[3].meta.changes) {
+      throw new ApplicationError("Không thể áp dụng đổi ca do ca đã thay đổi, đã có chấm công hoặc kỳ lương đã khóa.", 409, "swap_conflict");
+    }
+  } catch (error) {
+    if (error instanceof ApplicationError) throw error;
     throw new ApplicationError("Không thể áp dụng đổi ca do xung đột lịch hoặc ca đã thay đổi.", 409, "swap_conflict");
   }
 

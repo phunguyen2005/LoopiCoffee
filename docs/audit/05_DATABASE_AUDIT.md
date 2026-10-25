@@ -7,7 +7,7 @@
 ---
 
 # BÁO CÁO AUDIT CHUYÊN SÂU: DATABASE D1 & DRIZZLE ORM
-**Dự án**: LoopiCafe Management System
+**Dự án**: LoopyCafe Management System
 **Mã kiểm toán viên**: AGENT 1 — DATABASE AUDITOR
 **Mục tiêu**: Toàn diện mảng Schema, Migrations, Constraints, Transactions, Concurrency & Data Integrity
 **Quy chuẩn áp dụng**: `AUDIT ONLY` theo [`docs/audit/00_COMMON_RULES.md`](00_COMMON_RULES.md) và [`AGENTS.md`](../../AGENTS.md)
@@ -18,7 +18,7 @@
 
 ## 1. Executive Summary
 
-Hệ thống lưu trữ của **LoopiCafe Management System** vận hành trên kiến trúc **Cloudflare D1** (SQLite engine phân tán tại edge) kết hợp định nghĩa schema bằng **Drizzle ORM** và quản lý migrations có phiên bản (`0000` đến `0013`).
+Hệ thống lưu trữ của **LoopyCafe Management System** vận hành trên kiến trúc **Cloudflare D1** (SQLite engine phân tán tại edge) kết hợp định nghĩa schema bằng **Drizzle ORM** và quản lý migrations có phiên bản (`0000` đến `0013`).
 
 ### Điểm mạnh nổi bật đã xác minh
 1. **Kiểm soát concurrency và chống ghi đè phiên bản**: Hệ thống đã triển khai cơ chế optimistic locking rất sáng tạo thông qua trigger SQLite (`attendance_session_revision_guard`, `shifts_locked_period_insert`) kết hợp revision counter cấp cửa hàng (`workforce_revision`) và cấp thực thể (`revision`).

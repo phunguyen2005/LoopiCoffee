@@ -4,6 +4,7 @@ import { auditStatement } from "../../../server/audit.ts";
 import { resolvePayrollPeriod } from "../domain/period.ts";
 import { loadPayrollReport } from "./load-report.ts";
 import type { PayrollFinalizationEligibility } from "../contracts/report.ts";
+import { hasGrantedPermission } from "../../people/domain/permissions.ts";
 
 export async function evaluatePayrollFinalizationEligibility(
   db: D1Database,
@@ -31,37 +32,29 @@ export async function evaluatePayrollFinalizationEligibility(
   const unresolvedSession = await db.prepare(
     "SELECT id FROM attendance_sessions WHERE store_id = ? AND closed_at IS NULL AND opened_at < ? LIMIT 1",
   ).bind(actor.storeId, period.endExclusiveIso).first();
+  const unresolvedSwap = await db.prepare(
+    `SELECT id FROM requests
+     WHERE store_id = ? AND type = 'swap' AND status IN ('pending', 'approved_pending_apply', 'approved')
+       AND shift_id IS NOT NULL AND starts_at < ? AND ends_at > ?
+     LIMIT 1`,
+  ).bind(actor.storeId, period.endExclusiveIso, period.startIso).first();
   const rows = report.rows.filter((row) => row.includeInPayroll && row.hasPayrollData);
   const reasons: PayrollFinalizationEligibility["reasons"] = [];
-  if (!["owner", "manager"].includes(actor.role)) reasons.push({ code: "forbidden", message: "Bạn không có quyền chốt lương." });
+  if (!hasGrantedPermission(actor, "payroll.finalize")) reasons.push({ code: "forbidden", message: "Bạn không có quyền chốt lương." });
   if (existingStatus && existingStatus !== "reviewing") reasons.push({ code: "period_locked", message: "Kỳ lương đã khóa." });
+  if (Date.now() < Date.parse(period.endExclusiveIso)) reasons.push({ code: "period_not_ended", message: "Chỉ có thể chốt lương sau khi kỳ lương kết thúc." });
   if (unresolvedSession) reasons.push({ code: "open_session", message: "Còn ca chưa đóng, kể cả ca bắt đầu từ kỳ trước. Hãy đối soát giờ ra trước khi chốt." });
+  if (unresolvedSwap) reasons.push({ code: "pending_swap", message: "Còn yêu cầu đổi ca chưa áp dụng hoặc từ chối. Hãy xử lý xong để xác định đúng người nhận lương." });
   if (!rows.length) reasons.push({ code: "empty_payroll", message: "Kỳ này chưa có nhân viên đủ điều kiện tính lương." });
   if (rows.some((row) => row.pendingExceptionCount > 0)) reasons.push({ code: "pending_exceptions", message: "Còn ngoại lệ chấm công chưa xử lý." });
-  if (rows.some((row) => row.compensationType !== "hourly" || row.hourlyRate <= 0)) reasons.push({ code: "pay_rate_required", message: "Hãy cấu hình đơn giá giờ cho từng nhân viên trước khi chốt kỳ." });
-  const employeeEmailsWithWork = rows.filter((row) => row.approvedMinutes > 0).map((row) => row.email.toLowerCase());
-  if (employeeEmailsWithWork.length > 0) {
-    try {
-      const rateCheck = await db.prepare(
-        "SELECT DISTINCT lower(employee_email) AS email FROM employee_rate_history WHERE store_id = ?"
-      ).bind(actor.storeId).all<{ email: string }>();
-      const emailsWithRates = new Set(rateCheck.results.map((r) => r.email));
-      const missingRates = employeeEmailsWithWork.filter((e) => !emailsWithRates.has(e));
-      if (missingRates.length > 0) {
-        reasons.push({
-          code: "pay_rate_required",
-          message: "Hãy cấu hình lịch sử đơn giá cho nhân viên trước khi chốt kỳ.",
-        });
-      }
-    } catch {
-      // Table may not exist yet in early environments
-    }
+  if (rows.some((row) => row.compensationType !== "hourly" || (row.missingRateMinutes ?? 0) > 0)) {
+    reasons.push({ code: "pay_rate_required", message: "Lịch sử đơn giá chưa phủ kín toàn bộ giờ trả lương. OWNER cần khôi phục đơn giá có căn cứ trước khi chốt kỳ." });
   }
   return { canFinalize: reasons.length === 0, employeeCount: rows.length, reasons };
 }
 
 export async function changePayrollPeriod(db: D1Database, actor: AccessActor, action: "finalize" | "reopen", periodKey?: string) {
-  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền chốt lương.", 403, "forbidden");
+  if (!hasGrantedPermission(actor, "payroll.finalize")) throw new ApplicationError("Bạn không có quyền chốt lương.", 403, "permission_denied");
   const period = resolvePayrollPeriod(periodKey);
   const existing = await db.prepare(
     "SELECT id, status FROM payroll_periods WHERE store_id = ? AND period_start = ? AND period_end = ?",

@@ -1,10 +1,12 @@
 import { ensureDatabase } from "@/db/runtime";
 import { loadPayrollReport } from "@/lib/payroll-report";
 import { apiHandler } from "@/platform/http/errors";
-import { requireApiUser } from "@/server/auth";
+import { requireApiPermission } from "@/server/auth";
+import { auditStatement } from "@/server/audit";
+import { sanitizeSpreadsheetText } from "@/modules/payroll/domain/export-safety";
 
 export const GET = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager"]);
+  const auth = await requireApiPermission("reports.export");
   if (!auth.actor) return auth.response;
   const url = new URL(request.url);
   const db = await ensureDatabase();
@@ -12,6 +14,7 @@ export const GET = apiHandler(async (request: Request) => {
     storeId: auth.actor.storeId,
     actorEmail: auth.actor.email,
     actorRole: auth.actor.role,
+    canViewAll: true,
     periodKey: url.searchParams.get("period"),
   });
   const rows = report.rows.filter((row) => row.includeInPayroll && row.hasPayrollData);
@@ -24,7 +27,7 @@ export const GET = apiHandler(async (request: Request) => {
       cell(row.jobTitle),
       cell(minutesLabel(row.approvedMinutes)),
       cell(minutesLabel(row.overtimeMinutes)),
-      row.snapshotComplete === false ? cell("Không có dữ liệu lịch sử") : numberCell(row.hourlyRate),
+      rateCell(row),
       row.snapshotComplete === false ? cell("Không có dữ liệu lịch sử") : numberCell(row.baseSalary + row.overtimePay),
       numberCell(row.allowanceAmount),
       numberCell(row.bonusAmount),
@@ -49,21 +52,35 @@ export const GET = apiHandler(async (request: Request) => {
   </Table>
  </Worksheet>
 </Workbook>`;
+  await auditStatement(db, auth.actor.email, "payroll_period", report.period.key, "reports.payroll_exported", {
+    format: "xls",
+    period: report.period.key,
+    rowCount: rows.length,
+  }, new Date().toISOString(), false, crypto.randomUUID(), auth.actor.storeId).run();
   return new Response(xml, {
     headers: {
       "content-type": "application/vnd.ms-excel; charset=utf-8",
-      "content-disposition": `attachment; filename="loopicafe-payroll-${report.period.key}.xls"`,
+      "content-disposition": `attachment; filename="loopycafe-payroll-${report.period.key}.xls"`,
       "cache-control": "private, no-store",
     },
   });
 });
 
 function cell(value: string, style?: string) {
-  return `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+  return `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="String">${escapeXml(sanitizeSpreadsheetText(value))}</Data></Cell>`;
 }
 
 function numberCell(value: number) {
   return `<Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(value)}</Data></Cell>`;
+}
+
+function rateCell(row: Awaited<ReturnType<typeof loadPayrollReport>>["rows"][number]) {
+  if (row.snapshotComplete === false) return cell("Không có dữ liệu lịch sử");
+  if ((row.missingRateMinutes ?? 0) > 0) return cell("Thiếu lịch sử đơn giá");
+  const rates = [...new Set((row.rateSegments ?? []).map((segment) => segment.hourlyRate).filter((rate): rate is number => typeof rate === "number"))];
+  if (rates.length === 1) return numberCell(rates[0]);
+  if (rates.length > 1) return cell(rates.map((rate) => `${new Intl.NumberFormat("vi-VN").format(rate)} VND/h`).join(" → "));
+  return numberCell(row.hourlyRate);
 }
 
 function minutesLabel(minutes: number) {

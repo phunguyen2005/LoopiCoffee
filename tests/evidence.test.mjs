@@ -224,7 +224,7 @@ test("creates a server-owned stamped image with authoritative evidence", () => {
     eventId: "7f3a91c2-aaaa-bbbb-cccc-111111111111",
   });
   const svg = new TextDecoder().decode(stamped);
-  assert.match(svg, /LoopiCafe · VÀO CA/);
+  assert.match(svg, /LoopyCafe · VÀO CA/);
   assert.match(svg, /Giờ máy chủ/);
   assert.match(svg, /10\.754128, 106\.667540/);
   assert.match(svg, /Mã sự kiện: 7F3A91C2/);

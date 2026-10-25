@@ -10,7 +10,7 @@ import { createDatabase, seedStore, seedEmployee } from "./helpers/database.mjs"
 // -------------------------------------------------------------
 // SEC-003: Server RBAC & system_admin rejection
 // -------------------------------------------------------------
-test("SEC-003: canManageEmployee and canAssignRole disallow system_admin privilege escalation", () => {
+test("DEC-010: system_admin manages business accounts but never system_admin accounts", () => {
   const adminActor = { id: "u-admin", email: "admin@test.com", storeId: "store-a", role: "system_admin" };
   const ownerActor = { id: "u-owner", email: "owner@test.com", storeId: "store-a", role: "owner" };
   const managerActor = { id: "u-mgr", email: "mgr@test.com", storeId: "store-a", role: "manager" };
@@ -18,9 +18,10 @@ test("SEC-003: canManageEmployee and canAssignRole disallow system_admin privile
   const employee = { id: "u-emp", store_id: "store-a", role: "employee", status: "active" };
   const targetOwner = { id: "u-owner2", store_id: "store-a", role: "owner", status: "active" };
 
-  // system_admin actor cannot manage employees in store operations
-  assert.equal(canManageEmployee(adminActor, employee), false, "system_admin should not manage store employees");
-  assert.equal(canManageEmployee(adminActor, targetOwner), false, "system_admin should not manage store owner");
+  // This domain helper is used by the dedicated account boundary. Business routes
+  // separately require permissions that system_admin can never receive.
+  assert.equal(canManageEmployee(adminActor, employee), true, "system_admin manages business accounts");
+  assert.equal(canManageEmployee(adminActor, targetOwner), true, "system_admin may manage owner with extra route safeguards");
 
   // owner can manage employee
   assert.equal(canManageEmployee(ownerActor, employee), true, "owner should manage store employee");
@@ -29,11 +30,12 @@ test("SEC-003: canManageEmployee and canAssignRole disallow system_admin privile
   assert.equal(canManageEmployee(managerActor, employee), true, "manager can manage store employee");
   assert.equal(canManageEmployee(managerActor, targetOwner), false, "manager cannot manage store owner");
 
-  // system_admin cannot assign roles
-  assert.equal(canAssignRole(adminActor, "manager"), false, "system_admin cannot assign roles");
-  assert.equal(canAssignRole(adminActor, "employee"), false, "system_admin cannot assign roles");
+  assert.equal(canAssignRole(adminActor, "manager"), true, "system_admin can assign business roles");
+  assert.equal(canAssignRole(adminActor, "employee"), true, "system_admin can assign business roles");
+  assert.equal(canAssignRole(adminActor, "system_admin"), false, "system_admin cannot create another admin through normal API");
 
   // owner can assign manager and employee
+  assert.equal(canAssignRole(ownerActor, "owner"), false, "owner cannot create a second owner");
   assert.equal(canAssignRole(ownerActor, "manager"), true, "owner can assign manager");
   assert.equal(canAssignRole(ownerActor, "employee"), true, "owner can assign employee");
 });

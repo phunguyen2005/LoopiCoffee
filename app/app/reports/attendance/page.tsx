@@ -4,6 +4,6 @@ import { redirect } from "next/navigation";
 
 export default async function AttendanceReportPage() {
   const user = await getLoopiUser("/app/reports/attendance");
-  if (user.role !== "owner" && user.role !== "manager") redirect("/app");
+  if (!user.permissions.includes("payroll.read") && !user.permissions.includes("attendance.review")) redirect("/app");
   return <PayrollReportsView />;
 }

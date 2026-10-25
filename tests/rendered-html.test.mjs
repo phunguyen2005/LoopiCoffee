@@ -9,7 +9,7 @@ test("landing source and assets retain Vietnamese content", async () => {
     readFile(new URL("../components/loopy-sticker.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /LoopiCafe/);
+  assert.match(page, /LoopyCafe/);
   assert.match(page, /Quán vẫn chạy trơn tru/);
   assert.match(page, /Không theo dõi vị trí nền/);
   assert.match(layout, /lang="vi"/);
@@ -27,12 +27,12 @@ test("places the opt-in introduction video between the hero and benefits", async
   const heroEnd = page.indexOf("landing-video-section");
   const benefitsStart = page.indexOf("benefit-section");
   assert.ok(heroEnd > 0 && benefitsStart > heroEnd);
-  assert.match(page, /LoopiCafe trong 10 giây/);
+  assert.match(page, /LoopyCafe trong 10 giây/);
   assert.match(page, /controls/);
   assert.match(page, /playsInline/);
   assert.match(page, /preload="metadata"/);
   assert.match(page, /poster="\/loopicafe-introduce-poster\.jpg"/);
-  assert.match(page, /Mở video giới thiệu LoopiCafe/);
+  assert.match(page, /Mở video giới thiệu LoopyCafe/);
   assert.doesNotMatch(page, /\bautoPlay\b|\bloop\b/);
   assert.ok(video.byteLength > 1_000_000);
   assert.equal(poster[0], 0xff);
@@ -146,3 +146,95 @@ test("keeps startup work and high-resolution mascot assets bounded", async () =>
   assert.equal(mascots.length, mascotPaths.length);
   assert.ok(mascots.every((mascot) => mascot.byteLength < 100_000));
 });
+
+test("maintains mobile UX operational hierarchy and touch target safeguards for OWNER and STAFF", async () => {
+  const [
+    todayView,
+    dashboardView,
+    handoversView,
+    requestsView,
+    attendanceView,
+    issuesView,
+    scheduleView,
+    payrollView,
+    appShell,
+    globalStyles,
+  ] = await Promise.all([
+    readFile(new URL("../components/operational/today-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/dashboard-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/handovers-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/requests-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/attendance-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/issues-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational/schedule-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/payroll-reports-view.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/app-shell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // STAFF Today view: shift progress & tasks appear before monthly statistics
+  const todayWorkflowIdx = todayView.indexOf("Tiến trình ca làm");
+  const todayMonthlyIdx = todayView.indexOf("Thống kê công tháng này");
+  assert.ok(todayWorkflowIdx > 0 && todayMonthlyIdx > todayWorkflowIdx);
+
+  // OWNER Dashboard view: action alerts appear before management shortcuts without CSS order hacks
+  assert.doesNotMatch(dashboardView, /order:\s*-1/);
+  const ownerAlertIdx = dashboardView.indexOf("Cần xử lý ngay");
+  const ownerShortcutsIdx = dashboardView.indexOf("Lối tắt quản trị");
+  assert.ok(ownerAlertIdx > 0 && ownerShortcutsIdx > ownerAlertIdx);
+
+  // STAFF Handovers view: promotes incoming unacknowledged handovers above the create form
+  const incomingHandoverIdx = handoversView.indexOf("Bàn giao cần xác nhận ngay");
+  const createHandoverFormIdx = handoversView.indexOf("<form onSubmit={submit}>");
+  assert.ok(incomingHandoverIdx > 0 && createHandoverFormIdx > incomingHandoverIdx);
+
+  // Accidental tap prevention (2-step inline confirmation) on mobile approvals
+  assert.match(requestsView, /confirmRejectId/);
+  assert.match(attendanceView, /confirmApproveAll/);
+  assert.match(attendanceView, /confirmRejectEventId/);
+
+  // Filter chips & presets for fast mobile operations
+  assert.match(issuesView, /Máy pha \/ máy xay trục trặc/);
+  assert.match(scheduleView, /Ưu tiên hôm nay/);
+  assert.match(payrollView, /Lọc nhanh trạng thái nhân sự/);
+  assert.match(appShell, /showMobileQuickPanel/);
+  assert.match(globalStyles, /\.week-grid > \.week-person/);
+
+  // Employee Mobile UX refinements (375px - 430px)
+  const notificationsPopover = await readFile(
+    new URL("../components/notifications-popover.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(notificationsPopover, /fixed inset-x-3 top-16 z-50 max-h-\[75vh\] flex flex-col/);
+  assert.match(notificationsPopover, /bg-black\/30/);
+  assert.doesNotMatch(appShell, /highlight-item/);
+  assert.match(todayView, /grid-cols-3 gap-2/);
+  assert.doesNotMatch(todayView, /mobile-sticky-primary/);
+  assert.match(scheduleView, /grid-cols-3 gap-2/);
+  assert.doesNotMatch(scheduleView, /<span className="badge neutral">Danh sách<\/span>/);
+  assert.doesNotMatch(scheduleView, /Nghỉ đã duyệt · Chưa bố trí/);
+
+  // Owner / Manager Mobile UX refinements (375px - 430px)
+  const kpiBlockIdx = dashboardView.indexOf("owner-kpi-grid");
+  const quickPanelIdx = dashboardView.indexOf("Thao tác nhanh cho quản lý");
+  assert.ok(ownerAlertIdx < kpiBlockIdx && kpiBlockIdx < quickPanelIdx);
+  assert.match(attendanceView, /Thông tin tham khảo để đối soát/);
+  assert.match(attendanceView, /min-h-\[40px\] px-3 py-1\.5 rounded-lg border/);
+  assert.match(payrollView, /grid-cols-2 gap-2\.5/);
+  assert.doesNotMatch(payrollView, /<h2 className="card-title">Báo cáo<\/h2>/);
+
+  // P0 Team search bar, filter chip scroll, viewport-safe status badge & bounded editor sheet
+  const teamView = await readFile(new URL("../components/operational/team-view.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(teamView, /flex:\s*"1 1 240px"/);
+  assert.match(teamView, /team-search-box/);
+  assert.match(teamView, /team-filter-scroll/);
+  assert.match(teamView, /team-editor-sheet/);
+  assert.match(teamView, /team-editor-header/);
+  assert.match(teamView, /team-editor-body/);
+  assert.match(teamView, /team-editor-footer/);
+  assert.match(globalStyles, /\.team-search-box\s*\{[\s\S]*?height:\s*46px/);
+  assert.match(globalStyles, /\.team-filter-scroll::-webkit-scrollbar\s*\{\s*display:\s*none/);
+  assert.match(scheduleView, /schedule-mode-bar/);
+});
+
+

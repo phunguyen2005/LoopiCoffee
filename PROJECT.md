@@ -1,4 +1,4 @@
-# LoopiCafe — bản đồ công việc
+# LoopyCafe — bản đồ công việc
 
 Tài liệu điều hướng, không phải danh sách task đang chạy. Cập nhật: 2026-10-13.
 

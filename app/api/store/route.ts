@@ -4,13 +4,14 @@ import { auditStatement, requireApiUser } from "@/server/auth";
 import { apiHandler } from "@/platform/http/errors";
 import { readObject } from "@/platform/http/input";
 
-export const GET = apiHandler(async () => {
+export const GET = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const store = await db.prepare(
     `SELECT id, name, address, timezone, latitude, longitude,
-            COALESCE(geofence_radius_meters, 100) AS geofence_radius_meters, attendance_enabled
+            COALESCE(geofence_radius_meters, 100) AS geofence_radius_meters, attendance_enabled,
+            wifi_ssid, wifi_public_ip
      FROM stores WHERE id = ?`,
   ).bind(auth.actor.storeId).first();
   const rules = await db.prepare(
@@ -19,8 +20,14 @@ export const GET = apiHandler(async () => {
      FROM attendance_rules WHERE store_id = ? AND active = 1
      ORDER BY version DESC LIMIT 1`,
   ).bind(auth.actor.storeId).first();
+
+  const detectedClientIp = request.headers.get("cf-connecting-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-real-ip")
+    || "127.0.0.1";
+
   return Response.json(
-    { store, rules },
+    { store, rules, detectedClientIp },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 });
@@ -33,7 +40,9 @@ export const PATCH = apiHandler(async (request: Request) => {
   const address = cleanString(body.address, 180);
   const latitude = numberValue(body.latitude);
   const longitude = numberValue(body.longitude);
-  const geofenceRadius = integerValue(body.geofenceRadiusMeters, 10, 1000) ?? 100;
+  const geofenceRadius = integerValue(body.geofenceRadiusMeters, 50, 200);
+  const wifiSsid = cleanString(body.wifiSsid, 64);
+  const wifiPublicIp = cleanString(body.wifiPublicIp, 45);
   const timezone = body.timezone === "Asia/Ho_Chi_Minh" ? body.timezone : "Asia/Ho_Chi_Minh";
   const earlyCheckin = integerValue(body.earlyCheckinMinutes, 0, 180);
   const late = integerValue(body.lateMinutes, 0, 180);
@@ -44,7 +53,7 @@ export const PATCH = apiHandler(async (request: Request) => {
     !name || !address || !timezone ||
     !isCoordinate(latitude, -90, 90) ||
     !isCoordinate(longitude, -180, 180) ||
-    earlyCheckin === null || late === null || earlyDeparture === null ||
+    geofenceRadius === null || earlyCheckin === null || late === null || earlyDeparture === null ||
     absence === null || missingCheckout === null
   ) {
     return Response.json({ error: "Thông tin cửa hàng hoặc ngưỡng chấm công không hợp lệ." }, { status: 400 });
@@ -59,8 +68,8 @@ export const PATCH = apiHandler(async (request: Request) => {
   await db.batch([
     db.prepare(
       `UPDATE stores SET name = ?, address = ?, timezone = ?, latitude = ?,
-        longitude = ?, geofence_radius_meters = ?, attendance_enabled = 1, updated_at = ? WHERE id = ?`,
-    ).bind(name, address, timezone, latitude, longitude, geofenceRadius, now, auth.actor.storeId),
+        longitude = ?, geofence_radius_meters = ?, wifi_ssid = ?, wifi_public_ip = ?, attendance_enabled = 1, updated_at = ? WHERE id = ?`,
+    ).bind(name, address, timezone, latitude, longitude, geofenceRadius, wifiSsid, wifiPublicIp, now, auth.actor.storeId),
     db.prepare("UPDATE attendance_rules SET active = 0 WHERE store_id = ?")
       .bind(auth.actor.storeId),
     db.prepare(
@@ -99,6 +108,7 @@ function cleanString(value: unknown, max: number) {
 }
 
 function numberValue(value: unknown) {
+  if (typeof value === "string" && value.trim() === "") return null;
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isFinite(parsed) ? parsed : null;
 }

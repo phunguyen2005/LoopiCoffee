@@ -5,6 +5,11 @@ import { NextResponse } from 'next/server';
 
 const TEST_ACCOUNTS = [
   {
+    email: 'admin@loopicafe.com',
+    displayName: 'Quản trị LoopyCafe',
+    role: 'system_admin',
+  },
+  {
     email: 'owner@loopicafe.com',
     displayName: 'Nguyễn Minh Linh (Owner)',
     role: 'owner',
@@ -107,7 +112,7 @@ export async function POST(request: Request) {
   // Ensure Store exists
   await db.prepare(
     `INSERT OR IGNORE INTO stores (id, name, address, timezone, latitude, longitude, attendance_enabled, created_at, updated_at)
-     VALUES (?, 'LoopiCafe - Main Store', '123 Le Loi Street, District 1, Ho Chi Minh City', 'Asia/Ho_Chi_Minh', 10.776889, 106.700806, 1, ?, ?)`
+     VALUES (?, 'LoopyCafe - Main Store', '123 Le Loi Street, District 1, Ho Chi Minh City', 'Asia/Ho_Chi_Minh', 10.776889, 106.700806, 1, ?, ?)`
   ).bind(STORE_ID, now, now).run();
 
   for (const acc of TEST_ACCOUNTS) {
@@ -146,13 +151,13 @@ export async function POST(request: Request) {
 
       if (!existingEmp) {
         await db.prepare(
-          `INSERT INTO employees (id, store_id, email, display_name, role, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`
-        ).bind(userId || crypto.randomUUID(), STORE_ID, acc.email, acc.displayName, acc.role, now, now).run();
+          `INSERT INTO employees (id, store_id, email, display_name, auth_user_id, role, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`
+        ).bind(userId || crypto.randomUUID(), STORE_ID, acc.email, acc.displayName, userId, acc.role, now, now).run();
       } else {
         await db.prepare(
-          `UPDATE employees SET role = ?, status = 'active', display_name = ?, updated_at = ? WHERE lower(email) = lower(?)`
-        ).bind(acc.role, acc.displayName, now, acc.email).run();
+          `UPDATE employees SET auth_user_id = ?, role = ?, status = 'active', display_name = ?, updated_at = ? WHERE lower(email) = lower(?)`
+        ).bind(userId, acc.role, acc.displayName, now, acc.email).run();
       }
 
       results.push({

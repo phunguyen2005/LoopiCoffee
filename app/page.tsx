@@ -38,9 +38,9 @@ export default function Home() {
   return (
     <main className="landing">
       <header className="landing-nav">
-        <Link href="/" className="brand" aria-label="LoopiCafe - Trang chủ">
+        <Link href="/" className="brand" aria-label="LoopyCafe - Trang chủ">
           <LoopyMark size="small" />
-          <span>LoopiCafe</span>
+          <span>LoopyCafe</span>
         </Link>
         <nav aria-label="Điều hướng công khai">
           <Link href="/camera-location-notice" className="nav-link">
@@ -56,10 +56,10 @@ export default function Home() {
 
       <section id="video-demo" className="landing-video-section" aria-labelledby="landing-video-title">
         <div className="landing-video-heading">
-          <span>10 giây cùng LoopiCafe</span>
-          <h2 id="landing-video-title">LoopiCafe trong 10 giây</h2>
+          <span>10 giây cùng LoopyCafe</span>
+          <h2 id="landing-video-title">LoopyCafe trong 10 giây</h2>
           <p>
-            Một góc nhìn trực quan về cách LoopiCafe giúp mọi ca làm trong quán luôn đúng nhịp. Quán vẫn chạy trơn tru mà Không theo dõi vị trí nền.
+            Một góc nhìn trực quan về cách LoopyCafe giúp mọi ca làm trong quán luôn đúng nhịp. Quán vẫn chạy trơn tru mà Không theo dõi vị trí nền.
           </p>
         </div>
         <figure className="landing-video-card">
@@ -69,11 +69,11 @@ export default function Home() {
             playsInline
             preload="metadata"
             poster="/loopicafe-introduce-poster.jpg"
-            aria-label="Video giới thiệu thương hiệu LoopiCafe trong 10 giây"
+            aria-label="Video giới thiệu thương hiệu LoopyCafe trong 10 giây"
           >
             <source src="/loopicafe-introduce-vid.mp4" type="video/mp4" />
             Trình duyệt của bạn không hỗ trợ video MP4.{" "}
-            <a href="/loopicafe-introduce-vid.mp4">Mở video giới thiệu LoopiCafe</a>.
+            <a href="/loopicafe-introduce-vid.mp4">Mở video giới thiệu LoopyCafe</a>.
           </video>
         </figure>
 
@@ -121,7 +121,7 @@ export default function Home() {
       </section>
 
       <footer className="landing-footer">
-        <div className="brand"><LoopyMark size="small" /><span>LoopiCafe</span></div>
+        <div className="brand"><LoopyMark size="small" /><span>LoopyCafe</span></div>
         <p>Được thiết kế cho nhịp vận hành thật của một quán cà phê nhỏ.</p>
         <div>
           <Link href="/privacy">Quyền riêng tư</Link>

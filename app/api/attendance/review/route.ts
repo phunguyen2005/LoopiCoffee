@@ -3,10 +3,10 @@ import { readObject } from "@/platform/http/input";
 import { correctAttendance } from "@/modules/attendance/application/correct-attendance";
 import { reviewAttendance } from "@/modules/attendance/application/review-attendance";
 import { ensureDatabase } from "@/db/runtime";
-import { requireApiUser } from "@/server/auth";
+import { hasPermission, requireApiPermission } from "@/server/auth";
 
 export async function GET(request: Request) {
-  const auth = await requireApiUser(["owner", "manager", "team_lead"]);
+  const auth = await requireApiPermission("attendance.review");
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const url = new URL(request.url);
@@ -86,12 +86,12 @@ export async function GET(request: Request) {
       revision: row.revision,
       verification: safeJsonArray(row.verification_results),
       photoStatus: row.photo_status,
-      photoPresent: Boolean(row.photo_present) && auth.actor.role !== "team_lead",
+      photoPresent: Boolean(row.photo_present) && hasPermission(auth.actor, "attendance.evidence.read"),
       reviewRequired: Boolean(row.review_required),
       exceptionStatus: row.exception_status,
       employeeReason: row.employee_reason,
       reviewerNote: row.reviewer_note,
-      location: row.latitude === null ? null : {
+      location: row.latitude === null || !hasPermission(auth.actor, "attendance.evidence.read") ? null : {
         latitude: row.latitude,
         longitude: row.longitude,
         accuracy: row.accuracy_meters,
@@ -99,13 +99,15 @@ export async function GET(request: Request) {
       },
     })),
     actorEmail: auth.actor.email,
+    actorRole: auth.actor.role,
+    isSoleOwner: auth.actor.role === "owner" && ((await db.prepare("SELECT COUNT(*) AS count FROM employees WHERE store_id = ? AND role = 'owner' AND status = 'active'").bind(auth.actor.storeId).first<{ count: number }>())?.count ?? 0) === 1,
   });
 }
 
 export const PATCH = apiHandler(async (request: Request) => {
-  const auth = await requireApiUser(["owner", "manager"]);
-  if (!auth.actor) return auth.response;
   const body = await readObject(request, { eventId: "string", sessionId: "string", action: "string", attendanceAction: "string", adjustedTime: "string", reason: "string", decision: "string", reviewerNote: "string", expectedRevision: "number" });
+  const auth = await requireApiPermission(body.action === "adjust_time" ? "attendance.correct" : "attendance.review");
+  if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   if (body.action === "adjust_time") {
     return Response.json(await correctAttendance(db, auth.actor, {

@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Mascot } from "page-mascot";
+import { InteractiveLoopy3DMascot, type InteractiveLoopy3DProps } from "./loopy-3d-mascot";
 
 export type StickerMood =
   | "hello"
@@ -43,22 +43,8 @@ const stickers: Record<StickerMood, { src: string; label: string }> = {
   calm: { src: "/mascots/loopy-hello.webp", label: "Loopy điềm tĩnh" },
 };
 
-export function InteractiveLoopyMascot({
-  size = 140,
-  className = "",
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <Mascot
-      directions="/mascots/loopy-directions.webp"
-      reactions="/mascots/loopy-reactions.webp"
-      size={size}
-      label="Loopy"
-      className={`loopy-interactive-mascot ${className}`}
-    />
-  );
+export function InteractiveLoopyMascot(props: InteractiveLoopy3DProps) {
+  return <InteractiveLoopy3DMascot {...props} />;
 }
 
 function StickerArtwork({ mood, size }: { mood: StickerMood; size: number }) {

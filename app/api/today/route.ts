@@ -15,7 +15,9 @@ export const GET = apiHandler(async () => {
     db.prepare(
       `SELECT id, starts_at, ends_at, role_label, is_shift_lead
        FROM shifts WHERE store_id = ? AND lower(employee_email) = lower(?)
-         AND status IN ('published', 'completed') AND starts_at BETWEEN ? AND ?
+         AND status IN ('published', 'completed')
+         AND approved_leave_request_id IS NULL
+         AND starts_at BETWEEN ? AND ?
        ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1`,
     ).bind(auth.actor.storeId, auth.actor.email, before, after, now.toISOString()),
     db.prepare(
@@ -30,7 +32,9 @@ export const GET = apiHandler(async () => {
            s.shift_id = (
              SELECT id FROM shifts
              WHERE store_id = ? AND lower(employee_email) = lower(?)
-               AND status IN ('published', 'completed') AND starts_at BETWEEN ? AND ?
+               AND status IN ('published', 'completed')
+               AND approved_leave_request_id IS NULL
+               AND starts_at BETWEEN ? AND ?
              ORDER BY ABS(julianday(starts_at) - julianday(?)) LIMIT 1
            )
            OR (s.shift_id IS NULL AND COALESCE(s.opened_at, s.closed_at) BETWEEN ? AND ?)
@@ -48,9 +52,32 @@ export const GET = apiHandler(async () => {
       after,
     ),
     db.prepare(
-      `SELECT COUNT(*) AS total, SUM(CASE WHEN x.completed = 1 THEN 1 ELSE 0 END) AS done
-       FROM checklist_items i LEFT JOIN checklist_executions x ON x.item_id=i.id AND x.business_date=? WHERE i.store_id = ?`,
-    ).bind(businessDate(now),auth.actor.storeId),
+      `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN x.completed = 1 THEN 1 ELSE 0 END), 0) AS done
+       FROM checklist_items i
+       LEFT JOIN shifts s ON s.id = i.shift_id
+       LEFT JOIN checklist_executions x ON x.item_id=i.id AND x.business_date = CASE
+         WHEN i.routine_type = 'shift_routine' THEN date(s.starts_at, '+7 hours')
+         ELSE ? END
+       WHERE i.store_id = ? AND (
+         i.routine_type = 'daily_routine' OR (
+           i.routine_type = 'shift_routine' AND i.shift_id = (
+             SELECT id FROM shifts WHERE store_id = ? AND lower(employee_email) = lower(?)
+               AND status IN ('published', 'completed') AND approved_leave_request_id IS NULL
+               AND ends_at > ? AND starts_at <= ?
+             ORDER BY CASE WHEN starts_at <= ? THEN 0 ELSE 1 END, starts_at ASC
+             LIMIT 1
+           )
+         )
+       )`,
+    ).bind(
+      businessDate(now),
+      auth.actor.storeId,
+      auth.actor.storeId,
+      auth.actor.email,
+      now.toISOString(),
+      after,
+      now.toISOString(),
+    ),
     db.prepare(
       `SELECT id, created_at
        FROM handovers
@@ -63,9 +90,12 @@ export const GET = apiHandler(async () => {
               COALESCE(e.display_name, h.author_email) AS author_name
        FROM handovers h
        LEFT JOIN employees e ON lower(e.email) = lower(h.author_email)
+       LEFT JOIN employees receiver ON receiver.id = h.receiver_employee_id AND receiver.store_id = h.store_id
+       LEFT JOIN shifts next_shift ON next_shift.id = h.next_shift_id AND next_shift.store_id = h.store_id
        WHERE h.store_id = ? AND h.acknowledged_at IS NULL
+         AND (lower(receiver.email) = lower(?) OR lower(next_shift.employee_email) = lower(?))
        ORDER BY h.created_at DESC LIMIT 1`,
-    ).bind(auth.actor.storeId),
+    ).bind(auth.actor.storeId, auth.actor.email, auth.actor.email),
     db.prepare(
       `SELECT COUNT(*) AS completed_session_count,
               COALESCE(SUM(CASE WHEN status = 'completed' THEN worked_minutes ELSE 0 END), 0) AS approved_worked_minutes
@@ -78,6 +108,7 @@ export const GET = apiHandler(async () => {
        FROM shifts
        WHERE store_id = ? AND lower(employee_email) = lower(?)
          AND status IN ('published', 'completed')
+         AND approved_leave_request_id IS NULL
          AND starts_at > ?
        ORDER BY starts_at ASC
        LIMIT 3`,
@@ -85,7 +116,11 @@ export const GET = apiHandler(async () => {
   ]);
   const shift = shiftResult.results[0];
   const session = sessionResult.results[0];
-  const checklist = checklistResult.results[0];
+  const rawChecklist = checklistResult.results[0] as { total?: number | string | null; done?: number | string | null } | undefined;
+  const checklist = {
+    total: Number(rawChecklist?.total ?? 0),
+    done: Number(rawChecklist?.done ?? 0),
+  };
   const outgoingHandover = outgoingHandoverResult.results[0];
   const incomingHandover = incomingHandoverResult.results[0];
   const monthStats = monthStatsResult.results[0] as { completed_session_count?: number; approved_worked_minutes?: number } | undefined;

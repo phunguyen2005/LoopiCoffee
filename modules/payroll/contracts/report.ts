@@ -36,6 +36,7 @@ export type PayrollReportRow = {
   scheduledMinutes: number;
   recordedMinutes: number;
   approvedMinutes: number;
+  payableMinutes?: number;
   overtimeMinutes: number;
   shiftCount: number;
   lateCount: number;
@@ -48,6 +49,15 @@ export type PayrollReportRow = {
   baseSalary: number;
   overtimePay: number;
   totalSalary: number;
+  missingRateMinutes?: number;
+  rateSegments?: Array<{
+    sessionId: string;
+    startAt: string;
+    endAt: string;
+    minutes: number;
+    hourlyRate: number | null;
+    amount: number;
+  }>;
   status: "unchecked" | "exception" | "attendance_approved" | "payroll_finalized" | "paid";
   exceptions: PayrollException[];
   snapshotComplete?: boolean;
@@ -55,7 +65,7 @@ export type PayrollReportRow = {
 };
 
 export type PayrollFinalizationReason = {
-  code: "forbidden" | "period_locked" | "open_session" | "empty_payroll" | "pending_exceptions" | "pay_rate_required";
+  code: "forbidden" | "period_locked" | "period_not_ended" | "open_session" | "pending_swap" | "empty_payroll" | "pending_exceptions" | "pay_rate_required";
   message: string;
 };
 

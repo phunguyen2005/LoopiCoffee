@@ -6,11 +6,6 @@ export const dynamic = "force-dynamic";
 
 export default async function OwnerOrdersPage() {
   const user = await getLoopiUser("/app/orders");
-  if (
-    user.role !== "owner" &&
-    user.role !== "manager"
-  ) {
-    redirect("/app");
-  }
-  return <OwnerOrdersView />;
+  if (!user.permissions.includes("orders.read")) redirect("/app");
+  return <OwnerOrdersView permissions={user.permissions} />;
 }

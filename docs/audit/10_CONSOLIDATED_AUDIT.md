@@ -7,11 +7,11 @@
 ---
 
 # BÁO CÁO KIỂM TOÁN HỢP NHẤT TOÀN DIỆN (CONSOLIDATED AUDIT REPORT)
-## LOOPICAFE MANAGEMENT SYSTEM — MULTI-AGENT PARALLEL AUDIT
+## LOOPYCAFE MANAGEMENT SYSTEM — MULTI-AGENT PARALLEL AUDIT
 
 > **Mã báo cáo:** `AUDIT-10-CONSOLIDATED`
 > **Vai trò:** Lead Software Architect, QA Lead & Multi-Agent Audit Orchestrator
-> **Dự án:** LoopiCafe Management System
+> **Dự án:** LoopyCafe Management System
 > **Chế độ kiểm toán:** `AUDIT ONLY` (Tuyệt đối không can thiệp code ứng dụng, không thay đổi migrations, không sửa database)
 > **Git Baseline Commit SHA:** `05e7719dc8ae824a833c6d4b3c8fa21c3d3e56c1`
 > **Thời điểm xuất báo cáo:** 12/10/2026

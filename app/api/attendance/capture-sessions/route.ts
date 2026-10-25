@@ -8,12 +8,7 @@ export const POST = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
   const actor = auth.actor;
-  if (!actor.hasAttendanceConsent) {
-    return Response.json(
-      { error: "Bạn cần đồng ý thông báo camera và vị trí trước khi chấm công.", code: "consent_required" },
-      { status: 412 },
-    );
-  }
+  // Consent gate intentionally removed: private in-store management app; camera/location notice is given via policy pages.
 
   const body = (await readObject(request, { action: "string" })) as { action?: string };
   if (body.action !== "check_in" && body.action !== "check_out") {
@@ -22,11 +17,14 @@ export const POST = apiHandler(async (request: Request) => {
 
   const db = await ensureDatabase();
   const store = await db.prepare(
-    "SELECT latitude, longitude, attendance_enabled FROM stores WHERE id = ?",
+    "SELECT latitude, longitude, attendance_enabled, wifi_ssid, wifi_public_ip, name FROM stores WHERE id = ?",
   ).bind(actor.storeId).first<{
     latitude: number;
     longitude: number;
     attendance_enabled: number;
+    wifi_ssid?: string | null;
+    wifi_public_ip?: string | null;
+    name?: string | null;
   }>();
   if (!store || !store.attendance_enabled) {
     return Response.json(
@@ -81,6 +79,33 @@ export const POST = apiHandler(async (request: Request) => {
     ),
   ]);
 
+  const clientIp = request.headers.get("cf-connecting-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-real-ip")
+    || "127.0.0.1";
+
+  const isLoopback = ["127.0.0.1", "localhost", "::1"].includes(clientIp) || clientIp.startsWith("192.168.") || clientIp.startsWith("10.");
+  let wifiMatched = false;
+  let wifiName: string | null = null;
+
+  if (store.wifi_public_ip) {
+    if (clientIp === store.wifi_public_ip || (isLoopback && (store.wifi_public_ip === "127.0.0.1" || store.wifi_public_ip === "localhost"))) {
+      wifiMatched = true;
+      wifiName = store.wifi_ssid || "LoopyCafe Wi-Fi";
+    } else {
+      wifiMatched = false;
+      wifiName = null;
+    }
+  } else {
+    if (isLoopback) {
+      wifiMatched = true;
+      wifiName = store.wifi_ssid || "Phong";
+    } else {
+      wifiMatched = false;
+      wifiName = null;
+    }
+  }
+
   return Response.json({
     id,
     captureToken,
@@ -89,6 +114,10 @@ export const POST = apiHandler(async (request: Request) => {
     storeLocation: {
       latitude: store.latitude,
       longitude: store.longitude,
+    },
+    wifi: {
+      name: wifiName,
+      matched: wifiMatched,
     },
   });
 });

@@ -12,7 +12,7 @@ test("D1 batch preserves changes() guards and transaction rollback", async (t) =
   });
   t.after(() => runtime.dispose());
   const db = await runtime.getD1Database("DB");
-  await db.prepare("CREATE TABLE employees (id TEXT PRIMARY KEY, email TEXT, store_id TEXT, role TEXT, status TEXT, auth_user_id TEXT, updated_at TEXT)").run();
+  await db.prepare("CREATE TABLE employees (id TEXT PRIMARY KEY, email TEXT, store_id TEXT, role TEXT, role_id TEXT, status TEXT, auth_user_id TEXT, access_revision INTEGER NOT NULL DEFAULT 0, updated_at TEXT)").run();
   await db.prepare("CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_email TEXT, entity_type TEXT, entity_id TEXT, action TEXT, metadata TEXT, created_at TEXT, store_id TEXT)").run();
   await db.prepare("INSERT INTO employees (id, email, store_id, role, status) VALUES ('owner', 'owner@example.test', 'store', 'owner', 'active'), ('employee', 'employee@example.test', 'store', 'employee', 'active')").run();
   const actor = { id: "owner", storeId: "store", role: "owner", email: "owner@example.test" };

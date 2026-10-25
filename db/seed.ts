@@ -1,4 +1,5 @@
 import { getBindings, STORE_ID } from "./runtime";
+import { defaultPermissionsForRole } from "../modules/people/domain/permissions";
 
 // Explicit demo-data operation. Apply migrations before calling this function.
 export async function seedDemoDatabase() {
@@ -11,7 +12,7 @@ export async function seedDemoDatabase() {
      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
   ).bind(
     STORE_ID,
-    "LoopiCafe Nguyễn Trãi",
+    "LoopyCafe Nguyễn Trãi",
     "Nguyễn Trãi, Quận 5, TP. Hồ Chí Minh",
     "Asia/Ho_Chi_Minh",
     10.754128,
@@ -24,7 +25,7 @@ export async function seedDemoDatabase() {
     `UPDATE stores SET name = ?, address = ?, updated_at = ?
      WHERE id = ? AND (name LIKE '%?%' OR name LIKE '%Ã%' OR address LIKE '%?%' OR address LIKE '%Ã%')`,
   ).bind(
-    "LoopiCafe Nguyễn Trãi",
+    "LoopyCafe Nguyễn Trãi",
     "Nguyễn Trãi, Quận 5, TP. Hồ Chí Minh",
     now,
     STORE_ID,
@@ -35,8 +36,20 @@ export async function seedDemoDatabase() {
       (id, store_id, version, early_checkin_minutes, late_minutes,
        early_departure_minutes, absence_minutes, missing_checkout_minutes,
        evidence_retention_days, active, created_by, created_at)
-     VALUES ('rules-v1', ?, 1, 30, 10, 15, 60, 180, 90, 1, 'system', ?)`,
+     VALUES ('rules-v1', ?, 1, 15, 5, 5, 60, 240, 90, 1, 'system', ?)`,
   ).bind(STORE_ID, now).run();
+
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO role_permission_sets (store_id, role, revision, updated_by, updated_at) VALUES (?, 'manager', 0, 'demo-seed', ?)").bind(STORE_ID, now),
+    db.prepare("INSERT OR IGNORE INTO role_permission_sets (store_id, role, revision, updated_by, updated_at) VALUES (?, 'team_lead', 0, 'demo-seed', ?)").bind(STORE_ID, now),
+  ]);
+  for (const role of ["manager", "team_lead"] as const) {
+    for (const permission of defaultPermissionsForRole(role)) {
+      await db.prepare(
+        "INSERT OR IGNORE INTO role_permissions (store_id, role, permission_key, created_at) VALUES (?, ?, ?, ?)",
+      ).bind(STORE_ID, role, permission, now).run();
+    }
+  }
 
 
 
@@ -47,6 +60,7 @@ export async function seedDemoDatabase() {
 async function seedOperationalData(db: D1Database, now: string) {
   // 1. Seed Accounts (1 Owner, 1 Manager, 3 Staffs + Local variants)
   const seedEmployees = [
+    ["emp-system-admin", STORE_ID, "admin@loopicafe.com", "Quản trị LoopyCafe", "Quản trị hệ thống", "", "2026-10-14", "system_admin", "active", 0, 0, "none", 0],
     ["emp-owner", STORE_ID, "owner@loopicafe.com", "Nguyễn Minh Linh", "Chủ quán", "0908123456", "2025-01-01", "owner", "active", 0, 0, "none", 0],
     ["emp-owner-local", STORE_ID, "linh.nguyen@loopicafe.local", "Nguyễn Minh Linh", "Chủ quán", "0908123456", "2025-01-01", "owner", "active", 0, 0, "none", 0],
     ["emp-manager", STORE_ID, "manager@loopicafe.com", "Trần Văn Minh", "Quản lý cửa hàng", "0912345678", "2025-03-15", "manager", "active", 1, 1, "hourly", 35000],

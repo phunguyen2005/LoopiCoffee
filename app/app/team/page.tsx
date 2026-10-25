@@ -4,6 +4,6 @@ import { redirect } from "next/navigation";
 
 export default async function TeamPage() {
   const user = await getLoopiUser("/app/team");
-  if (!["owner", "manager"].includes(user.role)) redirect("/app");
+  if (!user.permissions.includes("people.read")) redirect("/app");
   return <PersistentTeamView />;
 }

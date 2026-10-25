@@ -5,7 +5,7 @@ export default function CameraLocationNoticePage() {
   return (
     <LegalPage
       title="Ảnh & vị trí khi chấm công"
-      intro="LoopiCafe chỉ yêu cầu camera và vị trí sau khi nhân viên chủ động bấm chấm công. Đây là bằng chứng hỗ trợ quản lý xem xét, không phải công cụ theo dõi."
+      intro="LoopyCafe chỉ yêu cầu camera và vị trí sau khi nhân viên chủ động bấm chấm công. Đây là bằng chứng hỗ trợ quản lý xem xét, không phải công cụ theo dõi."
       icon="camera"
     >
       <section>
@@ -18,7 +18,7 @@ export default function CameraLocationNoticePage() {
         </ul>
       </section>
       <section>
-        <h2>Điều LoopiCafe không làm</h2>
+        <h2>Điều LoopyCafe không làm</h2>
         <p>
           Ứng dụng không theo dõi vị trí nền, không dùng nhận diện khuôn mặt,
           không đọc Wi-Fi, không dùng ảnh có sẵn trong thư viện và không coi vị

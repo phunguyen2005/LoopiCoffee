@@ -9,8 +9,8 @@ export async function changePassword(
   password: string,
   updateProvider: (password: string) => Promise<{ error: unknown }>,
 ) {
-  if (password.length < 10 || password.length > 128) {
-    throw new ApplicationError("Mật khẩu cần có từ 10 đến 128 ký tự.");
+  if (password.length < 12 || password.length > 128) {
+    throw new ApplicationError("Mật khẩu cần có từ 12 đến 128 ký tự.");
   }
   const account = await db.prepare(
     `SELECT id, password_version, password_reset_pending FROM employees

@@ -183,6 +183,13 @@ export const POST = apiHandler(async (request: Request) => {
     );
   }
 
+  const shift = body.action === "check_in"
+    ? await findNearestShift(db, actor.email, actor.storeId, recordedAt)
+    : activeSession?.shift_id
+      ? await db.prepare("SELECT id, starts_at, ends_at FROM shifts WHERE id = ?")
+          .bind(activeSession.shift_id).first<Shift>()
+      : null;
+
   if (body.action === "check_in") {
     const { checkHandoverGate } = await import("@/modules/attendance/application/check-handover-gate");
     const gate = await checkHandoverGate(db, actor.storeId, actor.email, {
@@ -190,6 +197,7 @@ export const POST = apiHandler(async (request: Request) => {
       bypassReason: body.bypassReason,
       bypassActor: actor,
       now: recordedAt,
+      shiftId: shift?.id ?? null,
     });
     if (!gate.allowed) {
       return Response.json(
@@ -199,12 +207,6 @@ export const POST = apiHandler(async (request: Request) => {
     }
   }
 
-  const shift = body.action === "check_in"
-    ? await findNearestShift(db, actor.email, actor.storeId, recordedAt)
-    : activeSession?.shift_id
-      ? await db.prepare("SELECT id, starts_at, ends_at FROM shifts WHERE id = ?")
-          .bind(activeSession.shift_id).first<Shift>()
-      : null;
   verification.push(...evaluateShiftWindow(body.action, shift, rule, recordedAt));
   if (body.action === "check_out" && !activeSession) verification.push("no_active_session");
 
@@ -401,9 +403,17 @@ export const POST = apiHandler(async (request: Request) => {
       ),
     );
     const reviewers = await db.prepare(
-      `SELECT email FROM employees
-       WHERE store_id = ? AND role IN ('owner', 'manager') AND status = 'active'`,
-    ).bind(actor.storeId).all<{ email: string }>();
+      `SELECT DISTINCT e.email FROM employees e
+       LEFT JOIN custom_roles cr ON cr.id = e.role_id AND cr.store_id = e.store_id
+       LEFT JOIN role_permission_sets rps ON rps.store_id = e.store_id AND rps.role = COALESCE(e.role_id, e.role)
+       LEFT JOIN role_permissions rp ON rp.store_id = e.store_id AND rp.role = COALESCE(e.role_id, e.role) AND rp.permission_key = 'attendance.review'
+       WHERE e.store_id = ? AND e.status = 'active' AND lower(e.email) <> lower(?)
+         AND (
+           e.role = 'owner'
+           OR (e.role_id IS NOT NULL AND cr.status = 'active' AND rp.permission_key IS NOT NULL)
+           OR (e.role_id IS NULL AND e.role = 'manager' AND (rps.role IS NULL OR rp.permission_key IS NOT NULL))
+         )`,
+    ).bind(actor.storeId, actor.email).all<{ email: string }>();
     statements.push(...reviewers.results.map((reviewer) =>
       db.prepare(
         `INSERT INTO notifications

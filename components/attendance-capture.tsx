@@ -1,7 +1,7 @@
 "use client";
 import { readJson } from "@/platform/http/client";
 
-import { Camera, Check, CheckCircle2, LoaderCircle, MapPin, RefreshCw, ShieldAlert, Smartphone, Wifi, X, Eye } from "lucide-react";
+import { Camera, CheckCircle2, Clock, LoaderCircle, MapPin, RefreshCw, ShieldAlert, Wifi } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useLoopyToast } from "./loopy-toast";
@@ -23,6 +23,10 @@ type CaptureSession = {
   storeLocation: {
     latitude: number;
     longitude: number;
+  };
+  wifi?: {
+    name?: string | null;
+    matched: boolean;
   };
 };
 
@@ -64,19 +68,20 @@ export function AttendanceCapture() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const idempotencyKeyRef = useRef("");
-  const privacyDialogRef = useRef<HTMLDivElement>(null);
-  const privacyCloseRef = useRef<HTMLButtonElement>(null);
+  const attemptIdRef = useRef(0);
+
   const [action, setAction] = useState<AttendanceAction>("check_in");
-  const [step, setStep] = useState<"idle" | "preparing" | "ready" | "review_photo" | "submitting" | "success" | "error">("idle");
+  const [step, setStep] = useState<"idle" | "preparing" | "ready" | "review_photo" | "submitting" | "success" | "error">("preparing");
   const [location, setLocation] = useState<LocationEvidence | null>(null);
   const [session, setSession] = useState<CaptureSession | null>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState(60);
+  const [isRetryingLocation, setIsRetryingLocation] = useState(false);
   const [result, setResult] = useState<AttendanceResult | null>(null);
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
   const [outcomeUncertain, setOutcomeUncertain] = useState(false);
   const [explanation, setExplanation] = useState("");
   const [preview, setPreview] = useState("");
-  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [cameraReadiness, setCameraReadiness] = useState<EvidenceReadiness>("unchecked");
   const [locationReadiness, setLocationReadiness] = useState<EvidenceReadiness>("unchecked");
@@ -86,36 +91,115 @@ export function AttendanceCapture() {
     getServerOnlineStatus,
   );
 
+  // Auto-initialize on mount: check today attendance status and start camera/GPS immediately
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    async function initialize() {
+      let initialAction: AttendanceAction = "check_in";
+      try {
+        const response = await fetch("/api/today", { cache: "no-store", signal: controller.signal });
+        if (response.ok) {
+          const payload = await readJson<{ attendance: { opened_at?: string; closed_at?: string } | null }>(response);
+          if (payload?.attendance?.opened_at && !payload.attendance.closed_at) {
+            initialAction = "check_out";
+          }
+        }
+      } catch {
+        // Fallback default to check_in
+      }
+
+      if (active) {
+        setAction(initialAction);
+        void beginCapture(initialAction);
+      }
+    }
+
+    void initialize();
+
     return () => {
+      active = false;
+      attemptIdRef.current += 1;
+      controller.abort();
       stopStream();
     };
   }, []);
 
+  // Session 60s countdown timer
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/today", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? readJson<{ attendance: { opened_at?: string; closed_at?: string } | null }>(response) : null)
-      .then((payload) => {
-        if (payload?.attendance?.opened_at && !payload.attendance.closed_at) setAction("check_out");
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (!showPrivacyModal) return;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    privacyCloseRef.current?.focus();
-    return () => previouslyFocused?.focus();
-  }, [showPrivacyModal]);
+    if ((step === "ready" || step === "review_photo") && session) {
+      const interval = setInterval(() => {
+        const expiresAt = Date.parse(session.expiresAt);
+        const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+        setSecondsRemaining(remaining);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [step, session]);
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }
 
-  async function beginCapture() {
+  async function retryLocation(currentSession = session) {
+    if (!currentSession) return;
+    setIsRetryingLocation(true);
+    setLocationReadiness("checking");
+    try {
+      const position = await getFreshPosition();
+      setLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        timestamp: position.timestamp,
+        distance: distanceInMeters(
+          position.coords.latitude,
+          position.coords.longitude,
+          currentSession.storeLocation.latitude,
+          currentSession.storeLocation.longitude,
+        ),
+      });
+      setLocationReadiness("ready");
+    } catch {
+      setLocationReadiness("error");
+    } finally {
+      setIsRetryingLocation(false);
+    }
+  }
+
+  async function refreshSession(targetAction?: AttendanceAction) {
+    const act = targetAction ?? action;
+    try {
+      const res = await fetch("/api/attendance/capture-sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: act }),
+      });
+      if (!res.ok) {
+        const errData = await readJson<{ error?: string; code?: string }>(res).catch(() => ({} as { error?: string; code?: string }));
+        setErrorCode(errData.code ?? "");
+        throw new Error(errData.error || "Không thể làm mới phiên chấm công.");
+      }
+      const newSession = await readJson<CaptureSession>(res);
+      setSession(newSession);
+      idempotencyKeyRef.current = crypto.randomUUID();
+      const expiresAt = Date.parse(newSession.expiresAt);
+      setSecondsRemaining(Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)));
+      setError("");
+      if (locationReadiness !== "ready") {
+        void retryLocation(newSession);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể làm mới phiên.");
+    }
+  }
+
+  async function beginCapture(targetAction?: AttendanceAction) {
+    const act = targetAction ?? action;
+    const currentAttempt = ++attemptIdRef.current;
+    stopStream();
     setStep("preparing");
     setError("");
     setErrorCode("");
@@ -123,22 +207,45 @@ export function AttendanceCapture() {
     setPreview("");
     setResult(null);
     setShowCelebration(false);
-    setCameraReadiness("unchecked");
-    setLocationReadiness("unchecked");
+    setCameraReadiness("checking");
+    setLocationReadiness("checking");
 
     try {
       const sessionResponse = await fetch("/api/attendance/capture-sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action: act }),
       });
-      if (!sessionResponse.ok) throw new Error("Không thể bắt đầu phiên chấm công.");
+      if (currentAttempt !== attemptIdRef.current) return;
+      if (!sessionResponse.ok) {
+        const errData = await readJson<{ error?: string; code?: string }>(sessionResponse).catch(() => ({} as { error?: string; code?: string }));
+        setErrorCode(errData.code ?? "");
+        throw new Error(errData.error || "Không thể bắt đầu phiên chấm công.");
+      }
       const captureSession = (await sessionResponse.json()) as CaptureSession;
+      if (currentAttempt !== attemptIdRef.current) return;
       setSession(captureSession);
       idempotencyKeyRef.current = crypto.randomUUID();
-      setCameraReadiness("checking");
-      setLocationReadiness("checking");
+      const expiresAt = Date.parse(captureSession.expiresAt);
+      setSecondsRemaining(Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)));
 
+      if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        setCameraReadiness("error");
+        setLocationReadiness("error");
+        setError("Kết nối không an toàn (yêu cầu HTTPS hoặc localhost) nên trình duyệt chặn quyền mở camera.");
+        setStep("error");
+        return;
+      }
+
+      if (typeof navigator === "undefined" || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+        setCameraReadiness("error");
+        setLocationReadiness("error");
+        setError("Trình duyệt hiện tại không hỗ trợ truy cập camera (mediaDevices.getUserMedia).");
+        setStep("error");
+        return;
+      }
+
+      // Initialize Camera and GPS in parallel without blocking each other
       const [streamResult, positionResult] = await Promise.allSettled([
         navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
@@ -146,8 +253,14 @@ export function AttendanceCapture() {
         }),
         getFreshPosition(),
       ]);
-      setCameraReadiness(streamResult.status === "fulfilled" ? "ready" : "error");
-      setLocationReadiness(positionResult.status === "fulfilled" ? "ready" : "error");
+
+      if (currentAttempt !== attemptIdRef.current) {
+        if (streamResult.status === "fulfilled") {
+          streamResult.value.getTracks().forEach((track) => track.stop());
+        }
+        return;
+      }
+
       if (positionResult.status === "fulfilled") {
         const position = positionResult.value;
         setLocation({
@@ -162,40 +275,54 @@ export function AttendanceCapture() {
             captureSession.storeLocation.longitude,
           ),
         });
+        setLocationReadiness("ready");
+      } else {
+        setLocationReadiness("error");
       }
+
       if (streamResult.status === "fulfilled") {
         const stream = streamResult.value;
         streamRef.current = stream;
+        setCameraReadiness("ready");
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-      }
-      if (streamResult.status === "fulfilled" && positionResult.status === "fulfilled") {
+        if (currentAttempt !== attemptIdRef.current) {
+          stopStream();
+          return;
+        }
         setStep("ready");
       } else {
         stopStream();
-        const failures = [
-          streamResult.status === "rejected" ? permissionMessage(streamResult.reason) : "",
-          positionResult.status === "rejected" ? permissionMessage(positionResult.reason) : "",
-        ].filter(Boolean);
-        setError(failures.join(" "));
+        setCameraReadiness("error");
+        const camMsg = cameraErrorMessage(streamResult.reason);
+        setError(camMsg);
         setStep("error");
       }
     } catch (caught) {
+      if (currentAttempt !== attemptIdRef.current) return;
       stopStream();
-      setError(permissionMessage(caught));
+      setError(caught instanceof Error ? caught.message : "Thiết bị chưa sẵn sàng.");
       setStep("error");
     }
   }
 
-  // Snap photo to preview step
+  // Snap photo with watermark stamp containing: Device Name - Wifi - Location - Time
   function snapPhoto() {
+    if (secondsRemaining <= 0) {
+      setError("Phiên chấm công đã hết hạn. Hãy bấm 'Làm mới phiên' để tiếp tục.");
+      return;
+    }
     if (!videoRef.current || !canvasRef.current) return;
-    const canvas = canvasRef.current;
     const video = videoRef.current;
-    const width = Math.min(video.videoWidth || 960, 1280);
-    const height = Math.round(width * ((video.videoHeight || 720) / (video.videoWidth || 960)));
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      setError("Camera chưa sẵn sàng hoặc chưa nạp xong khung hình. Vui lòng đợi trong giây lát rồi chụp lại.");
+      return;
+    }
+    const canvas = canvasRef.current;
+    const width = Math.min(video.videoWidth, 1280);
+    const height = Math.round(width * (video.videoHeight / video.videoWidth));
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
@@ -204,15 +331,73 @@ export function AttendanceCapture() {
       setStep("error");
       return;
     }
+
+    // 1. Draw raw video frame
     context.drawImage(video, 0, 0, width, height);
-    const rawPhoto = canvas.toDataURL("image/jpeg", 0.84);
+
+    // 2. Render watermark overlay on photo with Device name, Wifi, Location, and Time
+    const padding = Math.max(14, Math.round(width * 0.025));
+    const bannerHeight = Math.max(90, Math.round(height * 0.17));
+    const bannerY = height - bannerHeight;
+
+    // Semi-transparent gradient background for legibility
+    const gradient = context.createLinearGradient(0, bannerY - 12, 0, height);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    gradient.addColorStop(0.25, "rgba(15, 23, 42, 0.85)");
+    gradient.addColorStop(1, "rgba(15, 23, 42, 0.96)");
+    context.fillStyle = gradient;
+    context.fillRect(0, bannerY - 12, width, bannerHeight + 12);
+
+    // Accent line
+    context.fillStyle = action === "check_in" ? "#10b981" : "#f59e0b";
+    context.fillRect(0, bannerY - 12, width, 3);
+
+    // Title / Action badge & Time
+    const fontSizeTitle = Math.max(13, Math.round(width * 0.022));
+    const fontSizeBody = Math.max(11, Math.round(width * 0.017));
+    context.font = `bold ${fontSizeTitle}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    context.fillStyle = action === "check_in" ? "#34d399" : "#fbbf24";
+    const actionLabel = action === "check_in" ? "VÀO CA (CHECK-IN)" : "RA CA (CHECK-OUT)";
+    context.fillText(`☕ LOOPICAFE · ${actionLabel}`, padding, bannerY + fontSizeTitle + 2);
+
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · ${now.toLocaleDateString("vi-VN")}`;
+    context.font = `bold ${fontSizeBody}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    context.fillStyle = "#ffffff";
+    const timeWidth = context.measureText(timeStr).width;
+    context.fillText(timeStr, width - padding - timeWidth, bannerY + fontSizeTitle + 2);
+
+    // Row 1: Tên thiết bị & Wifi
+    context.font = `${fontSizeBody}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    context.fillStyle = "#e2e8f0";
+    const deviceName = getDeviceName();
+    const networkStatus = getNetworkStatus(session);
+    context.fillText(`📱 Thiết bị: ${deviceName}   |   📶 Mạng: ${networkStatus}`, padding, bannerY + fontSizeTitle + fontSizeBody + 10);
+
+    // Row 2: Vị trí
+    let locationStr = "📍 Vị trí: Đang cập nhật...";
+    if (location) {
+      locationStr = `📍 Vị trí: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} (Sai số ~${Math.round(location.accuracy)}m · Cách quán ${Math.round(location.distance / 1000)} km)`;
+    } else if (locationReadiness === "error") {
+      locationStr = "📍 Vị trí: Chưa xác định được GPS (Yêu cầu duyệt ngoại lệ)";
+    }
+    context.fillStyle = "#cbd5e1";
+    context.fillText(locationStr, padding, bannerY + fontSizeTitle + (fontSizeBody * 2) + 18);
+
+    const rawPhoto = canvas.toDataURL("image/jpeg", 0.85);
     setPreview(rawPhoto);
     setStep("review_photo");
   }
 
   // Submit confirmed photo
   async function confirmSubmit() {
-    if (!session || !preview || !location) return;
+    if (!session || !preview) return;
+    if (secondsRemaining <= 0 || Date.parse(session.expiresAt) <= Date.now()) {
+      setPreview("");
+      setStep("ready");
+      setError("Phiên chụp ảnh đã hết hạn (60 giây). Vui lòng làm mới phiên và chụp lại ảnh mới.");
+      return;
+    }
     setStep("submitting");
 
     try {
@@ -224,31 +409,35 @@ export function AttendanceCapture() {
           captureToken: session.captureToken,
           idempotencyKey: idempotencyKeyRef.current || (idempotencyKeyRef.current = crypto.randomUUID()),
           action,
-          location,
+          location: location ?? null,
           photo: preview,
         }),
       });
-      const payload = (await actionResponse.json()) as AttendanceResult & { error?: string; code?: string };
+
       if (!actionResponse.ok) {
-        setErrorCode(payload.code ?? "");
-        throw new Error(payload.error || "Không thể ghi nhận chấm công.");
+        const errPayload = await readJson<{ error?: string; code?: string }>(actionResponse).catch(() => ({} as { error?: string; code?: string }));
+        setErrorCode(errPayload.code ?? "");
+        throw new Error(errPayload.error || "Chấm công chưa được ghi nhận.");
       }
 
+      const payload = (await actionResponse.json()) as AttendanceResult;
       setResult(payload);
       stopStream();
       setStep("success");
       setShowCelebration(!payload.reviewRequired);
       showLoopyToast(
         payload.reviewRequired
-          ? "Đã gửi quản lý duyệt"
+          ? "Đã gửi quản lý duyệt nè"
           : action === "check_in"
-          ? "Check-in thành công! ☕"
-          : "Check-out thành công! 👋",
+          ? "Check-in xong rồi! Chúc bạn một ca thật vui. ☕"
+          : "Check-out xong rồi! Nghỉ ngơi lấy lại sức nhé bạn ơi. 👋",
         {
           message: payload.reviewRequired
-            ? "Ca sẽ được xác nhận sau khi quản lý đối chiếu bằng chứng."
-            : "Loopy đã ghi nhận thời gian và vị trí của bạn thành công!",
-          mood: payload.reviewRequired ? "worries" : "success",
+            ? "Ca sẽ được xác nhận sau khi quản lý đối chiếu bằng chứng nhé."
+            : action === "check_in"
+            ? "Loopy đã ghi nhận thời gian và ảnh của bạn rồi. Chúc bạn một ca làm việc rạng rỡ!"
+            : "Loopy đã ghi nhận giờ tan ca của bạn. Về nhà an toàn và thư giãn nhé!",
+          mood: payload.reviewRequired ? "worries" : "celebrate",
           type: payload.reviewRequired ? "info" : "success",
         }
       );
@@ -301,7 +490,8 @@ export function AttendanceCapture() {
 
   function reset() {
     stopStream();
-    if (result) setAction(action === "check_in" ? "check_out" : "check_in");
+    const nextAction = result ? (action === "check_in" ? "check_out" : "check_in") : action;
+    setAction(nextAction);
     setSession(null);
     setLocation(null);
     setResult(null);
@@ -311,124 +501,171 @@ export function AttendanceCapture() {
     setOutcomeUncertain(false);
     setExplanation("");
     idempotencyKeyRef.current = "";
-    setCameraReadiness("unchecked");
-    setLocationReadiness("unchecked");
     setShowCelebration(false);
-    setStep("idle");
+    void beginCapture(nextAction);
   }
 
   function selectAction(nextAction: AttendanceAction) {
+    if (action === nextAction) return;
     setAction(nextAction);
     idempotencyKeyRef.current = "";
-  }
-
-  function handlePrivacyKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      setShowPrivacyModal(false);
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = privacyDialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    if (!focusable?.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
+    if (streamRef.current && (step === "ready" || step === "review_photo")) {
+      setPreview("");
+      setStep("ready");
+      void refreshSession(nextAction);
+    } else {
+      void beginCapture(nextAction);
     }
   }
-
-  const activeStep = step === "success"
-    ? 4
-    : step === "review_photo" || step === "submitting"
-    ? 3
-    : step === "ready"
-    ? 2
-    : 1;
-  const cameraCopy = cameraReadiness === "ready"
-    ? "Đã cấp quyền camera"
-    : cameraReadiness === "checking"
-    ? "Đang kiểm tra camera…"
-    : cameraReadiness === "error"
-    ? "Camera chưa được cấp quyền"
-    : "Sẽ kiểm tra khi bắt đầu";
-  const locationCopy = location
-    ? `Đã ghi nhận · cách quán ${Math.round(location.distance)} m`
-    : locationReadiness === "checking"
-    ? "Đang lấy vị trí…"
-    : locationReadiness === "error"
-    ? "Không thể lấy vị trí"
-    : "Sẽ kiểm tra khi bắt đầu";
-  const evidenceReady = cameraReadiness === "ready" && locationReadiness === "ready" && isOnline;
-  const evidenceHasError = cameraReadiness === "error" || locationReadiness === "error" || !isOnline || step === "error";
 
   return (
-    <section className="card capture-card relative">
+    <section className="card capture-card relative max-w-xl mx-auto p-4 sm:p-6 shadow-md rounded-2xl bg-white border border-[#eee3df]">
       <CelebrationConfetti active={showCelebration && !shouldReduceMotion} />
-      <div className="capture-stage relative overflow-hidden">
-        <span className={`capture-stage-state ${step === "ready" ? "ready" : step === "review_photo" ? "review" : step === "success" ? "success" : step === "error" ? "error" : ""}`}>
-          {step === "preparing" ? "Đang kiểm tra" : step === "ready" ? "Sẵn sàng chụp" : step === "review_photo" ? "Ảnh đã chụp" : step === "success" ? "Đã hoàn tất" : step === "error" ? "Cần xử lý" : "Chưa bắt đầu"}
-        </span>
+
+      {/* Action Tabs: Vào ca / Ra ca */}
+      <div className="flex items-center justify-between gap-2.5 flex-wrap mb-4">
+        <div className="action-switch inline-flex p-1 bg-[#fff2f4] rounded-xl border border-[#f5d9df] shrink-0" role="group" aria-label="Chọn hành động chấm công">
+          <button
+            type="button"
+            style={{ minHeight: 44 }}
+            className={`min-h-[44px] px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${action === "check_in" ? "bg-[#d96d83] text-white shadow-sm" : "text-[#6f2939] hover:bg-[#ffe1e7]"}`}
+            aria-pressed={action === "check_in"}
+            disabled={step === "submitting"}
+            onClick={() => selectAction("check_in")}
+          >
+            Vào ca
+          </button>
+          <button
+            type="button"
+            style={{ minHeight: 44 }}
+            className={`min-h-[44px] px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${action === "check_out" ? "bg-[#d96d83] text-white shadow-sm" : "text-[#6f2939] hover:bg-[#ffe1e7]"}`}
+            aria-pressed={action === "check_out"}
+            disabled={step === "submitting"}
+            onClick={() => selectAction("check_out")}
+          >
+            Ra ca
+          </button>
+        </div>
+
+        {/* Live GPS badge indicator */}
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {locationReadiness === "ready" && location && (
+            <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1 whitespace-nowrap shrink-0">
+              <MapPin size={12} className="shrink-0" /> Cách quán {formatDistance(location.distance)}
+            </span>
+          )}
+          {locationReadiness === "error" && (
+            <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 flex items-center gap-1 whitespace-nowrap shrink-0">
+              <MapPin size={12} className="shrink-0" /> Chưa có GPS
+            </span>
+          )}
+          {isOnline ? (
+            <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full border flex items-center gap-1 whitespace-nowrap shrink-0 ${session?.wifi?.matched && session.wifi.name ? "text-emerald-700 bg-emerald-50 border-emerald-200" : session?.wifi && !session.wifi.matched ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-700 bg-emerald-50 border-emerald-200"}`}>
+              <Wifi size={12} className="shrink-0" /> {session?.wifi?.matched && session.wifi.name ? session.wifi.name : session?.wifi && !session.wifi.matched ? "Mạng ngoài quán" : "Online"}
+            </span>
+          ) : (
+            <span className="text-[11px] font-medium text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 flex items-center gap-1 whitespace-nowrap shrink-0">
+              <Wifi size={12} className="shrink-0" /> Offline
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Camera Live Stage */}
+      <div className="capture-stage relative overflow-hidden rounded-2xl aspect-[4/3] bg-black flex items-center justify-center">
         {step === "ready" && <div className="radar-scan-line" />}
         {preview && (step === "review_photo" || step === "submitting" || step === "success" || step === "error") ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="Ảnh chụp chấm công trực tiếp" className="capture-preview" />
+          <img src={preview} alt="Ảnh chụp chấm công trực tiếp" className="capture-preview w-full h-full object-cover" />
         ) : (
           <video
             ref={videoRef}
-            className="capture-video"
+            className="capture-video w-full h-full object-cover"
             playsInline
             muted
             style={{ display: step === "ready" ? "block" : "none" }}
           />
         )}
 
-        {(step === "idle" || step === "preparing" || step === "error") && !preview && (
-          <div className="capture-placeholder" aria-live="polite">
+        {/* Loading / Placeholder */}
+        {(step === "preparing" || (step === "error" && !preview)) && (
+          <div className="capture-placeholder flex flex-col items-center justify-center p-6 text-center text-white" aria-live="polite">
             {step === "preparing" ? (
-              <LoaderCircle size={42} className="spin text-[#d96d83]" />
-            ) : step === "error" ? (
-              <ShieldAlert size={42} className="text-[#c75865]" />
+              <>
+                <LoaderCircle size={42} className="spin text-[#d96d83] mb-3" />
+                <h3 className="font-bold text-base">Đang kết nối camera & kiểm tra vị trí…</h3>
+                <p className="text-xs text-white/70 mt-1 max-w-xs">Hệ thống đang tự động kiểm tra thiết bị, wifi và tọa độ GPS.</p>
+              </>
             ) : (
-              <Camera size={42} className="text-[#6f2939]" />
+              <>
+                <ShieldAlert size={42} className="text-[#c75865] mb-3" />
+                <h3 className="font-bold text-base">Không thể mở camera</h3>
+                <p className="text-xs text-white/80 mt-1 max-w-xs">{error || "Vui lòng cho phép quyền truy cập camera trong trình duyệt."}</p>
+                <button
+                  type="button"
+                  className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                  onClick={() => beginCapture()}
+                >
+                  <RefreshCw size={14} /> Thử lại
+                </button>
+              </>
             )}
-            <h3>
-              {step === "preparing"
-                ? "Đang kết nối camera & kiểm tra vị trí…"
-                : step === "error"
-                ? "Chưa xác minh tự động"
-                : action === "check_in"
-                ? "Chấm vào ca bằng ảnh trực tiếp"
-                : "Chấm ra ca bằng ảnh trực tiếp"}
-            </h3>
-            <p>
-              {step === "error"
-                ? error
-                : "Camera chỉ mở sau khi bạn bấm bắt đầu. LoopiCafe không theo dõi vị trí liên tục."}
-            </p>
           </div>
         )}
 
+        {/* Framing Guide Overlay */}
         {step === "ready" && (
-          <div className="capture-framing-overlay">
+          <div className="capture-framing-overlay pointer-events-none">
             <div className="framing-guide" />
             <span className="framing-hint">Giữ khuôn mặt trong khung hình</span>
           </div>
         )}
 
+        {/* 60s Session Timer Badge */}
+        {(step === "ready" || step === "review_photo") && (
+          <div
+            className={`absolute top-3 right-3 z-20 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors ${
+              secondsRemaining <= 10
+                ? "bg-red-600 text-white animate-pulse"
+                : secondsRemaining <= 20
+                ? "bg-amber-500 text-white"
+                : "bg-black/60 text-white/90 backdrop-blur-sm"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <Clock size={13} />
+            <span>Phiên: {secondsRemaining}s</span>
+          </div>
+        )}
+
+        {/* Session Expired Overlay */}
+        {step === "ready" && secondsRemaining === 0 && (
+          <div className="absolute inset-0 z-30 bg-black/80 flex flex-col items-center justify-center p-4 text-center text-white backdrop-blur-sm">
+            <ShieldAlert size={38} className="text-amber-400 mb-2" />
+            <h4 className="font-bold text-sm mb-1">Phiên chụp ảnh đã hết hạn (60s)</h4>
+            <p className="text-xs text-white/80 max-w-xs mb-3">Vui lòng làm mới phiên để chụp ảnh với thời gian chính xác.</p>
+            <button
+              type="button"
+              className="button button-compact bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5"
+              onClick={() => refreshSession()}
+            >
+              <RefreshCw size={14} /> Làm mới phiên
+            </button>
+          </div>
+        )}
+
+        {/* Success Placeholder */}
         {step === "success" && result && (
-          <div className="capture-placeholder" aria-live="polite">
-            {result.reviewRequired ? <ShieldAlert size={48} className="text-[#d97706]" /> : <CheckCircle2 size={48} className="text-[#4c9779]" />}
-            <h3>{result.reviewRequired ? "Đã gửi quản lý duyệt" : action === "check_in" ? "Đã xác nhận vào ca" : "Đã xác nhận ra ca"}</h3>
-            <p>
+          <div className="capture-placeholder flex flex-col items-center justify-center p-6 text-center" aria-live="polite">
+            {result.reviewRequired ? <ShieldAlert size={48} className="text-[#d97706] mb-2" /> : <CheckCircle2 size={48} className="text-[#4c9779] mb-2" />}
+            <h3 className="font-bold text-base text-[#6f2939]">
+              {result.reviewRequired ? "Đã gửi quản lý duyệt nè" : action === "check_in" ? "Check-in xong rồi! Chúc bạn một ca thật vui." : "Check-out xong rồi! Nghỉ ngơi nhé."}
+            </h3>
+            <p className="text-xs text-[#7b6f70] mt-1 max-w-xs">
               {result.reviewRequired
-                ? `Gửi lúc ${result.localTime}. Quản lý sẽ đối chiếu lý do và bằng chứng trước khi xác nhận.`
-                : `Giờ máy chủ: ${result.localTime}. ${result.evidenceStored ? "Bằng chứng đã được lưu an toàn." : "Kết quả đã được ghi nhận."}`}
+                ? `Gửi lúc ${result.localTime}. Quản lý sẽ đối chiếu lý do và bằng chứng ảnh nhé.`
+                : `Giờ máy chủ: ${result.localTime}. ${result.evidenceStored ? "Bằng chứng đã lưu an toàn." : "Ghi nhận thành công rồi nè ✨"}`}
             </p>
           </div>
         )}
@@ -436,192 +673,157 @@ export function AttendanceCapture() {
 
       <canvas ref={canvasRef} hidden />
 
-      <div className="capture-controls">
-        <div className="action-switch" role="group" aria-label="Chọn hành động chấm công">
-          <button
-            type="button"
-            className={action === "check_in" ? "active" : ""}
-            aria-pressed={action === "check_in"}
-            disabled={step !== "idle"}
-            onClick={() => selectAction("check_in")}
-          >
-            Vào ca
-          </button>
-          <button
-            type="button"
-            className={action === "check_out" ? "active" : ""}
-            aria-pressed={action === "check_out"}
-            disabled={step !== "idle"}
-            onClick={() => selectAction("check_out")}
-          >
-            Ra ca
-          </button>
-        </div>
-
-        <ol className="attendance-stepper" aria-label={`Bước ${activeStep} trên 4`}>
-          {["Bắt đầu", "Chụp ảnh", "Xác nhận", "Hoàn tất"].map((label, index) => {
-            const number = index + 1;
-            const isComplete = activeStep > number || step === "success";
-            const isActive = activeStep === number && step !== "success";
-            return (
-              <li key={label} aria-current={isActive ? "step" : undefined} className={`${isComplete ? "complete" : ""} ${isActive ? "active" : ""}`}>
-                <span>{isComplete ? <Check size={14} /> : number}</span>
-                <small>{label}</small>
-              </li>
-            );
-          })}
-        </ol>
-
-        {step === "error" && (
-          <div className="field exception-field" style={{ marginTop: 10 }}>
-            <label htmlFor="attendance-explanation" style={{ fontWeight: 600, fontSize: 13, color: "#6f2939" }}>
+      {/* Exception textarea if error */}
+      {step === "error" && errorCode !== "handover_acknowledgment_required" && (
+        <div className="field exception-field my-3" style={{ scrollMarginBottom: 140 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+            <label htmlFor="attendance-explanation" className="block font-semibold text-xs text-[#6f2939]" style={{ margin: 0 }}>
               Gửi giải thích để Quản lý duyệt thủ công
             </label>
-            <textarea
-              id="attendance-explanation"
-              value={explanation}
-              onChange={(event) => setExplanation(event.target.value)}
-              placeholder="Ví dụ: Camera điện thoại bị hỏng, tôi đã xin phép quản lý vào ca đúng giờ."
-              rows={3}
-            />
+            <span style={{ fontSize: "0.72rem", color: explanation.trim().length >= 5 ? "#15803d" : "var(--muted)", fontWeight: 600 }}>
+              {explanation.trim().length >= 5 ? "✓ Đủ điều kiện gửi" : `Tối thiểu 5 ký tự (${explanation.trim().length}/5)`}
+            </span>
+          </div>
+          <textarea
+            id="attendance-explanation"
+            value={explanation}
+            onChange={(event) => setExplanation(event.target.value)}
+            placeholder="Ví dụ: Thiết bị lệch GPS trong quầy pha chế, em đã có mặt đúng giờ..."
+            rows={3}
+            className="w-full text-xs p-2.5 rounded-xl border border-[#eee3df]"
+          />
+        </div>
+      )}
+
+      {/* Subtle GPS retry warning if GPS failed */}
+      {step === "ready" && locationReadiness === "error" && (
+        <div className="flex items-center justify-between gap-3 p-2.5 my-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+          <span>Chưa lấy được GPS. Bạn vẫn có thể chụp ảnh và gửi yêu cầu duyệt.</span>
+          <button
+            type="button"
+            className="button-secondary button-compact shrink-0 text-xs py-1 px-2.5"
+            style={{ minHeight: 44 }}
+            disabled={isRetryingLocation}
+            onClick={() => retryLocation()}
+          >
+            {isRetryingLocation ? <LoaderCircle size={12} className="spin inline mr-1" /> : <RefreshCw size={12} className="inline mr-1" />}
+            Thử lại GPS
+          </button>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="mt-4">
+        {step === "ready" && (
+          secondsRemaining > 0 ? (
+            <button type="button" className="button button-large w-full py-3 text-sm font-bold flex items-center justify-center gap-2" style={{ minHeight: 48 }} onClick={snapPhoto}>
+              <Camera size={19} /> Chụp ảnh chấm công ({secondsRemaining}s)
+            </button>
+          ) : (
+            <button type="button" className="button button-large w-full py-3 text-sm font-bold flex items-center justify-center gap-2" style={{ minHeight: 48 }} onClick={() => refreshSession()}>
+              <RefreshCw size={19} /> Làm mới phiên chấm công
+            </button>
+          )
+        )}
+
+        {step === "review_photo" && (
+          <div className="flex gap-2.5 w-full">
+            <button type="button" className="button-secondary button-compact flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5" style={{ minHeight: 46 }} onClick={() => setStep("ready")}>
+              <RefreshCw size={15} /> Chụp lại
+            </button>
+            <button type="button" className="button button-large flex-[2] py-2.5 text-xs font-bold flex items-center justify-center gap-1.5" style={{ minHeight: 46 }} onClick={confirmSubmit}>
+              <CheckCircle2 size={16} /> Xác nhận {action === "check_in" ? "vào ca" : "ra ca"}
+            </button>
           </div>
         )}
 
-        <section className={`attendance-readiness ${evidenceHasError ? "has-error" : ""}`} aria-live="polite">
-          <div className="attendance-readiness-heading">
-            <div>
-              <span className={`mini-icon ${evidenceHasError ? "pink" : "mint"}`}>{evidenceHasError ? <ShieldAlert size={17} /> : <CheckCircle2 size={17} />}</span>
-              <span><small>Kiểm tra nhanh</small><strong>{evidenceHasError ? "Cần xử lý trước khi tiếp tục" : evidenceReady ? "Sẵn sàng chấm công" : "Sẽ kiểm tra khi bắt đầu"}</strong></span>
-            </div>
-            <span className={`badge ${evidenceHasError ? "danger" : evidenceReady ? "success" : step === "preparing" ? "info" : "neutral"}`}>
-              {evidenceHasError ? "Cần xử lý" : evidenceReady ? "Đã kiểm tra" : step === "preparing" ? "Đang kiểm tra" : "Tự động"}
-            </span>
-          </div>
-          <div className="attendance-readiness-list">
-            <div><Smartphone size={16} /><span><small>Thiết bị</small><strong>{cameraCopy}</strong></span><em className={cameraReadiness === "ready" ? "ok" : cameraReadiness === "error" ? "error" : "pending"}>{cameraReadiness === "ready" ? "✓" : cameraReadiness === "error" ? "!" : "•"}</em></div>
-            <div><MapPin size={16} /><span><small>Vị trí</small><strong>{locationCopy}</strong></span><em className={locationReadiness === "ready" ? "ok" : locationReadiness === "error" ? "error" : "pending"}>{locationReadiness === "ready" ? "✓" : locationReadiness === "error" ? "!" : "•"}</em></div>
-            <div><Wifi size={16} /><span><small>Kết nối</small><strong>{result ? `Đã ghi lúc ${result.localTime}` : isOnline ? "Đang trực tuyến" : "Thiết bị đang ngoại tuyến"}</strong></span><em className={isOnline ? "ok" : "error"}>{isOnline ? "✓" : "!"}</em></div>
-          </div>
-        </section>
+        {(step === "preparing" || step === "submitting") && (
+          <button type="button" className="button button-large w-full py-3 text-sm font-bold flex items-center justify-center gap-2" style={{ minHeight: 48 }} disabled>
+            <LoaderCircle size={18} className="spin" /> {step === "preparing" ? "Đang chuẩn bị camera…" : "Đang gửi xác nhận…"}
+          </button>
+        )}
 
-        {/* Action Controls */}
-        <div className="capture-actions mobile-attendance-cta">
-          {step === "idle" && (
-            <button className="button button-large" onClick={beginCapture}>
-              <Camera size={18} /> {action === "check_in" ? "Bắt đầu chấm công" : "Chấm công ra ca"}
-            </button>
-          )}
-
-          {step === "ready" && (
-            <button className="button button-large" onClick={snapPhoto}>
-              <Camera size={18} /> Chụp ảnh chấm công
-            </button>
-          )}
-
-          {step === "review_photo" && (
-            <div style={{ display: "flex", gap: 10, width: "100%" }}>
-              <button className="button-secondary button-compact" onClick={() => setStep("ready")}>
-                <RefreshCw size={15} /> Chụp lại
+        {step === "error" && (
+          <div className="flex gap-2.5 w-full flex-wrap">
+            {errorCode === "handover_acknowledgment_required" ? (
+              <Link className="button button-compact flex-1" style={{ minHeight: 46 }} href="/app/handovers">Đọc và nhận bàn giao</Link>
+            ) : preview && session && location ? (
+              <button type="button" className="button-secondary button-compact flex-1" style={{ minHeight: 46 }} onClick={confirmSubmit}>
+                {outcomeUncertain ? "Đối chiếu / gửi lại" : "Gửi lại lần này"}
               </button>
-              <button className="button button-large" style={{ flex: 1 }} onClick={confirmSubmit}>
-                <CheckCircle2 size={18} /> Xác nhận {action === "check_in" ? "vào ca" : "ra ca"}
+            ) : null}
+            {!outcomeUncertain && errorCode !== "handover_acknowledgment_required" && (
+              <button type="button" className="button-secondary button-compact flex-1" style={{ minHeight: 46 }} onClick={reset}>
+                <RefreshCw size={14} className="inline mr-1" /> Bắt đầu lại
               </button>
-            </div>
-          )}
-
-          {(step === "preparing" || step === "submitting") && (
-            <button className="button button-large" disabled>
-              <LoaderCircle size={18} className="spin" /> Đang xử lý…
-            </button>
-          )}
-
-          {step === "error" && (
-            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 8, flexWrap: "wrap" }}>
-              {errorCode === "handover_acknowledgment_required" ? (
-                <Link className="button button-compact" href="/app/handovers">Đọc và nhận bàn giao</Link>
-              ) : preview && session && location ? (
-                <button className="button-secondary button-compact" onClick={confirmSubmit}>
-                  {outcomeUncertain ? "Đối chiếu / gửi lại cùng mã" : "Gửi lại lần chấm này"}
-                </button>
-              ) : null}
-              {!outcomeUncertain && errorCode !== "handover_acknowledgment_required" && <button className="button-secondary button-compact" onClick={reset}>
-                <RefreshCw size={15} /> Bắt đầu lại
-              </button>}
+            )}
+            {errorCode !== "handover_acknowledgment_required" && (
               <button
-                className="button button-compact"
+                type="button"
+                className="button button-compact flex-1"
+                style={{ minHeight: 46 }}
                 onClick={submitException}
                 disabled={explanation.trim().length < 5}
               >
-                Gửi yêu cầu duyệt
+                Gửi giải trình
               </button>
-              {outcomeUncertain && <p role="status" style={{ width: "100%", margin: 0, fontSize: 12 }}>
-                Kết quả chưa rõ do mất kết nối. Hệ thống giữ nguyên mã lần chấm này; không bắt đầu thao tác mới cho đến khi đối chiếu xong.
-              </p>}
-            </div>
-          )}
-
-          {step === "success" && (
-            <button className="button-secondary button-compact" onClick={reset}>
-              Hoàn tất & Đóng
-            </button>
-          )}
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <p className="capture-note" style={{ margin: 0, flex: 1 }}>
-            Vị trí được ghi nhận tại thời điểm bấm nút để hỗ trợ xác minh chấm công.
-          </p>
-          <button
-            type="button"
-            className="text-link"
-            onClick={() => setShowPrivacyModal(true)}
-            style={{ fontSize: 12, textDecoration: "underline", marginLeft: 8 }}
-          >
-            <Eye size={12} style={{ display: "inline", marginRight: 3 }} /> Quyền riêng tư
-          </button>
-        </div>
-      </div>
-
-      {/* Privacy Drawer / Modal */}
-      {showPrivacyModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" role="presentation">
-          <div
-            ref={privacyDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="attendance-privacy-title"
-            onKeyDown={handlePrivacyKeyDown}
-            className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-[#eee3df]"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-[#eee3df]">
-              <h3 id="attendance-privacy-title" className="font-bold text-[#6f2939] text-base flex items-center gap-2">
-                <ShieldAlert size={18} className="text-[#d96d83]" /> Nguyên tắc bảo vệ dữ liệu
-              </h3>
-              <button
-                ref={privacyCloseRef}
-                onClick={() => setShowPrivacyModal(false)}
-                aria-label="Đóng thông tin quyền riêng tư"
-                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#fff2f4] text-[#7b6f70]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="py-4 space-y-3 text-xs text-[#332a2b] leading-relaxed">
-              <p>• <strong>Không theo dõi liên tục:</strong> LoopiCafe chỉ lấy tọa độ duy nhất 1 lần tại thời điểm bạn bấm nút chấm công.</p>
-              <p>• <strong>Ảnh bảo mật riêng tư:</strong> Ảnh chỉ hiển thị cho Quản lý cửa hàng & Owner xem xét tính hợp lệ.</p>
-              <p>• <strong>Bảo vệ dữ liệu:</strong> Dữ liệu chấm công tự động được lưu trữ an toàn và xử lý theo chính sách cửa hàng.</p>
-            </div>
-            <button
-              onClick={() => setShowPrivacyModal(false)}
-              className="w-full min-h-11 py-2.5 bg-[#fff2f4] hover:bg-[#ffe1e7] text-[#6f2939] font-bold rounded-2xl text-xs"
-            >
-              Tôi đã hiểu
-            </button>
+            )}
           </div>
-        </div>
-      )}
+        )}
+
+        {step === "success" && (
+          <button type="button" className="button-secondary button-compact w-full py-2.5 text-xs font-semibold" style={{ minHeight: 46 }} onClick={reset}>
+            Hoàn tất & Tiếp tục
+          </button>
+        )}
+      </div>
     </section>
   );
+}
+
+function getDeviceName(): string {
+  if (typeof navigator === "undefined") return "Thiết bị không xác định";
+  const ua = navigator.userAgent;
+  let os = "Thiết bị di động";
+  if (/iPhone/i.test(ua)) os = "Apple iPhone";
+  else if (/iPad/i.test(ua)) os = "Apple iPad";
+  else if (/Android/i.test(ua)) {
+    const match = ua.match(/Android\s+([0-9.]+);?\s*([^;)]+)?/i);
+    const model = match?.[2] ? match[2].trim() : "Android";
+    os = `Android (${model})`;
+  } else if (/Macintosh|Mac OS X/i.test(ua)) os = "macOS";
+  else if (/Windows NT/i.test(ua)) os = "Windows PC";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let browser = "";
+  if (/Chrome|CriOS/i.test(ua) && !/Edg|OPR/i.test(ua)) browser = "Chrome";
+  else if (/Safari/i.test(ua) && !/Chrome|CriOS/i.test(ua)) browser = "Safari";
+  else if (/Firefox|FxiOS/i.test(ua)) browser = "Firefox";
+  else if (/Edg/i.test(ua)) browser = "Edge";
+
+  return browser ? `${os} · ${browser}` : os;
+}
+
+function getNetworkStatus(session?: CaptureSession | null): string {
+  if (typeof navigator === "undefined") return "Không rõ";
+  if (!navigator.onLine) return "Ngoại tuyến (Offline)";
+  const nav = navigator as Navigator & {
+    connection?: { type?: string; effectiveType?: string };
+  };
+  const conn = nav.connection;
+  if (conn?.type === "cellular") {
+    return `Di động (${conn.effectiveType ? conn.effectiveType.toUpperCase() : "Cellular"})`;
+  }
+  if (session?.wifi?.matched && session.wifi.name) {
+    return `Wifi: ${session.wifi.name}`;
+  }
+  if (session?.wifi && !session.wifi.matched) {
+    return "Mạng ngoài quán";
+  }
+  if (session?.wifi?.name) {
+    return `Wifi: ${session.wifi.name}`;
+  }
+  return "Wifi / Internet trực tuyến";
 }
 
 function getFreshPosition() {
@@ -649,14 +851,44 @@ function distanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function permissionMessage(caught: unknown) {
-  if (caught instanceof DOMException && caught.name === "NotAllowedError") {
-    return "Bạn chưa bật quyền camera hoặc vị trí trên trình duyệt. Vui lòng cho phép để tiếp tục.";
+function cameraErrorMessage(caught: unknown) {
+  if (caught instanceof DOMException) {
+    if (caught.name === "NotAllowedError" || caught.name === "PermissionDeniedError") {
+      return "Quyền truy cập camera bị từ chối. Vui lòng cấp quyền trong cài đặt trình duyệt để tiếp tục.";
+    }
+    if (caught.name === "NotFoundError" || caught.name === "DevicesNotFoundError") {
+      return "Không tìm thấy camera trên thiết bị của bạn.";
+    }
+    if (caught.name === "NotReadableError" || caught.name === "TrackStartError") {
+      return "Camera đang được ứng dụng khác sử dụng hoặc bị lỗi phần cứng.";
+    }
+    if (caught.name === "OverconstrainedError" || caught.name === "ConstraintNotSatisfiedError") {
+      return "Camera không hỗ trợ độ phân giải yêu cầu.";
+    }
   }
-  if (typeof caught === "object" && caught !== null && "code" in caught) {
-    return (caught as { code?: number }).code === 3
-      ? "Không thể phản hồi vị trí trong 10 giây."
-      : "Thiết bị chưa cung cấp được vị trí hiện tại.";
-  }
-  return caught instanceof Error ? caught.message : "Thiết bị chưa sẵn sàng.";
+  return caught instanceof Error ? caught.message : "Không thể khởi động camera.";
 }
+
+function locationErrorMessage(caught: unknown) {
+  if (typeof caught === "object" && caught !== null && "code" in caught) {
+    const code = (caught as { code?: number }).code;
+    if (code === 1) {
+      return "Quyền truy cập vị trí bị từ chối. Vui lòng bật định vị GPS trong trình duyệt/thiết bị.";
+    }
+    if (code === 2) {
+      return "Không thể xác định vị trí hiện tại của thiết bị.";
+    }
+    if (code === 3) {
+      return "Quá thời gian phản hồi vị trí (10 giây).";
+    }
+  }
+  return caught instanceof Error ? caught.message : "Chưa lấy được vị trí GPS.";
+}
+
+function formatDistance(meters: number): string {
+  const km = Math.round(meters / 1000);
+  return `${km} km`;
+}
+
+
+

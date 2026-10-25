@@ -1,0 +1,1872 @@
+[
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/order",
+    "actualPath": "/order",
+    "currentUrl": "http://127.0.0.1:4173/order",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 4,
+    "smallTargetsCount": 0,
+    "smallTargets": [],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 88,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/auth/login",
+    "actualPath": "/auth/login",
+    "currentUrl": "http://127.0.0.1:4173/auth/login",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "input",
+        "id": "",
+        "className": "w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] a",
+        "text": "",
+        "role": "input",
+        "width": 15.8,
+        "height": 16
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 0,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/today",
+    "actualPath": "/app/today",
+    "currentUrl": "http://127.0.0.1:4173/app/today",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/requests",
+    "actualPath": "/app/requests",
+    "currentUrl": "http://127.0.0.1:4173/app/requests",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/attendance",
+    "actualPath": "/app/attendance",
+    "currentUrl": "http://127.0.0.1:4173/app/attendance",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 15,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/checklists",
+    "actualPath": "/app/checklists",
+    "currentUrl": "http://127.0.0.1:4173/app/checklists",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 14,
+    "smallTargetsCount": 2,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "button-secondary button-compact",
+        "text": "Thêm công việc",
+        "role": "button",
+        "width": 133.7,
+        "height": 40
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/schedule",
+    "actualPath": "/app/schedule",
+    "currentUrl": "http://127.0.0.1:4173/app/schedule",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "320×844",
+    "width": 320,
+    "height": 844,
+    "route": "/app/rbac",
+    "actualPath": "/app/rbac",
+    "currentUrl": "http://127.0.0.1:4173/app/rbac",
+    "scrollWidth": 320,
+    "innerWidth": 320,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 116.4,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/order",
+    "actualPath": "/order",
+    "currentUrl": "http://127.0.0.1:4173/order",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 4,
+    "smallTargetsCount": 0,
+    "smallTargets": [],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 88,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/auth/login",
+    "actualPath": "/auth/login",
+    "currentUrl": "http://127.0.0.1:4173/auth/login",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "input",
+        "id": "",
+        "className": "w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] a",
+        "text": "",
+        "role": "input",
+        "width": 16,
+        "height": 16
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 0,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/today",
+    "actualPath": "/app/today",
+    "currentUrl": "http://127.0.0.1:4173/app/today",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/requests",
+    "actualPath": "/app/requests",
+    "currentUrl": "http://127.0.0.1:4173/app/requests",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/attendance",
+    "actualPath": "/app/attendance",
+    "currentUrl": "http://127.0.0.1:4173/app/attendance",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 15,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/checklists",
+    "actualPath": "/app/checklists",
+    "currentUrl": "http://127.0.0.1:4173/app/checklists",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/schedule",
+    "actualPath": "/app/schedule",
+    "currentUrl": "http://127.0.0.1:4173/app/schedule",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "375×844",
+    "width": 375,
+    "height": 844,
+    "route": "/app/rbac",
+    "actualPath": "/app/rbac",
+    "currentUrl": "http://127.0.0.1:4173/app/rbac",
+    "scrollWidth": 375,
+    "innerWidth": 375,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/order",
+    "actualPath": "/order",
+    "currentUrl": "http://127.0.0.1:4173/order",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 7,
+    "smallTargetsCount": 0,
+    "smallTargets": [],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 88,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/auth/login",
+    "actualPath": "/auth/login",
+    "currentUrl": "http://127.0.0.1:4173/auth/login",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "input",
+        "id": "",
+        "className": "w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] a",
+        "text": "",
+        "role": "input",
+        "width": 16,
+        "height": 16
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 0,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/today",
+    "actualPath": "/app/today",
+    "currentUrl": "http://127.0.0.1:4173/app/today",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/requests",
+    "actualPath": "/app/requests",
+    "currentUrl": "http://127.0.0.1:4173/app/requests",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 11,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/attendance",
+    "actualPath": "/app/attendance",
+    "currentUrl": "http://127.0.0.1:4173/app/attendance",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 15,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/checklists",
+    "actualPath": "/app/checklists",
+    "currentUrl": "http://127.0.0.1:4173/app/checklists",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 13,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/schedule",
+    "actualPath": "/app/schedule",
+    "currentUrl": "http://127.0.0.1:4173/app/schedule",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 20,
+    "smallTargetsCount": 4,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sr-only",
+        "text": "Chọn ngày",
+        "role": "input",
+        "width": 1,
+        "height": 1
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "button button-compact inline-flex items-center gap-1.5",
+        "text": "Thêm ca làm việc",
+        "role": "button",
+        "width": 165,
+        "height": 40
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "button-secondary button-compact",
+        "text": "Mở bảng lịch tuần",
+        "role": "button",
+        "width": 149.6,
+        "height": 40
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "390×844",
+    "width": 390,
+    "height": 844,
+    "route": "/app/rbac",
+    "actualPath": "/app/rbac",
+    "currentUrl": "http://127.0.0.1:4173/app/rbac",
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/order",
+    "actualPath": "/order",
+    "currentUrl": "http://127.0.0.1:4173/order",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 4,
+    "smallTargetsCount": 0,
+    "smallTargets": [],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 88,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/auth/login",
+    "actualPath": "/auth/login",
+    "currentUrl": "http://127.0.0.1:4173/auth/login",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "input",
+        "id": "",
+        "className": "w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] a",
+        "text": "",
+        "role": "input",
+        "width": 16,
+        "height": 16
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 0,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/today",
+    "actualPath": "/app/today",
+    "currentUrl": "http://127.0.0.1:4173/app/today",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/requests",
+    "actualPath": "/app/requests",
+    "currentUrl": "http://127.0.0.1:4173/app/requests",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/attendance",
+    "actualPath": "/app/attendance",
+    "currentUrl": "http://127.0.0.1:4173/app/attendance",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 16,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/checklists",
+    "actualPath": "/app/checklists",
+    "currentUrl": "http://127.0.0.1:4173/app/checklists",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/schedule",
+    "actualPath": "/app/schedule",
+    "currentUrl": "http://127.0.0.1:4173/app/schedule",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 12,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "768×1024",
+    "width": 768,
+    "height": 1024,
+    "route": "/app/rbac",
+    "actualPath": "/app/rbac",
+    "currentUrl": "http://127.0.0.1:4173/app/rbac",
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 13,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 128.8,
+        "height": 34
+      }
+    ],
+    "fixedBottomsCount": 1,
+    "occludedControls": [],
+    "mainPaddingBottom": 104,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/order",
+    "actualPath": "/order",
+    "currentUrl": "http://127.0.0.1:4173/order",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 4,
+    "smallTargetsCount": 0,
+    "smallTargets": [],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 48,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/auth/login",
+    "actualPath": "/auth/login",
+    "currentUrl": "http://127.0.0.1:4173/auth/login",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 1,
+    "smallTargets": [
+      {
+        "tag": "input",
+        "id": "",
+        "className": "w-4 h-4 rounded border-[#eee3df] text-[#6f2939] focus:ring-[#d96d83] a",
+        "text": "",
+        "role": "input",
+        "width": 16,
+        "height": 16
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 0,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/today",
+    "actualPath": "/app/today",
+    "currentUrl": "http://127.0.0.1:4173/app/today",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 21,
+    "smallTargetsCount": 19,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sidebar-search-input",
+        "text": "Tìm kiếm mục điều hướng",
+        "role": "input",
+        "width": 219,
+        "height": 32
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-toggle-all-btn",
+        "text": "Thu gọn",
+        "role": "button",
+        "width": 65.8,
+        "height": 19
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "VẬN HÀNH HÀNG NGÀY\n5",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Hôm nay ở quán thế nào?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhà mình có những ai?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Duyệt chấm công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Lịch làm việc",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn hàng của quán",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "QUẢN TRỊ & ĐỐI SOÁT\n4",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Báo cáo & Giờ công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn từ & Yêu cầu",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Việc cần làm hôm nay",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Sự cố & Bàn giao",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "HỆ THỐNG NÂNG CAO\n2",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/requests",
+    "actualPath": "/app/requests",
+    "currentUrl": "http://127.0.0.1:4173/app/requests",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 22,
+    "smallTargetsCount": 19,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sidebar-search-input",
+        "text": "Tìm kiếm mục điều hướng",
+        "role": "input",
+        "width": 219,
+        "height": 32
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-toggle-all-btn",
+        "text": "Thu gọn",
+        "role": "button",
+        "width": 65.8,
+        "height": 19
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "VẬN HÀNH HÀNG NGÀY\n5",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Hôm nay ở quán thế nào?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhà mình có những ai?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Duyệt chấm công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Lịch làm việc",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn hàng của quán",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "QUẢN TRỊ & ĐỐI SOÁT\n4",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Báo cáo & Giờ công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item active",
+        "text": "Đơn từ & Yêu cầu",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Việc cần làm hôm nay",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Sự cố & Bàn giao",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "HỆ THỐNG NÂNG CAO\n2",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/attendance",
+    "actualPath": "/app/attendance",
+    "currentUrl": "http://127.0.0.1:4173/app/attendance",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 28,
+    "smallTargetsCount": 20,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sidebar-search-input",
+        "text": "Tìm kiếm mục điều hướng",
+        "role": "input",
+        "width": 219,
+        "height": 32
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-toggle-all-btn",
+        "text": "Thu gọn",
+        "role": "button",
+        "width": 65.8,
+        "height": 19
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "VẬN HÀNH HÀNG NGÀY\n5",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Hôm nay ở quán thế nào?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhà mình có những ai?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Duyệt chấm công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Lịch làm việc",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn hàng của quán",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "QUẢN TRỊ & ĐỐI SOÁT\n4",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Báo cáo & Giờ công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn từ & Yêu cầu",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Việc cần làm hôm nay\n0/1",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Sự cố & Bàn giao",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "HỆ THỐNG NÂNG CAO\n2",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/checklists",
+    "actualPath": "/app/checklists",
+    "currentUrl": "http://127.0.0.1:4173/app/checklists",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 21,
+    "smallTargetsCount": 19,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sidebar-search-input",
+        "text": "Tìm kiếm mục điều hướng",
+        "role": "input",
+        "width": 219,
+        "height": 32
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-toggle-all-btn",
+        "text": "Thu gọn",
+        "role": "button",
+        "width": 65.8,
+        "height": 19
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "VẬN HÀNH HÀNG NGÀY\n5",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Hôm nay ở quán thế nào?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhà mình có những ai?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Duyệt chấm công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Lịch làm việc",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn hàng của quán",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "QUẢN TRỊ & ĐỐI SOÁT\n4",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Báo cáo & Giờ công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn từ & Yêu cầu",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item active",
+        "text": "Việc cần làm hôm nay",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Sự cố & Bàn giao",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "HỆ THỐNG NÂNG CAO\n2",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/schedule",
+    "actualPath": "/app/schedule",
+    "currentUrl": "http://127.0.0.1:4173/app/schedule",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 21,
+    "smallTargetsCount": 19,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "input",
+        "id": "",
+        "className": "sidebar-search-input",
+        "text": "Tìm kiếm mục điều hướng",
+        "role": "input",
+        "width": 219,
+        "height": 32
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-toggle-all-btn",
+        "text": "Thu gọn",
+        "role": "button",
+        "width": 65.8,
+        "height": 19
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "VẬN HÀNH HÀNG NGÀY\n5",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Hôm nay ở quán thế nào?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhà mình có những ai?",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Duyệt chấm công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item active",
+        "text": "Lịch làm việc",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn hàng của quán",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "QUẢN TRỊ & ĐỐI SOÁT\n4",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Báo cáo & Giờ công",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Đơn từ & Yêu cầu",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Việc cần làm hôm nay",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Sự cố & Bàn giao",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "nav-section-header",
+        "text": "HỆ THỐNG NÂNG CAO\n2",
+        "role": "button",
+        "width": 226,
+        "height": 27
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  },
+  {
+    "viewport": "1440×900",
+    "width": 1440,
+    "height": 900,
+    "route": "/app/rbac",
+    "actualPath": "/app/rbac",
+    "currentUrl": "http://127.0.0.1:4173/app/rbac",
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "hasOverflow": false,
+    "overflowingElements": [],
+    "totalInteractive": 10,
+    "smallTargetsCount": 7,
+    "smallTargets": [
+      {
+        "tag": "a",
+        "id": "",
+        "className": "brand",
+        "text": "LoopyCafe",
+        "role": "a",
+        "width": 219,
+        "height": 34
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Tổng quan quản trị",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Tài khoản",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Vai trò & quyền",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "a",
+        "id": "",
+        "className": "nav-item ",
+        "text": "Nhật ký quản trị",
+        "role": "a",
+        "width": 226,
+        "height": 42
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "sidebar-quick-logout-btn",
+        "text": "Đăng xuất tài khoản",
+        "role": "button",
+        "width": 30,
+        "height": 30
+      },
+      {
+        "tag": "button",
+        "id": "",
+        "className": "avatar-button focus:outline-none",
+        "text": "HT",
+        "role": "button",
+        "width": 38,
+        "height": 38
+      }
+    ],
+    "fixedBottomsCount": 0,
+    "occludedControls": [],
+    "mainPaddingBottom": 94,
+    "tokenBottomNavHeight": "80px",
+    "tokenBottomNavWithCta": "154px"
+  }
+]

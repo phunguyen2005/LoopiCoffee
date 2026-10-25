@@ -6,7 +6,7 @@ import * as schema from "../db/schema.ts";
 
 test("drizzle migrations preflight parses all 29 statements in 0011 and recognizes breakpoints", () => {
   const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
-  assert.equal(migrations.length, 17, "Expected 17 migration files registered in _journal.json");
+  assert.equal(migrations.length, 21, "Expected 21 migration files registered in _journal.json");
 
   const m11 = migrations.find((m) => m.folderMillis === 1789640575611);
   assert.ok(m11, "Migration 0011_workforce_integrity must be present");
@@ -19,9 +19,17 @@ test("drizzle migrations preflight parses all 29 statements in 0011 and recogniz
   const m14 = migrations.find((m) => m.folderMillis === 1789640575640);
   assert.ok(m14, "Migration 0014_indexes_and_perf must be present");
   assert.equal(m14.sql.length, 4, "Migration 0014 must parse into exactly 4 statements");
+
+  const m17 = migrations.find((m) => m.folderMillis === 1791954454550);
+  assert.ok(m17, "Migration 0017 RBAC must be present");
+  assert.equal(m17.sql.length, 8, "Migration 0017 must parse schema, revision and default permission seeds");
+
+  const m18 = migrations.find((m) => m.folderMillis === 1791960000000);
+  assert.ok(m18, "Migration 0018 custom roles & cover shifts must be present");
+  assert.equal(m18.sql.length, 5, "Migration 0018 must parse into exactly 5 statements");
 });
 
-test("drizzle migrations execute statement-by-statement creating 31 tables and 15 triggers", (t) => {
+test("drizzle migrations execute statement-by-statement creating RBAC tables and existing triggers", (t) => {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   db.exec("PRAGMA foreign_keys = ON;");
@@ -40,10 +48,14 @@ test("drizzle migrations execute statement-by-statement creating 31 tables and 1
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
     .all()
     .map((r) => r.name);
-  assert.equal(tables.length, 32, "All 32 physical tables must be created");
+  assert.equal(tables.length, 36, "All 36 physical tables must be created");
   assert.ok(tables.includes("attendance_corrections"), "attendance_corrections table must exist");
   assert.ok(tables.includes("payroll_adjustments"), "payroll_adjustments table must exist");
   assert.ok(tables.includes("employee_rate_history"), "employee_rate_history table must exist");
+  assert.ok(tables.includes("role_permission_sets"), "role_permission_sets table must exist");
+  assert.ok(tables.includes("role_permissions"), "role_permissions table must exist");
+  assert.ok(tables.includes("admin_account_operations"), "admin_account_operations table must exist");
+  assert.ok(tables.includes("custom_roles"), "custom_roles table must exist");
 
   const triggers = db
     .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")

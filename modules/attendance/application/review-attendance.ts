@@ -1,9 +1,10 @@
 import type { AccessActor } from "../../people/domain/access.ts";
 import { ApplicationError } from "../../../platform/http/errors.ts";
 import { auditStatement } from "../../../server/audit.ts";
+import { hasGrantedPermission } from "../../people/domain/permissions.ts";
 
 export async function reviewAttendance(db: D1Database, actor: AccessActor, eventId: string, decision: "approved" | "rejected", note = "") {
-  if (!["owner", "manager"].includes(actor.role)) throw new ApplicationError("Bạn không có quyền duyệt công.", 403, "forbidden");
+  if (!hasGrantedPermission(actor, "attendance.review")) throw new ApplicationError("Bạn không có quyền duyệt công.", 403, "permission_denied");
   const now = new Date().toISOString();
   const commandId = crypto.randomUUID();
 
@@ -27,7 +28,10 @@ export async function reviewAttendance(db: D1Database, actor: AccessActor, event
     throw new ApplicationError("Bạn không thể tự phê duyệt ngoại lệ công của chính mình.", 403, "self_approval_blocked");
   }
 
-  // DEC-001: Manager scoping - cannot review manager or owner attendance
+  // DEC-014 / DEC-001: Non-owner cannot review owner or system_admin; manager cannot review manager
+  if (actor.role !== "owner" && ["owner", "system_admin"].includes(targetEvent.employee_role || "")) {
+    throw new ApplicationError("Bạn không có quyền duyệt công của Chủ quán hoặc Quản trị viên hệ thống.", 403, "forbidden");
+  }
   if (actor.role === "manager" && ["owner", "manager"].includes(targetEvent.employee_role || "")) {
     throw new ApplicationError("Quản lý không có quyền duyệt công của Quản lý hoặc Chủ quán.", 403, "forbidden");
   }

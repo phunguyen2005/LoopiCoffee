@@ -2,7 +2,7 @@
 import { readJson } from "@/platform/http/client";
 
 import React, { useState } from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { ViewHeader, initials, roleLabel } from "./shared";
 
 export function PersistedProfileView({
@@ -14,6 +14,12 @@ export function PersistedProfileView({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const currentInitials = displayName.trim()
     ? displayName.trim().split(" ").slice(-2).map((p) => p[0]).join("").toUpperCase()
@@ -45,12 +51,49 @@ export function PersistedProfileView({
     }
   }
 
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordMessage(null);
+    setPasswordSuccess(false);
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      setPasswordMessage("Mật khẩu mới cần có từ 12 đến 128 ký tự.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("Hai lần nhập mật khẩu mới chưa khớp.");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setPasswordMessage("Mật khẩu mới phải khác mật khẩu hiện tại.");
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      const response = await fetch("/api/auth/verify-change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload = await readJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error ?? "Không thể đổi mật khẩu.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSuccess(true);
+      setPasswordMessage("Đã đổi mật khẩu thành công.");
+    } catch (err) {
+      setPasswordMessage(err instanceof Error ? err.message : "Không thể đổi mật khẩu.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   return (
     <div className="page-grid">
       <section className="card">
         <ViewHeader
           title="Thông tin cá nhân"
-          subtitle="Cập nhật tên hiển thị của bạn trên toàn hệ thống LoopiCafe"
+          subtitle="Cập nhật tên hiển thị của bạn trên toàn hệ thống LoopyCafe"
         />
 
         <form onSubmit={handleSubmit} className="operation-form" style={{ marginTop: 20 }}>
@@ -109,6 +152,35 @@ export function PersistedProfileView({
             </button>
           </div>
         </form>
+
+        <div style={{ borderTop: "1px solid var(--line)", marginTop: 28, paddingTop: 24 }}>
+          <ViewHeader title="Đổi mật khẩu" subtitle="Xác thực mật khẩu hiện tại trước khi thiết lập mật khẩu mới" />
+          <form onSubmit={handlePasswordChange} className="operation-form" style={{ marginTop: 18 }}>
+            {passwordMessage && (
+              <div className={`notice ${passwordSuccess ? "success" : "danger"}`} role={passwordSuccess ? "status" : "alert"}>
+                {passwordSuccess ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />} {passwordMessage}
+              </div>
+            )}
+            <div className="field full">
+              <label htmlFor="current-password">Mật khẩu hiện tại</label>
+              <input id="current-password" type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+            </div>
+            <div className="field full">
+              <label htmlFor="profile-new-password">Mật khẩu mới</label>
+              <input id="profile-new-password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              <small>Từ 12 đến 128 ký tự và phải khác mật khẩu hiện tại.</small>
+            </div>
+            <div className="field full">
+              <label htmlFor="profile-confirm-password">Nhập lại mật khẩu mới</label>
+              <input id="profile-confirm-password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+            </div>
+            <div className="form-actions">
+              <button className="button button-compact" type="submit" disabled={passwordBusy}>
+                <KeyRound size={16} /> {passwordBusy ? "Đang xác thực…" : "Xác thực và đổi mật khẩu"}
+              </button>
+            </div>
+          </form>
+        </div>
       </section>
 
       <aside className="card">

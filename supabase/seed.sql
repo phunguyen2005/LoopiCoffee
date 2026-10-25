@@ -1,10 +1,10 @@
--- SEED SCRIPT FOR LOOPICAFE INITIAL STORE AND RULES
+-- SEED SCRIPT FOR LOOPYCAFE INITIAL STORE AND RULES
 
 -- 1. Create Initial Store
 INSERT INTO public.stores (id, name, address, timezone, latitude, longitude, attendance_enabled)
 VALUES (
   'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-  'LoopiCafe - Main Store',
+  'LoopyCafe - Main Store',
   '123 Le Loi Street, District 1, Ho Chi Minh City',
   'Asia/Ho_Chi_Minh',
   10.776889,
@@ -23,7 +23,7 @@ INSERT INTO public.attendance_rules (
   15, -- 15 mins early checkin allowed
   5,  -- 5 mins late grace period
   5,  -- 5 mins early departure grace
-  480, -- 8 hours missing checkout timeout
+  240, -- 4 hours missing checkout timeout
   90, -- 90 days photo retention
   true,
   '00000000-0000-0000-0000-000000000000'

@@ -2,6 +2,7 @@ import { ApplicationError } from "../../../platform/http/errors.ts";
 import { auditStatement } from "../../../server/audit.ts";
 
 export interface HandoverGateOptions {
+  shiftId?: string | null;
   bypass?: boolean;
   bypassReason?: string;
   bypassActor?: { email: string; role: string; storeId: string };
@@ -24,13 +25,15 @@ export async function checkHandoverGate(
   options?: HandoverGateOptions,
 ): Promise<HandoverGateResult> {
   const unacknowledged = await db.prepare(
-    `SELECT id, author_email, created_at
-     FROM handovers
-     WHERE store_id = ? AND acknowledged_at IS NULL
-     ORDER BY created_at DESC LIMIT 1`,
-  ).bind(storeId).first<{ id: string; author_email: string; created_at: string }>();
+    `SELECT h.id, h.author_email, h.created_at
+     FROM handovers h
+     LEFT JOIN employees receiver ON receiver.id = h.receiver_employee_id AND receiver.store_id = h.store_id
+     WHERE h.store_id = ? AND h.acknowledged_at IS NULL
+       AND (lower(receiver.email) = lower(?) OR h.next_shift_id = ?)
+     ORDER BY h.created_at DESC LIMIT 1`,
+  ).bind(storeId, employeeEmail, options?.shiftId ?? "").first<{ id: string; author_email: string; created_at: string }>();
 
-  // If no unacknowledged handover exists in the store, first shift / clean shift proceeds freely
+  // Chỉ bàn giao nhắm đúng người hoặc đúng ca mới chặn check-in.
   if (!unacknowledged) {
     return { allowed: true, firstShift: true };
   }
@@ -66,6 +69,7 @@ export async function checkHandoverGate(
         {
           bypassReason: reason,
           targetEmployeeEmail: employeeEmail,
+          targetShiftId: options.shiftId ?? null,
           managerEmail: actor.email,
         },
         now,
