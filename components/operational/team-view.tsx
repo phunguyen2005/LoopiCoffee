@@ -184,6 +184,16 @@ export function PersistentTeamView() {
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!editing) return;
+    const roleChanged = form.roleSelect !== (editing.role_id ? `custom:${editing.role_id}` : editing.role);
+    const payrollChanged =
+      form.payrollEligible !== Boolean(editing.payroll_eligible) ||
+      form.compensationType !== editing.compensation_type ||
+      Number(form.hourlyRate) !== (editing.hourly_rate ?? 0) ||
+      Number(form.monthlySalary) !== (editing.monthly_salary ?? 0);
+    if ((roleChanged || payrollChanged) && form.reason.trim().length < 5) {
+      setError("Hãy nhập lý do khi thay đổi vai trò, quyền tính lương hoặc mức lương (tối thiểu 5 ký tự).");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -203,12 +213,14 @@ export function PersistentTeamView() {
         compensationType: form.compensationType,
         hourlyRate: form.hourlyRate,
         monthlySalary: form.monthlySalary,
-        reason: form.reason,
+        reason: form.reason.trim(),
       };
 
       if (isOwner) {
         payload.role = targetRole;
         payload.roleId = targetRoleId;
+        payload.status = form.status;
+        payload.expectedRevision = editing.access_revision ?? 0;
       }
 
       const response = await fetch("/api/team", {
@@ -218,7 +230,12 @@ export function PersistentTeamView() {
       });
       const data = await readJson<{ error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Không thể cập nhật hồ sơ.");
-      setMessage("Đã lưu lại thông tin thành viên và phân quyền mới rồi nhé! ✨");
+      if (form.status !== editing.status) {
+        const scheduleNote = form.status === "active" ? "Nhân viên có thể được xếp lịch trở lại." : "Nhân viên đã bị loại khỏi danh sách xếp lịch mới.";
+        setMessage(`Đã lưu hồ sơ và chuyển trạng thái sang “${memberStatusLabel(form.status)}”. ${scheduleNote}`);
+      } else {
+        setMessage("Đã lưu lại thông tin thành viên và phân quyền mới rồi nhé! ✨");
+      }
       setEditing(null);
       await load();
     } catch (cause) {
@@ -261,10 +278,6 @@ export function PersistentTeamView() {
 
   async function updateMemberStatus() {
     if (!editing || !isOwner || busy || form.status === editing.status) return;
-    if (form.reason.trim().length < 5) {
-      setError("Hãy nhập lý do cập nhật trạng thái, tối thiểu 5 ký tự.");
-      return;
-    }
     setBusy(true);
     setError("");
     try {
@@ -276,7 +289,6 @@ export function PersistentTeamView() {
           action: "update_status",
           status: form.status,
           expectedRevision: editing.access_revision ?? 0,
-          reason: form.reason.trim(),
         }),
       });
       const data = await readJson<{ error?: string }>(response);
@@ -410,6 +422,19 @@ export function PersistentTeamView() {
     }
     return succeeded;
   }
+
+  const roleChanged = Boolean(
+    editing && form.roleSelect !== (editing.role_id ? `custom:${editing.role_id}` : editing.role),
+  );
+  const payrollChanged = Boolean(
+    editing && (
+      form.payrollEligible !== Boolean(editing.payroll_eligible) ||
+      form.compensationType !== editing.compensation_type ||
+      Number(form.hourlyRate) !== (editing.hourly_rate ?? 0) ||
+      Number(form.monthlySalary) !== (editing.monthly_salary ?? 0)
+    ),
+  );
+  const reasonRequiredForSave = roleChanged || payrollChanged;
 
   return (
     <div className="stack">
@@ -807,16 +832,23 @@ export function PersistentTeamView() {
               </div>
 
               <label className="field">
-                <span>Lý do cập nhật *</span>
+                <span>
+                  Lý do cập nhật {reasonRequiredForSave || confirmResetPassword ? "*" : "(không bắt buộc)"}
+                </span>
                 <textarea
-                  required
+                  required={reasonRequiredForSave || confirmResetPassword}
                   rows={2}
-                  minLength={5}
-                  placeholder="Ghi rõ lý do điều chỉnh hồ sơ hoặc đơn giá lương (tối thiểu 5 ký tự)..."
+                  minLength={reasonRequiredForSave || confirmResetPassword ? 5 : undefined}
+                  placeholder={reasonRequiredForSave || confirmResetPassword
+                    ? "Ghi rõ lý do thay đổi nhạy cảm (tối thiểu 5 ký tự)..."
+                    : "Có thể thêm ghi chú để dễ đối chiếu sau này..."}
                   value={form.reason}
                   onChange={(event) => setForm({ ...form, reason: event.target.value })}
                   style={{ minHeight: 68 }}
                 />
+                <small>
+                  Chỉ bắt buộc khi đổi vai trò, quyền/mức lương hoặc cấp lại mật khẩu. Sửa hồ sơ và đổi trạng thái nhân viên có thể cập nhật trực tiếp.
+                </small>
               </label>
               {isOwner && editing.role !== "owner" && editing.role !== "system_admin" && (
                 <div className="team-editor-section">
@@ -845,8 +877,11 @@ export function PersistentTeamView() {
                     <button
                       type="button"
                       className="button-secondary"
-                      disabled={busy || form.reason.trim().length < 5}
-                      onClick={() => setConfirmStatusChange(true)}
+                      disabled={busy}
+                      onClick={() => {
+                        setError("");
+                        setConfirmStatusChange(true);
+                      }}
                     >
                       Cập nhật trạng thái
                     </button>

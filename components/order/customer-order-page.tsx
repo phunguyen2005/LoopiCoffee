@@ -49,6 +49,8 @@ export function CustomerOrderPage() {
 
   // Selected item for customization modal
   const [selectedItem, setSelectedItem] = useState<MenuItemData | null>(null);
+  const [cartItemToEdit, setCartItemToEdit] = useState<CartItemOption | null>(null);
+  const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
 
   // Cart state
   const [cart, setCart] = useState<CartItemOption[]>([]);
@@ -235,6 +237,61 @@ export function CustomerOrderPage() {
 
   const handleClearCart = () => {
     setCart([]);
+  };
+
+  // Compute total quantities of each item in cart for MenuCard badges
+  const cartItemCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const it of cart) {
+      counts[it.itemId] = (counts[it.itemId] || 0) + it.quantity;
+    }
+    return counts;
+  }, [cart]);
+
+  const handleEditCartItem = (index: number) => {
+    const itemInCart = cart[index];
+    if (!itemInCart) return;
+
+    // Locate the MenuItemData in items list or create matching record
+    const foundMenuItem = items.find((m) => m.id === itemInCart.itemId);
+    const menuItem: MenuItemData = foundMenuItem || {
+      id: itemInCart.itemId,
+      category_id: "",
+      name: itemInCart.name,
+      english_name: itemInCart.englishName,
+      base_price: itemInCart.basePrice,
+      image_url: "",
+      is_available: 1,
+      allows_size: Boolean(itemInCart.size),
+      allows_sugar: Boolean(itemInCart.sugar),
+      allows_ice: Boolean(itemInCart.ice),
+      allows_toppings: itemInCart.toppings.length > 0 || true,
+    };
+
+    setEditingCartIndex(index);
+    setCartItemToEdit(itemInCart);
+    setSelectedItem(menuItem);
+    setIsCartOpen(false);
+  };
+
+  const handleUpdateCartItem = (updated: CartItemOption) => {
+    if (editingCartIndex !== null && editingCartIndex >= 0 && editingCartIndex < cart.length) {
+      setCart((prev) => {
+        const next = [...prev];
+        next[editingCartIndex] = updated;
+        return next;
+      });
+    }
+    setEditingCartIndex(null);
+    setCartItemToEdit(null);
+    setSelectedItem(null);
+    setIsCartOpen(true);
+  };
+
+  const handleCloseDetailModal = () => {
+    setSelectedItem(null);
+    setCartItemToEdit(null);
+    setEditingCartIndex(null);
   };
 
   const openReceipt = (receipt: string) => {
@@ -608,7 +665,12 @@ export function CustomerOrderPage() {
                       key={item.id}
                       item={item}
                       categoryName={catObj?.name || ""}
-                      onSelect={(selected) => setSelectedItem(selected)}
+                      cartQuantity={cartItemCounts[item.id] || 0}
+                      onSelect={(selected) => {
+                        setCartItemToEdit(null);
+                        setEditingCartIndex(null);
+                        setSelectedItem(selected);
+                      }}
                     />
                   );
                 })}
@@ -639,13 +701,15 @@ export function CustomerOrderPage() {
 
       {/* Item Customization Modal */}
       <ItemDetailModal
-        key={selectedItem?.id || "modal"}
+        key={editingCartIndex !== null ? `edit-${editingCartIndex}-${selectedItem?.id}` : (selectedItem?.id || "modal")}
         item={selectedItem}
+        categoryName={categories.find((c) => c.id === selectedItem?.category_id)?.name || ""}
         options={options}
-        onClose={() => setSelectedItem(null)}
+        cartItemToEdit={cartItemToEdit}
+        onClose={handleCloseDetailModal}
         onAddToCart={handleAddToCart}
+        onUpdateCartItem={handleUpdateCartItem}
       />
-
 
       {/* Cart Drawer */}
       <CartDrawer
@@ -656,6 +720,7 @@ export function CustomerOrderPage() {
         onRemoveItem={handleRemoveItem}
         onClearCart={handleClearCart}
         onOrderSuccess={handleOrderSuccess}
+        onEditItem={handleEditCartItem}
       />
 
       {/* Lookup past order modal */}

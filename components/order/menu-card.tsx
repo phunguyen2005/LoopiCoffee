@@ -23,6 +23,7 @@ export interface MenuItemData {
 interface MenuCardProps {
   item: MenuItemData;
   categoryName?: string;
+  cartQuantity?: number;
   onSelect: (item: MenuItemData) => void;
 }
 
@@ -36,7 +37,7 @@ export function formatVND(amount: number): string {
     .replace("₫", "đ");
 }
 
-export function MenuCard({ item, onSelect }: MenuCardProps) {
+export function MenuCard({ item, categoryName, cartQuantity, onSelect }: MenuCardProps) {
   const isAvailable = Boolean(item.is_available);
 
   return (
@@ -44,7 +45,11 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
       type="button"
       onClick={() => onSelect(item)}
       disabled={!isAvailable}
-      aria-label={isAvailable ? `Chọn món ${item.name}, giá ${formatVND(item.base_price)}` : `${item.name} hiện tạm hết`}
+      aria-label={
+        isAvailable
+          ? `Chọn món ${item.name}, giá ${formatVND(item.base_price)}${cartQuantity && cartQuantity > 0 ? `, trong giỏ: ${cartQuantity}` : ""}`
+          : `${item.name} hiện tạm hết`
+      }
       className={`group relative w-full text-left flex flex-col justify-between rounded-2xl sm:rounded-3xl bg-white p-2.5 sm:p-4 border transition-all duration-200 cursor-pointer select-none active:scale-[0.99] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3D5A40] focus-visible:ring-offset-2 ${
         isAvailable
           ? "border-[#EAE3D9] hover:border-[#3D5A40]/40 hover:shadow-lg hover:-translate-y-0.5 shadow-sm"
@@ -59,6 +64,7 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
         <DrinkVisual
           itemId={item.id}
           name={item.name}
+          category={categoryName}
           imageUrl={item.image_url}
         />
 
@@ -78,6 +84,18 @@ export function MenuCard({ item, onSelect }: MenuCardProps) {
             </span>
           ) : null}
         </div>
+
+        {/* Cart Quantity Badge */}
+        {cartQuantity !== undefined && cartQuantity > 0 && (
+          <div className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 z-20">
+            <span
+              className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 text-xs font-black rounded-full bg-[#C85A32] text-white shadow-md border-2 border-white select-none pointer-events-none"
+              title={`${cartQuantity} món trong giỏ`}
+            >
+              {cartQuantity}
+            </span>
+          </div>
+        )}
 
         {/* Quick Add Floating Button with Touch-Friendly Hit Target */}
         {isAvailable && (

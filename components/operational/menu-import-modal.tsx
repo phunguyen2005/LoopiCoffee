@@ -76,6 +76,9 @@ export function MenuImportModal({
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
 
+  // Preview filter state: "all" | "new" | "update" | "invalid"
+  const [previewFilter, setPreviewFilter] = useState<"all" | "new" | "update" | "invalid">("all");
+
   // Recompute items whenever currentMapping or rawRows change
   const displayedCandidates: ParsedItemCandidate[] = useMemo(() => {
     if (!parseResult) return [];
@@ -96,6 +99,39 @@ export function MenuImportModal({
     () => displayedCandidates.filter((i) => !i.isValid),
     [displayedCandidates],
   );
+  const newValidItems = useMemo(
+    () =>
+      validItems.filter(
+        (i) => !existingItemNames?.has(i.name.toLowerCase().trim()),
+      ),
+    [validItems, existingItemNames],
+  );
+  const updateValidItems = useMemo(
+    () =>
+      validItems.filter((i) =>
+        Boolean(existingItemNames?.has(i.name.toLowerCase().trim())),
+      ),
+    [validItems, existingItemNames],
+  );
+
+  const filteredCandidates = useMemo(() => {
+    if (previewFilter === "new") {
+      return displayedCandidates.filter(
+        (i) => i.isValid && !existingItemNames?.has(i.name.toLowerCase().trim()),
+      );
+    }
+    if (previewFilter === "update") {
+      return displayedCandidates.filter(
+        (i) =>
+          i.isValid &&
+          Boolean(existingItemNames?.has(i.name.toLowerCase().trim())),
+      );
+    }
+    if (previewFilter === "invalid") {
+      return displayedCandidates.filter((i) => !i.isValid);
+    }
+    return displayedCandidates;
+  }, [displayedCandidates, previewFilter, existingItemNames]);
 
   // Existing category names set for quick checking
   const existingCategoryNames = useMemo(
@@ -115,6 +151,7 @@ export function MenuImportModal({
     setParseError(null);
     setSubmitError(null);
     setSubmitSuccess(null);
+    setPreviewFilter("all");
 
     try {
       const result = await parseExcelOrCsvFile(selectedFile);
@@ -152,7 +189,7 @@ export function MenuImportModal({
   const handleDownloadSample = () => {
     try {
       const bytes = generateSampleExcelFile();
-      const blob = new Blob([bytes.buffer as ArrayBuffer], {
+      const blob = new Blob([bytes as unknown as BlobPart], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
       const url = URL.createObjectURL(blob);
@@ -248,6 +285,7 @@ export function MenuImportModal({
     setParseError(null);
     setSubmitError(null);
     setSubmitSuccess(null);
+    setPreviewFilter("all");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -295,7 +333,7 @@ export function MenuImportModal({
               type="button"
               onClick={handleDownloadSample}
               title="Tải file mẫu Excel"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#e6dad5] hover:bg-[#fffaf4] text-[#6f2939] text-xs font-semibold transition-colors"
+              className="hidden sm:flex min-h-[44px] items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#e6dad5] hover:bg-[#fffaf4] text-[#6f2939] text-xs font-semibold transition-colors"
             >
               <Download size={14} />
               <span>Tải file mẫu</span>
@@ -305,7 +343,7 @@ export function MenuImportModal({
               onClick={onClose}
               disabled={isSubmitting}
               aria-label="Đóng"
-              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] transition-colors"
             >
               <X size={20} />
             </button>
@@ -315,16 +353,16 @@ export function MenuImportModal({
         {/* Modal Body with Custom Scroll */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scroll">
           {/* Download Sample Banner on Mobile */}
-          <div className="sm:hidden flex items-center justify-between p-3 rounded-xl bg-[#fffaf4] border border-[#f2e6e1]">
+          <div className="sm:hidden flex items-center justify-between gap-2 p-3 rounded-xl bg-[#fffaf4] border border-[#f2e6e1]">
             <div className="text-xs text-[#554a4c]">
               <span className="font-semibold text-[#6f2939]">Chưa có file mẫu?</span> Tải mẫu chuẩn (.xlsx)
             </div>
             <button
               type="button"
               onClick={handleDownloadSample}
-              className="px-2.5 py-1 rounded-lg bg-[#6f2939] text-white text-[11px] font-bold flex items-center gap-1"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#6f2939] text-white text-xs font-bold flex items-center gap-1.5 shrink-0"
             >
-              <Download size={12} />
+              <Download size={13} />
               <span>Tải mẫu</span>
             </button>
           </div>
@@ -359,18 +397,18 @@ export function MenuImportModal({
                   )}
                 </p>
               </div>
-              <div className="pt-2 flex justify-center gap-3">
+              <div className="pt-2 flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-6 py-2.5 rounded-xl bg-[#6f2939] text-white text-xs font-bold hover:bg-[#5a1f2d] shadow-sm transition-all"
+                  className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#6f2939] text-white text-xs font-bold hover:bg-[#5a1f2d] shadow-sm transition-all"
                 >
                   Hoàn tất & Đóng
                 </button>
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="px-4 py-2.5 rounded-xl border border-[#e6dad5] text-[#554a4c] text-xs font-semibold hover:bg-[#fffaf4] transition-all"
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl border border-[#e6dad5] text-[#554a4c] text-xs font-semibold hover:bg-[#fffaf4] transition-all"
                 >
                   Nhập thêm file khác
                 </button>
@@ -415,7 +453,7 @@ export function MenuImportModal({
                     Hỗ trợ định dạng <strong>.xlsx</strong>, <strong>.xls</strong> hoặc <strong>.csv</strong>. Tự động nhận diện tiêu đề cột tiếng Việt hoặc tiếng Anh.
                   </p>
                   <div className="mt-4">
-                    <span className="inline-block px-4 py-2 rounded-xl bg-[#6f2939] text-white text-xs font-bold shadow-xs">
+                    <span className="inline-flex min-h-[44px] items-center justify-center px-5 py-2.5 rounded-xl bg-[#6f2939] text-white text-xs font-bold shadow-xs">
                       Chọn file từ thiết bị
                     </span>
                   </div>
@@ -423,13 +461,13 @@ export function MenuImportModal({
               ) : (
                 /* Selected File Header */
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 bg-[#fbf8f6] rounded-2xl border border-[#eee3df] gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#6f2939]/10 text-[#6f2939] flex items-center justify-center shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-[#6f2939]/10 text-[#6f2939] flex items-center justify-center shrink-0">
                       <FileText size={18} />
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-[#332a2b] flex items-center gap-2">
-                        <span>{parseResult.fileName}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-[#332a2b] flex items-center gap-2 flex-wrap">
+                        <span className="truncate">{parseResult.fileName}</span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
                           {displayedCandidates.length} dòng
                         </span>
@@ -449,7 +487,7 @@ export function MenuImportModal({
                     <button
                       type="button"
                       onClick={() => setShowCustomMapping(!showCustomMapping)}
-                      className="px-3 py-1.5 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#554a4c] hover:bg-[#fffaf4] flex items-center gap-1.5 transition-colors"
+                      className="flex-1 sm:flex-none min-h-[44px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#554a4c] hover:bg-[#fffaf4] flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <span>Tuỳ chỉnh cột</span>
                       {showCustomMapping ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -457,7 +495,7 @@ export function MenuImportModal({
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="px-3 py-1.5 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#991b1b] hover:bg-[#fff5f5] transition-colors"
+                      className="flex-1 sm:flex-none min-h-[44px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#991b1b] hover:bg-[#fff5f5] flex items-center justify-center transition-colors"
                     >
                       Đổi file khác
                     </button>
@@ -479,7 +517,7 @@ export function MenuImportModal({
               {/* Collapsible Column Mapping Settings */}
               {parseResult && currentMapping && showCustomMapping && (
                 <div className="p-4 rounded-2xl bg-[#fffaf4] border border-[#eee3df] space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-xs font-bold text-[#332a2b] flex items-center gap-1.5">
                       <Sparkles size={14} className="text-[#6f2939]" />
                       <span>Ánh xạ cột dữ liệu trong file:</span>
@@ -489,7 +527,7 @@ export function MenuImportModal({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {/* Tên món */}
                     <div>
                       <label className="block text-[11px] font-semibold text-[#554a4c] mb-1">
@@ -498,7 +536,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.name}
                         onChange={(e) => handleUpdateMappingField("name", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Chưa ánh xạ --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -517,7 +555,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.basePrice}
                         onChange={(e) => handleUpdateMappingField("basePrice", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Chưa ánh xạ --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -536,7 +574,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.categoryName}
                         onChange={(e) => handleUpdateMappingField("categoryName", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Không có trong file --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -555,7 +593,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.englishName}
                         onChange={(e) => handleUpdateMappingField("englishName", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Không chọn --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -572,7 +610,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.description}
                         onChange={(e) => handleUpdateMappingField("description", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Không chọn --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -591,7 +629,7 @@ export function MenuImportModal({
                       <select
                         value={currentMapping.badge}
                         onChange={(e) => handleUpdateMappingField("badge", Number(e.target.value))}
-                        className="w-full text-xs min-h-[38px] px-2.5 py-1.5 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-2.5 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         <option value={-1}>-- Không chọn --</option>
                         {parseResult.headers.map((h, idx) => (
@@ -622,7 +660,7 @@ export function MenuImportModal({
                         id="import-fallback-category"
                         value={fallbackCategoryId}
                         onChange={(e) => setFallbackCategoryId(e.target.value)}
-                        className="w-full text-xs min-h-[40px] px-3 py-2 rounded-xl border border-[#e6dad5] bg-white"
+                        className="w-full text-base sm:text-xs min-h-[44px] px-3 py-2 rounded-xl border border-[#e6dad5] bg-white"
                       >
                         {categories.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -632,13 +670,13 @@ export function MenuImportModal({
                       </select>
                     </div>
 
-                    <div className="flex items-center pt-2 sm:pt-6">
-                      <label className="flex items-start gap-2.5 cursor-pointer">
+                    <div className="flex items-center pt-1 sm:pt-5">
+                      <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] p-2 rounded-xl hover:bg-[#fffaf4]/70 w-full">
                         <input
                           type="checkbox"
                           checked={autoCreateCategories}
                           onChange={(e) => setAutoCreateCategories(e.target.checked)}
-                          className="mt-0.5 rounded text-[#6f2939] focus:ring-[#6f2939] h-4 w-4"
+                          className="rounded text-[#6f2939] focus:ring-[#6f2939] h-4 w-4 shrink-0"
                         />
                         <div className="text-xs text-[#554a4c]">
                           <span className="font-semibold text-[#332a2b]">
@@ -654,127 +692,259 @@ export function MenuImportModal({
                 </div>
               )}
 
-              {/* Preview Candidate Items Table */}
+              {/* Preview Candidate Items Table & Filter Pills */}
               {parseResult && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-[#332a2b]">
-                      Xem trước dữ liệu ({validItems.length} món sẵn sàng nhập):
-                    </h4>
-                    {invalidItems.length > 0 && (
-                      <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                        Bỏ qua {invalidItems.length} dòng không hợp lệ
-                      </span>
-                    )}
-                  </div>
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-xs font-bold text-[#332a2b]">
+                        Xem trước dữ liệu ({validItems.length} món sẵn sàng nhập):
+                      </h4>
+                      {invalidItems.length > 0 && (
+                        <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                          Bỏ qua {invalidItems.length} dòng không hợp lệ
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="border border-[#eee3df] rounded-2xl overflow-hidden bg-white max-h-[320px] overflow-y-auto custom-scroll">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-[#fbf8f6] text-[#7b6f70] font-semibold border-b border-[#eee3df] sticky top-0 z-10">
-                        <tr>
-                          <th className="py-2.5 px-3 w-12 text-center">#</th>
-                          <th className="py-2.5 px-3">Tên món</th>
-                          <th className="py-2.5 px-3">Giá bán</th>
-                          <th className="py-2.5 px-3">Danh mục</th>
-                          <th className="py-2.5 px-3">Tuỳ chọn</th>
-                          <th className="py-2.5 px-3 text-right">Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f5efec]">
-                        {displayedCandidates.map((candidate, idx) => {
-                          const catName =
-                            candidate.categoryName ||
-                            categories.find((c) => c.id === fallbackCategoryId)?.name ||
-                            "Chưa phân loại";
-                          const isNewCat =
-                            candidate.categoryName &&
-                            !existingCategoryNames.has(candidate.categoryName.toLowerCase().trim());
-
-                          return (
-                            <tr
-                              key={idx}
-                              className={`hover:bg-[#fffaf4]/60 transition-colors ${
-                                !candidate.isValid ? "bg-amber-50/50" : ""
+                    {/* Preview Filter Pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                      {(
+                        [
+                          { id: "all", label: "Tất cả", count: displayedCandidates.length },
+                          { id: "new", label: "Món mới", count: newValidItems.length },
+                          { id: "update", label: "Cập nhật giá", count: updateValidItems.length },
+                          { id: "invalid", label: "Dòng lỗi", count: invalidItems.length },
+                        ] as const
+                      ).map((tab) => {
+                        const isActive = previewFilter === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setPreviewFilter(tab.id)}
+                            className={`min-h-[44px] px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                              isActive
+                                ? "bg-[#6f2939] text-white shadow-xs"
+                                : tab.id === "invalid" && tab.count > 0
+                                ? "bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100"
+                                : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
+                            }`}
+                          >
+                            <span>{tab.label}</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                                isActive ? "bg-white/20 text-white" : "bg-[#eee3df] text-[#554a4c]"
                               }`}
                             >
-                              <td className="py-2.5 px-3 text-center text-[#9c9391]">
-                                {candidate.rowIndex}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <div className="font-bold text-[#332a2b]">
-                                  {candidate.name || <span className="text-rose-500 italic">Trống</span>}
-                                </div>
-                                {candidate.englishName && (
-                                  <div className="text-[11px] text-[#7b6f70]">
-                                    {candidate.englishName}
+                              {tab.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="border border-[#eee3df] rounded-2xl overflow-hidden bg-white max-h-[340px] overflow-y-auto custom-scroll">
+                    {filteredCandidates.length === 0 ? (
+                      <div className="py-10 px-4 text-center text-xs text-[#7b6f70]">
+                        Không có dòng dữ liệu nào trong nhóm bộ lọc này.
+                      </div>
+                    ) : (
+                      <>
+                        {/* Mobile Compact Card List (< sm) */}
+                        <div className="sm:hidden divide-y divide-[#f5efec]">
+                          {filteredCandidates.map((candidate, idx) => {
+                            const catName =
+                              candidate.categoryName ||
+                              categories.find((c) => c.id === fallbackCategoryId)?.name ||
+                              "Chưa phân loại";
+                            const isNewCat =
+                              candidate.categoryName &&
+                              !existingCategoryNames.has(candidate.categoryName.toLowerCase().trim());
+                            const isExisting = existingItemNames?.has(candidate.name.toLowerCase().trim());
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-3.5 space-y-2 ${
+                                  !candidate.isValid ? "bg-amber-50/50" : "bg-white"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] font-bold text-[#9c9391] tabular-nums">
+                                        #{candidate.rowIndex}
+                                      </span>
+                                      <span className="font-bold text-xs text-[#332a2b] truncate">
+                                        {candidate.name || (
+                                          <span className="text-rose-500 italic">Trống tên món</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                    {candidate.englishName && (
+                                      <div className="text-[11px] text-[#7b6f70] truncate">
+                                        {candidate.englishName}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-[#6f2939]">
-                                {candidate.basePrice > 0 ? (
-                                  formatVND(candidate.basePrice)
-                                ) : (
-                                  <span className="text-rose-500">0 đ</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[#554a4c]">{catName}</span>
-                                  {isNewCat && autoCreateCategories && (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
-                                      + Danh mục mới
+                                  <span className="font-extrabold text-xs text-[#6f2939] tabular-nums shrink-0">
+                                    {candidate.basePrice > 0 ? (
+                                      formatVND(candidate.basePrice)
+                                    ) : (
+                                      <span className="text-rose-500">0 đ</span>
+                                    )}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                                    <span className="px-2 py-0.5 rounded-full bg-[#f8f3ef] text-[#554a4c] font-medium">
+                                      {catName}
+                                    </span>
+                                    {isNewCat && autoCreateCategories && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
+                                        + Danh mục mới
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {candidate.isValid ? (
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                        isExisting
+                                          ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                          : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                      }`}
+                                    >
+                                      <CheckCircle2 size={12} />
+                                      <span>{isExisting ? "Cập nhật giá" : "Món mới"}</span>
+                                    </span>
+                                  ) : (
+                                    <span
+                                      title={candidate.errors.join(", ")}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[11px] font-semibold"
+                                    >
+                                      <AlertTriangle size={12} />
+                                      <span>{candidate.errors[0] || "Lỗi"}</span>
                                     </span>
                                   )}
                                 </div>
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-1 text-[10px] text-[#7b6f70] flex-wrap">
-                                  {candidate.allowsSize && (
-                                    <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Size</span>
-                                  )}
-                                  {candidate.allowsSugar && (
-                                    <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Đường</span>
-                                  )}
-                                  {candidate.allowsIce && (
-                                    <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Đá</span>
-                                  )}
-                                  {candidate.allowsToppings && (
-                                    <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Topping</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                                {candidate.isValid ? (
-                                  (() => {
-                                    const isExisting = existingItemNames?.has(candidate.name.toLowerCase().trim());
-                                    return (
-                                      <span
-                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                          isExisting
-                                            ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                            : "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                        }`}
-                                      >
-                                        <CheckCircle2 size={12} />
-                                        <span>{isExisting ? "Cập nhật giá" : "Món mới"}</span>
-                                      </span>
-                                    );
-                                  })()
-                                ) : (
-                                  <span
-                                    title={candidate.errors.join(", ")}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[11px] font-semibold cursor-help"
-                                  >
-                                    <AlertTriangle size={12} />
-                                    <span>{candidate.errors[0] || "Lỗi"}</span>
-                                  </span>
-                                )}
-                              </td>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Desktop Table (>= sm) */}
+                        <table className="hidden sm:table w-full text-left text-xs">
+                          <thead className="bg-[#fbf8f6] text-[#7b6f70] font-semibold border-b border-[#eee3df] sticky top-0 z-10">
+                            <tr>
+                              <th className="py-2.5 px-3 w-12 text-center">#</th>
+                              <th className="py-2.5 px-3">Tên món</th>
+                              <th className="py-2.5 px-3">Giá bán</th>
+                              <th className="py-2.5 px-3">Danh mục</th>
+                              <th className="py-2.5 px-3">Tuỳ chọn</th>
+                              <th className="py-2.5 px-3 text-right">Trạng thái</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          </thead>
+                          <tbody className="divide-y divide-[#f5efec]">
+                            {filteredCandidates.map((candidate, idx) => {
+                              const catName =
+                                candidate.categoryName ||
+                                categories.find((c) => c.id === fallbackCategoryId)?.name ||
+                                "Chưa phân loại";
+                              const isNewCat =
+                                candidate.categoryName &&
+                                !existingCategoryNames.has(candidate.categoryName.toLowerCase().trim());
+
+                              return (
+                                <tr
+                                  key={idx}
+                                  className={`hover:bg-[#fffaf4]/60 transition-colors ${
+                                    !candidate.isValid ? "bg-amber-50/50" : ""
+                                  }`}
+                                >
+                                  <td className="py-2.5 px-3 text-center text-[#9c9391] tabular-nums">
+                                    {candidate.rowIndex}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <div className="font-bold text-[#332a2b]">
+                                      {candidate.name || <span className="text-rose-500 italic">Trống</span>}
+                                    </div>
+                                    {candidate.englishName && (
+                                      <div className="text-[11px] text-[#7b6f70]">
+                                        {candidate.englishName}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-[#6f2939] tabular-nums">
+                                    {candidate.basePrice > 0 ? (
+                                      formatVND(candidate.basePrice)
+                                    ) : (
+                                      <span className="text-rose-500">0 đ</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[#554a4c]">{catName}</span>
+                                      {isNewCat && autoCreateCategories && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
+                                          + Danh mục mới
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <div className="flex items-center gap-1 text-[10px] text-[#7b6f70] flex-wrap">
+                                      {candidate.allowsSize && (
+                                        <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Size</span>
+                                      )}
+                                      {candidate.allowsSugar && (
+                                        <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Đường</span>
+                                      )}
+                                      {candidate.allowsIce && (
+                                        <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Đá</span>
+                                      )}
+                                      {candidate.allowsToppings && (
+                                        <span className="px-1.5 py-0.5 rounded bg-[#f5efec]">Topping</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                    {candidate.isValid ? (
+                                      (() => {
+                                        const isExisting = existingItemNames?.has(candidate.name.toLowerCase().trim());
+                                        return (
+                                          <span
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                              isExisting
+                                                ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                                : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                            }`}
+                                          >
+                                            <CheckCircle2 size={12} />
+                                            <span>{isExisting ? "Cập nhật giá" : "Món mới"}</span>
+                                          </span>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span
+                                        title={candidate.errors.join(", ")}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[11px] font-semibold cursor-help"
+                                      >
+                                        <AlertTriangle size={12} />
+                                        <span>{candidate.errors[0] || "Lỗi"}</span>
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -784,7 +954,7 @@ export function MenuImportModal({
 
         {/* Modal Footer */}
         {!submitSuccess && (
-          <div className="p-4 sm:p-5 border-t border-[#f5efec] bg-[#fbf8f6] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <div className="p-4 sm:p-5 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:pb-5 border-t border-[#f5efec] bg-[#fbf8f6] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             <div className="text-xs text-[#7b6f70] text-center sm:text-left">
               {parseResult && validItems.length > 0 ? (
                 <span>
@@ -800,7 +970,7 @@ export function MenuImportModal({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="flex-1 sm:flex-none min-h-[42px] px-4 py-2 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#554a4c] hover:bg-[#fffaf4] transition-colors"
+                className="flex-1 sm:flex-none min-h-[44px] px-4 py-2 rounded-xl border border-[#e6dad5] bg-white text-xs font-semibold text-[#554a4c] hover:bg-[#fffaf4] transition-colors"
               >
                 Đóng
               </button>
@@ -809,7 +979,7 @@ export function MenuImportModal({
                 type="button"
                 disabled={!parseResult || validItems.length === 0 || isSubmitting}
                 onClick={handleSubmitImport}
-                className="flex-1 sm:flex-none min-h-[42px] px-5 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 disabled:pointer-events-none"
+                className="flex-1 sm:flex-none min-h-[44px] px-5 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isSubmitting ? (
                   <>

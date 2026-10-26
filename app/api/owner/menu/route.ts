@@ -15,21 +15,21 @@ async function parseItem(db: D1Database, storeId: string, body: Record<string, u
   const values: Record<string, string | number | null> = {};
   for (const [field, column] of Object.entries(fields)) {
     let value = body[field];
-    if (value === undefined && create) {
+    if ((value === undefined || value === "") && create) {
       if (["isAvailable", "allowsSize", "allowsSugar", "allowsIce", "allowsToppings"].includes(field)) value = true;
       else if (field === "sortOrder") value = 0;
-      else if (field === "imageUrl") value = "/laboong/drinks/default.jpg";
+      else if (field === "imageUrl") value = "/illustrations/drink-vector";
       else if (!["name", "categoryId", "basePrice"].includes(field)) value = null;
     }
-    if (value === undefined && !create) continue;
+    if ((value === undefined || (field === "imageUrl" && value === "")) && !create) continue;
     if (field === "basePrice" || field === "sortOrder") values[column] = integer(value, 0, field === "basePrice" ? 100000000 : 100000, field);
     else if (["isAvailable", "allowsSize", "allowsSugar", "allowsIce", "allowsToppings"].includes(field)) {
       if (typeof value !== "boolean") throw new ApplicationError(`${field} không hợp lệ.`);
       values[column] = value ? 1 : 0;
     } else {
-      const required = ["name", "categoryId", "imageUrl"].includes(field);
+      const required = ["name", "categoryId"].includes(field);
       const parsed = text(value, field === "imageUrl" ? 2048 : field === "description" ? 1000 : 100, field, required ? 1 : 0);
-      if (field === "imageUrl" && !/^\/(?!\/)/.test(parsed) && !/^https:\/\//.test(parsed)) throw new ApplicationError("Ảnh cần đường dẫn nội bộ hoặc HTTPS.");
+      if (field === "imageUrl" && parsed && !/^\/(?!\/)/.test(parsed) && !/^https:\/\//.test(parsed)) throw new ApplicationError("Ảnh cần đường dẫn nội bộ hoặc HTTPS.");
       values[column] = parsed || null;
     }
   }
@@ -62,6 +62,28 @@ export const POST = apiHandler(async (request: Request) => {
   if (!auth.actor) return auth.response;
   const db = await ensureDatabase();
   const body = await readOrderBody(request);
+
+  // Dedicated handling for custom category creation
+  if (body.type === "category") {
+    const name = text(body.name, 100, "tên danh mục", 1);
+    const englishName = body.englishName ? text(body.englishName, 100, "tên tiếng Anh") : null;
+    const id = `cat-${crypto.randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const maxSortRow = await db
+      .prepare("SELECT MAX(sort_order) as max_sort FROM menu_categories WHERE store_id = ?")
+      .bind(auth.actor.storeId)
+      .first<{ max_sort: number | null }>();
+    const sortOrder = (maxSortRow?.max_sort ?? 0) + 1;
+
+    await db.batch([
+      db.prepare(
+        `INSERT INTO menu_categories (id, store_id, name, english_name, sort_order, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
+      ).bind(id, auth.actor.storeId, name, englishName, sortOrder, now, now),
+      auditStatement(db, auth.actor.email, "menu_category", id, "menu.category_created", { name }, now),
+    ]);
+    return Response.json({ success: true, category: { id, name, english_name: englishName, sort_order: sortOrder, is_active: 1 } }, { status: 201 });
+  }
 
   // Dedicated handling for menu option (e.g. Topping)
   if (body.type === "option" || body.groupType === "topping") {

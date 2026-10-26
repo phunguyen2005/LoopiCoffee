@@ -41,11 +41,26 @@ type TodaySnapshot = {
   checklist: { total: number; done: number };
 };
 
+type IncompleteChecklistPreviewItem = {
+  id: string;
+  label: string;
+  assignee: string;
+  required: number;
+  routine_type: "daily_routine" | "shift_routine";
+  shift_id: string | null;
+  shift_employee_name: string | null;
+  shift_role_label: string | null;
+  shift_starts_at: string | null;
+  shift_ends_at: string | null;
+};
+
 type OwnerDashboardSnapshot = {
   activeStaff: number;
   pendingExceptions: number;
   checklistDone: number;
   checklistTotal: number;
+  checklistIncomplete?: number;
+  incompleteChecklistItems?: IncompleteChecklistPreviewItem[];
   openIncidents: number;
 };
 
@@ -151,7 +166,11 @@ function getNavBadge(
   }
   if (href === "/app/checklists" && ownerMetrics && ownerMetrics.checklistTotal > 0) {
     const { checklistDone, checklistTotal } = ownerMetrics;
-    return { label: `${checklistDone}/${checklistTotal}`, tone: checklistDone === checklistTotal ? "success" : "neutral" };
+    const incomplete = Math.max(0, checklistTotal - checklistDone);
+    if (incomplete > 0) {
+      return { label: `${incomplete} chưa xong`, tone: "warning" };
+    }
+    return { label: `${checklistDone}/${checklistTotal}`, tone: "success" };
   }
   if (href === "/app/issues" && (ownerMetrics?.openIncidents ?? 0) > 0) {
     return { label: `${ownerMetrics!.openIncidents}`, tone: "warning" };
@@ -282,11 +301,13 @@ export function AppShell({
 
     loadShellData();
     window.addEventListener("focus", loadShellData);
+    window.addEventListener("loopi:checklist-updated", loadShellData);
     const pollingInterval = window.setInterval(loadShellData, 30000);
 
     return () => {
       controller.abort();
       window.removeEventListener("focus", loadShellData);
+      window.removeEventListener("loopi:checklist-updated", loadShellData);
       window.clearInterval(pollingInterval);
     };
   }, [isStaff, isTechnicalAdmin]);
@@ -770,8 +791,10 @@ export function AppShell({
                         <span>Quản trị & Đối soát</span>
                       </span>
                       <span className="nav-section-header-meta">
-                        {(ownerMetrics?.openIncidents ?? 0) > 0 && !isManagementOpen && (
-                          <span className="nav-section-alert-dot" title="Có sự cố chưa xử lý" />
+                        {(((ownerMetrics?.openIncidents ?? 0) > 0) ||
+                          ((ownerMetrics?.checklistTotal ?? 0) > (ownerMetrics?.checklistDone ?? 0))) &&
+                          !isManagementOpen && (
+                          <span className="nav-section-alert-dot" title="Có việc cần làm hoặc sự cố chưa xử lý" />
                         )}
                         <span className="nav-section-badge">{visibleManagement.length}</span>
                         <ChevronDown
@@ -795,22 +818,67 @@ export function AppShell({
                             {filteredManagement.map(({ href, label, icon: Icon }) => {
                               const active = isActive(pathname, href);
                               const badge = getNavBadge(href, ownerMetrics, todaySnapshot, adminSummary, isStaff, isTechnicalAdmin);
+                              const incompleteItems =
+                                href === "/app/checklists"
+                                  ? (ownerMetrics?.incompleteChecklistItems ?? [])
+                                  : [];
                               return (
-                                <Link
-                                  key={href}
-                                  href={href}
-                                  ref={active ? activeLinkRef : undefined}
-                                  className={`nav-item ${active ? "active" : ""}`}
-                                  aria-current={active ? "page" : undefined}
-                                >
-                                  <Icon size={17} />
-                                  <span className="truncate flex-1">{label}</span>
-                                  {badge && (
-                                    <span className={`nav-item-badge ${badge.tone}`}>
-                                      {badge.label}
-                                    </span>
+                                <div key={href} className="space-y-1">
+                                  <Link
+                                    href={href}
+                                    ref={active ? activeLinkRef : undefined}
+                                    className={`nav-item ${active ? "active" : ""}`}
+                                    aria-current={active ? "page" : undefined}
+                                  >
+                                    <Icon size={17} className="shrink-0" />
+                                    <span className="truncate flex-1 min-w-0">{label}</span>
+                                    {badge && (
+                                      <span className={`nav-item-badge ${badge.tone} shrink-0 whitespace-nowrap`}>
+                                        {badge.label}
+                                      </span>
+                                    )}
+                                  </Link>
+                                  {incompleteItems.length > 0 && (
+                                    <div
+                                      aria-label="Danh sách việc chưa hoàn thành"
+                                      className="ml-6 mr-1 mb-1 rounded-xl border border-[#f2dde2] bg-[#fffaf4] px-2.5 py-2 text-[11px] leading-snug text-[#5e4c4e] space-y-1.5"
+                                    >
+                                      {incompleteItems.slice(0, 3).map((task) => {
+                                        const scopeText =
+                                          task.routine_type === "shift_routine"
+                                            ? `Ca cụ thể: ${task.shift_role_label || task.assignee || "Ca làm"}${
+                                                task.shift_employee_name ? ` · ${task.shift_employee_name}` : ""
+                                              }`
+                                            : `Toàn ca làm · ${
+                                                task.assignee === "Toàn bộ ca làm" || task.assignee === "Toàn bộ ngày vận hành"
+                                                  ? "Việc chung"
+                                                  : task.assignee
+                                              }`;
+                                        return (
+                                          <div key={task.id} className="flex items-start gap-1.5">
+                                            <span
+                                              className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#d96d83]"
+                                              aria-hidden="true"
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate font-semibold text-[#332a2b]">
+                                                {task.label}
+                                              </div>
+                                              <div className="truncate text-[10px] text-[#7b6f70]">
+                                                {scopeText}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      {(ownerMetrics?.checklistIncomplete ?? incompleteItems.length) > 3 && (
+                                        <div className="pt-0.5 text-[10px] font-medium text-[#6f2939]">
+                                          +{(ownerMetrics?.checklistIncomplete ?? incompleteItems.length) - 3} việc chưa hoàn thành khác
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
-                                </Link>
+                                </div>
                               );
                             })}
                           </nav>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, AlertCircle, Loader2, Pencil } from "lucide-react";
 import { type CartItemOption } from "./item-detail-modal";
 import { formatVND } from "./menu-card";
 import { prepareOrderAttempt, submitOrderAttempt, rememberReceipt, clearPendingOrder } from "./receipt-storage";
@@ -15,6 +15,7 @@ interface CartDrawerProps {
   onRemoveItem: (index: number) => void;
   onClearCart: () => void;
   onOrderSuccess: (order: { id: string; orderCode: string; customerName: string; customerPhone: string; totalAmount: number; itemCount: number; receiptToken: string }) => void;
+  onEditItem: (index: number) => void;
 }
 
 const VN_PHONE_REGEX = /^(0[35789])[0-9]{8}$/;
@@ -27,6 +28,7 @@ export function CartDrawer({
   onRemoveItem,
   onClearCart,
   onOrderSuccess,
+  onEditItem,
 }: CartDrawerProps) {
   const [customerName, setCustomerName] = useState(() => {
     if (typeof window !== "undefined") {
@@ -202,22 +204,48 @@ export function CartDrawer({
             items.map((it, idx) => (
               <div
                 key={`${it.itemId}-${idx}`}
-                className="bg-white p-3.5 rounded-2xl border border-[#EAE3D9] shadow-sm flex flex-col gap-2"
+                className="bg-white p-3.5 rounded-2xl border border-[#EAE3D9] shadow-sm flex flex-col gap-2 transition-all hover:border-[#3D5A40]/30"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex-grow">
-                    <h4 className="font-bold text-sm text-[#231F1D]">{it.name}</h4>
+                  <div
+                    onClick={() => onEditItem(idx)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onEditItem(idx);
+                      }
+                    }}
+                    aria-label={`Chỉnh sửa tùy chọn món ${it.name}`}
+                    className="flex-grow cursor-pointer group/item select-none"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-sm text-[#231F1D] group-hover/item:text-[#3D5A40] transition-colors">
+                        {it.name}
+                      </h4>
+                      <span className="text-[10px] text-[#3D5A40] opacity-0 group-hover/item:opacity-100 sm:inline-flex items-center gap-0.5 transition-opacity">
+                        <Pencil size={10} />
+                      </span>
+                    </div>
+
                     {/* Customization Badges */}
                     <div className="flex flex-wrap gap-1 mt-1 text-[11px] text-stone-500">
-                      <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
-                        {it.size}
-                      </span>
-                      <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
-                        {it.sugar.split(" ")[0]}
-                      </span>
-                      <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
-                        {it.ice.split(" ")[0]}
-                      </span>
+                      {it.size && (
+                        <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
+                          {it.size}
+                        </span>
+                      )}
+                      {it.sugar && (
+                        <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
+                          {it.sugar.split(" ")[0]}
+                        </span>
+                      )}
+                      {it.ice && (
+                        <span className="bg-[#FAF7F2] px-2 py-0.5 rounded border border-stone-200">
+                          {it.ice.split(" ")[0]}
+                        </span>
+                      )}
                     </div>
 
                     {/* Toppings list */}
@@ -235,14 +263,26 @@ export function CartDrawer({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onRemoveItem(idx)}
-                    aria-label={`Xoá món ${it.name}`}
-                    className="text-stone-400 hover:text-red-500 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onEditItem(idx)}
+                      aria-label={`Chỉnh sửa tùy chọn món ${it.name}`}
+                      className="text-stone-500 hover:text-[#3D5A40] hover:bg-[#EBF1EA] px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 min-h-[44px] min-w-[44px] transition-colors"
+                    >
+                      <Pencil size={13} />
+                      <span className="hidden min-[360px]:inline">Chỉnh sửa</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onRemoveItem(idx)}
+                      aria-label={`Xoá món ${it.name}`}
+                      className="text-stone-400 hover:text-red-500 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-stone-100">
@@ -254,7 +294,10 @@ export function CartDrawer({
                   <div className="flex items-center border border-stone-200 rounded-lg overflow-hidden bg-stone-50">
                     <button
                       type="button"
-                      onClick={() => onUpdateQuantity(idx, it.quantity - 1)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateQuantity(idx, it.quantity - 1);
+                      }}
                       disabled={it.quantity <= 1}
                       aria-label="Giảm số lượng món"
                       className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-600 hover:bg-stone-200 disabled:opacity-30"
@@ -266,7 +309,10 @@ export function CartDrawer({
                     </span>
                     <button
                       type="button"
-                      onClick={() => onUpdateQuantity(idx, it.quantity + 1)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateQuantity(idx, it.quantity + 1);
+                      }}
                       disabled={it.quantity >= 20}
                       aria-label="Tăng số lượng món"
                       className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-600 hover:bg-stone-200"

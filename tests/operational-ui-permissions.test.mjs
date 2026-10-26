@@ -326,13 +326,79 @@ test("owner can suspend an employee and remove access to new scheduling", async 
       action: "update_status",
       status: "suspended",
       expectedRevision: 0,
-      reason: "Tạm khóa theo yêu cầu vận hành",
     }),
   }));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).status, "suspended");
   assert.equal(banDuration, "876000h");
   assert.equal(db.sqlite.prepare("SELECT status FROM employees WHERE id = ?").get(employee.id).status, "suspended");
+});
+
+test("owner PATCH /api/team can update employee status and profile simultaneously in save flow", async (t) => {
+  const db = createDatabase();
+  t.after(() => db.close());
+  seedStore(db, "store-a");
+  const owner = seedEmployee(db, { id: "owner-status-save", storeId: "store-a", role: "owner", status: "active" });
+  const employee = seedEmployee(db, { id: "employee-status-save", storeId: "store-a", role: "employee", status: "active" });
+  let banDuration = null;
+  const route = await setupTeamRouteTest(t, db, owner, {
+    updateUserById: async (_id, attributes) => {
+      banDuration = attributes.ban_duration;
+      return { error: null };
+    },
+  });
+
+  const response = await route.PATCH(new Request("http://localhost/api/team", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: employee.id,
+      expectedUpdatedAt: "2026-07-01T00:00:00.000Z",
+      displayName: "Nhân viên Đã Đổi Trạng Thái",
+      status: "suspended",
+      expectedRevision: 0,
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.status, "suspended");
+  assert.equal(banDuration, "876000h");
+  assert.equal(db.sqlite.prepare("SELECT status, display_name FROM employees WHERE id = ?").get(employee.id).status, "suspended");
+  assert.equal(db.sqlite.prepare("SELECT display_name FROM employees WHERE id = ?").get(employee.id).display_name, "Nhân viên Đã Đổi Trạng Thái");
+});
+
+test("owner PATCH /api/team still requires a reason for role and payroll changes", async (t) => {
+  const db = createDatabase();
+  t.after(() => db.close());
+  seedStore(db, "store-a");
+  const owner = seedEmployee(db, { id: "owner-sensitive-profile", storeId: "store-a", role: "owner", status: "active" });
+  const employee = seedEmployee(db, { id: "employee-sensitive-profile", storeId: "store-a", role: "employee", status: "active" });
+  const route = await setupTeamRouteTest(t, db, owner);
+  const expectedUpdatedAt = db.sqlite.prepare("SELECT updated_at FROM employees WHERE id = ?").get(employee.id).updated_at;
+
+  const staleStatusResponse = await route.PATCH(new Request("http://localhost/api/team", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: employee.id, expectedUpdatedAt, status: "suspended" }),
+  }));
+  assert.equal(staleStatusResponse.status, 400);
+  assert.equal((await staleStatusResponse.json()).code, "account_conflict");
+
+  const roleResponse = await route.PATCH(new Request("http://localhost/api/team", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: employee.id, expectedUpdatedAt, role: "team_lead" }),
+  }));
+  assert.equal(roleResponse.status, 400);
+  assert.equal((await roleResponse.json()).code, "reason_required");
+
+  const payrollResponse = await route.PATCH(new Request("http://localhost/api/team", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: employee.id, expectedUpdatedAt, payrollEligible: true, compensationType: "hourly", hourlyRate: 30000 }),
+  }));
+  assert.equal(payrollResponse.status, 400);
+  assert.equal((await payrollResponse.json()).code, "reason_required");
 });
 
 test("manager cannot update employee account status through the team route", async (t) => {

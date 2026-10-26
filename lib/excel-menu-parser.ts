@@ -43,7 +43,9 @@ export interface ParseExcelResult {
 }
 
 // Strip Vietnamese accents and normalize for fuzzy matching
-export function normalizeKeyword(str: string): string {
+export function normalizeKeyword(val: unknown): string {
+  if (val == null) return "";
+  const str = typeof val === "string" ? val : String(val);
   return str
     .toLowerCase()
     .normalize("NFD")
@@ -473,10 +475,10 @@ export function generateSampleExcelFile(): Uint8Array {
     "Cho chọn Topping",
   ];
 
-  const sampleData = [
+  const sampleData: (string | number)[][] = [
     [
       "Cà phê sữa đá",
-      "35000",
+      35000,
       "Cà phê truyền thống",
       "Iced Milk Coffee",
       "Cà phê pha phin truyền thống thơm béo",
@@ -488,7 +490,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Cà phê đen đá",
-      "30000",
+      30000,
       "Cà phê truyền thống",
       "Iced Black Coffee",
       "Cà phê Robusta mộc đậm đà nguyên bản",
@@ -500,7 +502,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Bạc xỉu 3 tầng",
-      "38000",
+      38000,
       "Cà phê truyền thống",
       "White Coffee",
       "Nhiều sữa ít cà phê, béo ngậy ngọt ngào",
@@ -512,7 +514,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Trà đào cam sả",
-      "45000",
+      45000,
       "Trà trái cây",
       "Peach Orange Lemongrass Tea",
       "Vị chua thanh ngọt dịu kèm đào miếng giòn",
@@ -524,7 +526,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Trà vải hoa hồng",
-      "45000",
+      45000,
       "Trà trái cây",
       "Lychee Rose Tea",
       "Hương hoa hồng thoang thoảng cùng vải tươi",
@@ -536,7 +538,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Trà sữa Oolong nướng",
-      "48000",
+      48000,
       "Trà sữa",
       "Roasted Oolong Milk Tea",
       "Trà đậm vị nướng hòa quyện sữa tươi",
@@ -548,7 +550,7 @@ export function generateSampleExcelFile(): Uint8Array {
     ],
     [
       "Bánh Croissant bơ tỏi",
-      "28000",
+      28000,
       "Bánh ngọt",
       "Garlic Butter Croissant",
       "Bánh sừng bò nướng thơm giòn béo bơ",
@@ -562,7 +564,15 @@ export function generateSampleExcelFile(): Uint8Array {
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
 
-  // Set column widths for readability
+  // Format price cells with currency/number display for Windows Office Excel
+  for (let r = 2; r <= sampleData.length + 1; r++) {
+    const cellKey = `B${r}`;
+    if (ws[cellKey]) {
+      ws[cellKey].z = "#,##0";
+    }
+  }
+
+  // Set column widths for readability in Excel
   ws["!cols"] = [
     { wch: 25 }, // Tên món
     { wch: 14 }, // Giá bán
@@ -577,7 +587,19 @@ export function generateSampleExcelFile(): Uint8Array {
   ];
 
   const wb = XLSX.utils.book_new();
+  wb.Props = {
+    Title: "LoopyCafe Menu Template",
+    Subject: "Menu Template for LoopyCafe Management System",
+    Author: "LoopyCafe",
+    CreatedDate: new Date(),
+  };
   XLSX.utils.book_append_sheet(wb, ws, "Thực đơn");
 
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array;
+  const out = XLSX.write(wb, {
+    type: "array",
+    bookType: "xlsx",
+    compression: true,
+  });
+
+  return out instanceof Uint8Array ? out : new Uint8Array(out);
 }

@@ -262,12 +262,84 @@ test("Owner observes checklist progress and specific completion details for all 
     "Finished shift mutation must not write an execution",
   );
 
+  // Staff cannot invoke overdue resolution actions
+  const staffLateResolve = await route.PATCH(
+    request("http://localhost/api/checklists", "PATCH", {
+      id: "finished-shift-item",
+      action: "complete_late",
+    }),
+  );
+  assert.equal(staffLateResolve.status, 403);
+
   currentActor = owner;
   const ownerAfterFinishedShift = await (
     await route.GET(new Request("http://localhost/api/checklists"))
   ).json();
   assert.ok(!ownerAfterFinishedShift.shifts.some((shift) => shift.id === finishedShift.id));
-  assert.ok(!ownerAfterFinishedShift.items.some((item) => item.id === "finished-shift-item"));
+  assert.ok(
+    ownerAfterFinishedShift.items.some((item) => item.id === "finished-shift-item" && item.completed === 0),
+    "Owner must see created-but-incomplete shift checklist items",
+  );
+
+  // Owner can resolve overdue item via complete_late
+  const ownerCompleteLate = await route.PATCH(
+    request("http://localhost/api/checklists", "PATCH", {
+      id: "finished-shift-item",
+      action: "complete_late",
+    }),
+  );
+  assert.equal(ownerCompleteLate.status, 200);
+  const ownerAfterCompletedFinishedShift = await (
+    await route.GET(new Request("http://localhost/api/checklists"))
+  ).json();
+  assert.ok(
+    !ownerAfterCompletedFinishedShift.items.some((item) => item.id === "finished-shift-item"),
+    "Completed item on a finished shift must not remain in active items",
+  );
+
+  // Seed 2 more overdue items to test carry_over and dismiss
+  db.sqlite.prepare(
+    `INSERT INTO checklist_items (id, store_id, label, assignee, routine_type, shift_id, required, completed, updated_at)
+     VALUES (?, ?, ?, ?, 'shift_routine', ?, 1, 0, ?), (?, ?, ?, ?, 'shift_routine', ?, 1, 0, ?)`,
+  ).run(
+    "finished-carry-item",
+    "store-a",
+    "Chuyển việc sang hôm nay",
+    "Thu ngân ca cũ",
+    finishedShift.id,
+    now.toISOString(),
+    "finished-dismiss-item",
+    "store-a",
+    "Bỏ qua việc ca cũ",
+    "Thu ngân ca cũ",
+    finishedShift.id,
+    now.toISOString(),
+  );
+
+  const carryRes = await route.PATCH(
+    request("http://localhost/api/checklists", "PATCH", {
+      id: "finished-carry-item",
+      action: "carry_over",
+      targetRoutineType: "daily_routine",
+      assignee: "Toàn bộ ca làm",
+    }),
+  );
+  assert.equal(carryRes.status, 200);
+
+  const dismissRes = await route.PATCH(
+    request("http://localhost/api/checklists", "PATCH", {
+      id: "finished-dismiss-item",
+      action: "dismiss",
+    }),
+  );
+  assert.equal(dismissRes.status, 200);
+
+  const ownerAfterCarryAndDismiss = await (
+    await route.GET(new Request("http://localhost/api/checklists"))
+  ).json();
+  const carriedItem = ownerAfterCarryAndDismiss.items.find((item) => item.id === "finished-carry-item");
+  assert.ok(carriedItem && carriedItem.routine_type === "daily_routine" && carriedItem.shift_id === null);
+  assert.ok(!ownerAfterCarryAndDismiss.items.some((item) => item.id === "finished-dismiss-item"));
 
   const createForFinishedShift = await route.POST(
     request("http://localhost/api/checklists", "POST", {

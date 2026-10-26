@@ -60,7 +60,7 @@ export const GET = apiHandler(async (request?: Request) => {
        LEFT JOIN employees se ON se.store_id = s.store_id AND lower(se.email) = lower(s.employee_email)
        LEFT JOIN checklist_executions x ON x.item_id = i.id AND (
          (i.routine_type = 'daily_routine' AND x.business_date = ?)
-         OR (i.routine_type = 'shift_routine' AND x.business_date = date(s.starts_at, '+7 hours'))
+         OR (i.routine_type = 'shift_routine' AND x.business_date = COALESCE(date(s.starts_at, '+7 hours'), ?))
        )
        LEFT JOIN employees ce ON ce.store_id = i.store_id AND lower(ce.email) = lower(x.completed_by)
        WHERE i.store_id = ?
@@ -69,7 +69,10 @@ export const GET = apiHandler(async (request?: Request) => {
            OR (
              i.routine_type = 'shift_routine' AND (
                (? = 1 AND (
-                 (? IS NOT NULL AND i.shift_id = ? AND s.ends_at > ? AND s.starts_at <= ?)
+                 (? IS NOT NULL AND i.shift_id = ? AND (
+                   (s.ends_at > ? AND s.starts_at <= ?)
+                   OR COALESCE(x.completed, 0) = 0
+                 ))
                  OR (? IS NULL AND (
                    i.shift_id IN (
                      SELECT sh.id FROM shifts sh
@@ -77,14 +80,18 @@ export const GET = apiHandler(async (request?: Request) => {
                        AND sh.approved_leave_request_id IS NULL
                        AND sh.ends_at > ? AND sh.starts_at <= ?
                    )
+                   OR COALESCE(x.completed, 0) = 0
                  ))
                ))
                OR (? = 0 AND i.shift_id = ?)
              )
            )
          )
-       ORDER BY CASE i.routine_type WHEN 'shift_routine' THEN 0 ELSE 1 END, i.id`,
+       ORDER BY CASE COALESCE(x.completed, 0) WHEN 0 THEN 0 ELSE 1 END,
+                CASE i.routine_type WHEN 'shift_routine' THEN 0 ELSE 1 END,
+                i.id`,
     ).bind(
+      currentBusinessDate,
       currentBusinessDate,
       auth.actor.storeId,
       canManage ? 1 : 0,
@@ -151,7 +158,9 @@ export const POST = apiHandler(async (request: Request) => {
   }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const assignee = body.assignee?.trim() || shift?.role_label || "Toàn bộ ngày vận hành";
+  const assignee = routineType === "shift_routine"
+    ? (body.assignee?.trim() || shift?.role_label || "Theo ca cụ thể")
+    : (body.assignee?.trim() || "Toàn bộ ca làm");
   const required = body.required !== false ? 1 : 0;
   await db.batch([
     db.prepare(
@@ -167,33 +176,185 @@ export const POST = apiHandler(async (request: Request) => {
 export const PATCH = apiHandler(async (request: Request) => {
   const auth = await requireApiUser();
   if (!auth.actor) return auth.response;
-  const body = await readObject(request, { id: "string", completed: "boolean" }) as { id?: string; completed?: boolean };
-  if (!body.id || typeof body.completed !== "boolean") {
+  const body = await readObject(request, {
+    id: "string",
+    completed: "boolean",
+    action: "string",
+    targetRoutineType: "string",
+    targetShiftId: "string",
+    assignee: "string",
+  }) as {
+    id?: string;
+    completed?: boolean;
+    action?: "complete_late" | "carry_over" | "dismiss";
+    targetRoutineType?: "daily_routine" | "shift_routine";
+    targetShiftId?: string;
+    assignee?: string;
+  };
+  if (!body.id || (!body.action && typeof body.completed !== "boolean")) {
     return Response.json({ error: "Cập nhật checklist không hợp lệ." }, { status: 400 });
   }
   const db = await ensureDatabase();
   const item = await db.prepare(
-    `SELECT i.id, i.routine_type, i.shift_id, s.starts_at, s.ends_at, s.employee_email
+    `SELECT i.id, i.label, i.assignee, i.routine_type, i.shift_id, s.starts_at, s.ends_at, s.employee_email
      FROM checklist_items i LEFT JOIN shifts s ON s.id = i.shift_id
      WHERE i.id = ? AND i.store_id = ?`,
   ).bind(body.id, auth.actor.storeId).first<{
-    id: string; routine_type: string; shift_id: string | null; starts_at: string | null; ends_at: string | null; employee_email: string | null;
+    id: string;
+    label: string;
+    assignee: string;
+    routine_type: string;
+    shift_id: string | null;
+    starts_at: string | null;
+    ends_at: string | null;
+    employee_email: string | null;
   }>();
   if (!item) return Response.json({ error: "Không tìm thấy công việc." }, { status: 404 });
+
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const canManage = hasGrantedPermission(auth.actor, "checklists.manage");
+
+  // Overdue resolution actions (Owner / Manager with checklists.manage)
+  if (body.action) {
+    if (!canManage) {
+      return Response.json({ error: "Bạn không có quyền xử lý checklist quá hạn." }, { status: 403 });
+    }
+    if (body.action === "complete_late") {
+      const executionBusinessDate =
+        item.routine_type === "shift_routine" && item.starts_at
+          ? businessDate(new Date(item.starts_at))
+          : businessDate(nowDate);
+      await db.batch([
+        db.prepare(
+          `INSERT INTO checklist_executions(item_id,business_date,completed,completed_at,completed_by,updated_at)
+           VALUES(?,?,?,?,?,?) ON CONFLICT(item_id,business_date) DO UPDATE SET
+           completed=excluded.completed,completed_at=excluded.completed_at,completed_by=excluded.completed_by,updated_at=excluded.updated_at`,
+        ).bind(body.id, executionBusinessDate, 1, now, auth.actor.email, now),
+        auditStatement(
+          db,
+          auth.actor.email,
+          "checklist_item",
+          body.id,
+          "checklist.completed_late",
+          {
+            businessDate: executionBusinessDate,
+            routineType: item.routine_type,
+            shiftId: item.shift_id,
+            lateResolution: true,
+          },
+          now,
+        ),
+      ]);
+      return Response.json({
+        updated: true,
+        action: "complete_late",
+        completed: true,
+        completedAt: now,
+        completedBy: auth.actor.email,
+        completedByName: auth.actor.displayName || auth.actor.email,
+        businessDate: executionBusinessDate,
+      });
+    }
+
+    if (body.action === "carry_over") {
+      const targetRoutineType = body.targetRoutineType === "shift_routine" ? "shift_routine" : "daily_routine";
+      let nextShiftId: string | null = null;
+      let nextAssignee = body.assignee?.trim() || "Toàn bộ ca làm";
+      if (targetRoutineType === "shift_routine") {
+        if (!body.targetShiftId?.trim()) {
+          return Response.json({ error: "Vui lòng chọn ca mới để chuyển tiếp công việc." }, { status: 400 });
+        }
+        const targetShift = await db
+          .prepare(
+            `SELECT id, employee_email, starts_at, ends_at, role_label FROM shifts
+             WHERE id = ? AND store_id = ? AND status IN ('published', 'completed')`,
+          )
+          .bind(body.targetShiftId.trim(), auth.actor.storeId)
+          .first<ShiftRow>();
+        if (!targetShift) {
+          return Response.json({ error: "Không tìm thấy ca đích để chuyển tiếp." }, { status: 404 });
+        }
+        if (new Date(targetShift.ends_at).getTime() <= nowDate.getTime()) {
+          return Response.json(
+            { error: "Ca đích đã kết thúc, vui lòng chọn ca đang diễn ra hoặc sắp tới.", code: "shift_ended" },
+            { status: 409 },
+          );
+        }
+        nextShiftId = targetShift.id;
+        nextAssignee = body.assignee?.trim() || targetShift.role_label || "Theo ca cụ thể";
+      }
+      await db.batch([
+        db.prepare(
+          `UPDATE checklist_items
+           SET routine_type = ?, shift_id = ?, assignee = ?, completed = 0, completed_at = NULL, updated_at = ?
+           WHERE id = ? AND store_id = ?`,
+        ).bind(targetRoutineType, nextShiftId, nextAssignee, now, body.id, auth.actor.storeId),
+        auditStatement(
+          db,
+          auth.actor.email,
+          "checklist_item",
+          body.id,
+          "checklist.carried_over",
+          {
+            previousShiftId: item.shift_id,
+            targetRoutineType,
+            targetShiftId: nextShiftId,
+            assignee: nextAssignee,
+          },
+          now,
+        ),
+      ]);
+      return Response.json({
+        updated: true,
+        action: "carry_over",
+        routineType: targetRoutineType,
+        shiftId: nextShiftId,
+        assignee: nextAssignee,
+      });
+    }
+
+    if (body.action === "dismiss") {
+      await db.batch([
+        db.prepare(`DELETE FROM checklist_executions WHERE item_id = ?`).bind(body.id),
+        db.prepare(`DELETE FROM checklist_items WHERE id = ? AND store_id = ?`).bind(body.id, auth.actor.storeId),
+        auditStatement(
+          db,
+          auth.actor.email,
+          "checklist_item",
+          body.id,
+          "checklist.dismissed",
+          {
+            label: item.label,
+            previousShiftId: item.shift_id,
+            routineType: item.routine_type,
+            assignee: item.assignee,
+          },
+          now,
+        ),
+      ]);
+      return Response.json({
+        updated: true,
+        action: "dismiss",
+        deletedId: body.id,
+      });
+    }
+
+    return Response.json({ error: "Hành động xử lý checklist không hợp lệ." }, { status: 400 });
+  }
+
   if (item.routine_type === "shift_routine") {
     const isAssigned = item.employee_email?.toLowerCase() === auth.actor.email.toLowerCase();
-    if (!isAssigned && !hasGrantedPermission(auth.actor, "checklists.manage")) {
+    if (!isAssigned && !canManage) {
       return Response.json({ error: "Bạn không thuộc ca của checklist này." }, { status: 403 });
     }
   }
-  const nowDate = new Date();
   if (item.routine_type === "shift_routine" && (!item.ends_at || new Date(item.ends_at).getTime() <= nowDate.getTime())) {
     return Response.json({
       error: "Ca làm đã kết thúc. Checklist chỉ được xem lại và không thể thay đổi.",
       code: "shift_ended",
     }, { status: 409 });
   }
-  const now = nowDate.toISOString();
   const executionBusinessDate = item.routine_type === "shift_routine" && item.starts_at
     ? businessDate(new Date(item.starts_at))
     : businessDate(nowDate);

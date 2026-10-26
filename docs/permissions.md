@@ -72,7 +72,7 @@ Source hiện tại chưa triển khai đầy đủ cấm self-approval, role ta
 | Nhóm | HTTP/API | Application/scope |
 |---|---|---|
 | Tài khoản | `/api/admin/accounts` | revision, idempotency, last-owner, recent re-auth, Auth–D1 status |
-| Hồ sơ nhân sự | `/api/team` | `people.read/update`, cấp dưới, rate history; chỉ OWNER đổi trạng thái nhân viên khác, có revision/lý do và không áp dụng cho owner/system_admin |
+| Hồ sơ nhân sự | `/api/team` | `people.read/update`, cấp dưới, rate history; chỉ OWNER đổi trạng thái nhân viên khác, có revision nhưng không bắt buộc lý do và không áp dụng cho owner/system_admin; đổi role/quyền hoặc mức lương vẫn cần lý do |
 | Lịch/yêu cầu | `/api/shifts`, `/api/requests` | permission theo action + self-approval/cấp bậc/revision |
 | Công/bằng chứng | `/api/attendance/review`, `/api/files/*` | review/correct/evidence tách riêng + scope |
 | Lương/export | `/api/reports/*` | read/finalize/export tách riêng; reopen vẫn OWNER-only |

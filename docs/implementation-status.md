@@ -82,7 +82,7 @@ Các thay đổi dưới đây đã được triển khai trên working tree sau
 
 ## Cập nhật trạng thái nhân viên và phạm vi xếp lịch (2026-10-25)
 
-- OWNER có thể chuyển nhân viên cấp dưới giữa `active`, `suspended` và `offboarded` tại màn hình Nhân sự; mutation bắt buộc lý do và `access_revision`, được ghi audit và đồng bộ trạng thái khóa với Supabase Auth khi tài khoản đã liên kết.
+- OWNER có thể chuyển nhân viên cấp dưới giữa `active`, `suspended` và `offboarded` tại màn hình Nhân sự; theo DEC-017 mutation không bắt buộc lý do nhưng vẫn bắt buộc `access_revision`, ghi audit và đồng bộ trạng thái khóa với Supabase Auth khi tài khoản đã liên kết. Sửa hồ sơ thông thường cũng không bắt buộc lý do; đổi role/quyền hoặc lương và cấp lại mật khẩu vẫn bắt buộc lý do.
 - Danh sách chọn người khi xếp lịch chỉ trả tài khoản `active` có tham gia chấm công. API tạo ca, xuất bản ca nháp, đổi ca và bố trí người thay vẫn kiểm tra trạng thái phía server để chặn lách giao diện.
 - Khóa hoặc nghỉ việc không xóa ca, công hay dữ liệu lương cũ; lịch sử đã phát sinh tiếp tục được giữ để đối soát.
 

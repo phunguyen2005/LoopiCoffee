@@ -76,7 +76,7 @@ export function PersistentChecklistsView({
   const [state, setState] = useState<ApiState>("loading");
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState("");
-  const [newAssignee, setNewAssignee] = useState("Ca sáng (Mở cửa)");
+  const [newAssignee, setNewAssignee] = useState("Toàn bộ ca làm");
   const [routineType, setRoutineType] = useState<"daily_routine" | "shift_routine">("daily_routine");
   const [selectedShiftId, setSelectedShiftId] = useState("");
   const [isRequired, setIsRequired] = useState(true);
@@ -84,6 +84,8 @@ export function PersistentChecklistsView({
   const [triggerCelebration, setTriggerCelebration] = useState(false);
   const [pending, setPending] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [carryOverOpenId, setCarryOverOpenId] = useState<string | null>(null);
+  const [carryOverTarget, setCarryOverTarget] = useState<string>("daily");
   const [filterMode, setFilterMode] = useState<"all" | "incomplete" | "completed">("all");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +172,7 @@ export function PersistentChecklistsView({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           label: newLabel,
-          assignee: newAssignee,
+          assignee: routineType === "shift_routine" ? undefined : newAssignee,
           required: isRequired,
           routineType,
           shiftId: routineType === "shift_routine" ? selectedShiftId : undefined,
@@ -181,6 +183,7 @@ export function PersistentChecklistsView({
       setShowForm(false);
       showLoopyToast("Đã thêm công việc mới!", { message: newLabel, mood: "checklist", type: "success" });
       await refresh();
+      window.dispatchEvent(new CustomEvent("loopi:checklist-updated"));
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : "Chưa lưu được công việc. Vui lòng thử lại.");
     } finally {
@@ -257,6 +260,7 @@ export function PersistentChecklistsView({
           });
         }
       }
+      window.dispatchEvent(new CustomEvent("loopi:checklist-updated"));
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : "Chưa lưu được trạng thái checklist. Vui lòng thử lại.");
     } finally {
@@ -264,16 +268,89 @@ export function PersistentChecklistsView({
     }
   }
 
-  // Filter items by scope (all vs daily vs specific shift)
+  async function resolveOverdueItem(
+    item: ChecklistItem,
+    options: {
+      action: "complete_late" | "carry_over" | "dismiss";
+      targetRoutineType?: "daily_routine" | "shift_routine";
+      targetShiftId?: string;
+      assignee?: string;
+    },
+  ) {
+    if (pending || togglingId) return;
+    setTogglingId(item.id);
+    setError(null);
+    try {
+      await readJson(
+        await fetch("/api/checklists", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: item.id,
+            ...options,
+          }),
+        }),
+      );
+      if (options.action === "complete_late") {
+        playChime("success");
+        showLoopyToast("Đã hoàn thành bù!", {
+          message: `Đã ghi nhận hoàn thành cho "${item.label}"`,
+          mood: "success",
+          type: "success",
+        });
+      } else if (options.action === "carry_over") {
+        playChime("success");
+        showLoopyToast("Đã chuyển sang hôm nay!", {
+          message: `"${item.label}" đã được đưa vào danh sách việc cần làm hôm nay`,
+          mood: "checklist",
+          type: "success",
+        });
+        setCarryOverOpenId(null);
+      } else if (options.action === "dismiss") {
+        playChime("pop");
+        showLoopyToast("Đã đóng việc tồn đọng", {
+          message: `Đã bỏ qua "${item.label}" và ghi nhật ký hoạt động`,
+          mood: "checklist",
+          type: "info",
+        });
+      }
+      await refresh();
+      window.dispatchEvent(new CustomEvent("loopi:checklist-updated"));
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Chưa xử lý được công việc quá hạn. Vui lòng thử lại.");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  const isOverdueShiftItem = React.useCallback(
+    (item: ChecklistItem) =>
+      item.routine_type === "shift_routine" &&
+      !item.completed &&
+      (!item.shift_ends_at || new Date(item.shift_ends_at).getTime() <= currentTimeMs),
+    [currentTimeMs],
+  );
+
+  // Separate overdue items from past ended shifts vs active items for today
+  const overdueShiftItems = useMemo(
+    () => items.filter((item) => isOverdueShiftItem(item)),
+    [items, isOverdueShiftItem],
+  );
+  const todayItems = useMemo(
+    () => items.filter((item) => !isOverdueShiftItem(item)),
+    [items, isOverdueShiftItem],
+  );
+
+  // Filter today's items by scope (all vs daily vs specific shift)
   const scopedItems = useMemo(() => {
     if (scopeFilter === "daily") {
-      return items.filter((item) => item.routine_type !== "shift_routine");
+      return todayItems.filter((item) => item.routine_type !== "shift_routine");
     }
     if (scopeFilter !== "all") {
-      return items.filter((item) => item.shift_id === scopeFilter);
+      return todayItems.filter((item) => item.shift_id === scopeFilter);
     }
-    return items;
-  }, [items, scopeFilter]);
+    return todayItems;
+  }, [todayItems, scopeFilter]);
 
   // Filter scoped items by completion status
   const filteredItems = useMemo(() => {
@@ -286,20 +363,41 @@ export function PersistentChecklistsView({
     return scopedItems;
   }, [scopedItems, filterMode]);
 
-  // Overall statistics
-  const done = items.filter((item) => item.completed).length;
-  const requiredIncompleteCount = items.filter((item) => item.required && !item.completed).length;
-  const isAllDone = items.length > 0 && done === items.length;
-  const overallPercentage = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
+  // Overall statistics for TODAY's active scope (excluding overdue past-shift items)
+  const done = todayItems.filter((item) => item.completed).length;
+  const requiredIncompleteCount = todayItems.filter((item) => item.required && !item.completed).length;
+  const isAllDone = todayItems.length > 0 && done === todayItems.length && overdueShiftItems.length === 0;
+  const overallPercentage = todayItems.length > 0 ? Math.round((done / todayItems.length) * 100) : 0;
 
   // Filter counts
   const scopedDoneCount = scopedItems.filter((item) => item.completed).length;
   const scopedIncompleteCount = scopedItems.length - scopedDoneCount;
 
-  // Shift progress breakdowns
+  // Active/upcoming shifts for today's breakdown
+  const allShiftsForBreakdown = useMemo(() => {
+    const map = new Map<string, ShiftSummary>();
+    for (const shift of shifts) {
+      map.set(shift.id, shift);
+    }
+    for (const item of todayItems) {
+      if (item.routine_type === "shift_routine" && item.shift_id && !map.has(item.shift_id)) {
+        map.set(item.shift_id, {
+          id: item.shift_id,
+          starts_at: item.shift_starts_at || "",
+          ends_at: item.shift_ends_at || "",
+          role_label: item.shift_role_label || item.assignee || "Ca làm việc",
+          employee_name: item.shift_employee_name || item.assignee || "Nhân sự ca",
+          employee_email: item.shift_employee_email || undefined,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [shifts, todayItems]);
+
+  // Shift progress breakdowns for today
   const shiftProgressStats = useMemo(() => {
-    return shifts.map((shift) => {
-      const shiftTasks = items.filter((item) => item.shift_id === shift.id);
+    return allShiftsForBreakdown.map((shift) => {
+      const shiftTasks = todayItems.filter((item) => item.shift_id === shift.id);
       const shiftDone = shiftTasks.filter((item) => item.completed).length;
       const shiftPercent = shiftTasks.length > 0 ? Math.round((shiftDone / shiftTasks.length) * 100) : 0;
       return {
@@ -310,9 +408,9 @@ export function PersistentChecklistsView({
         isComplete: shiftTasks.length > 0 && shiftDone === shiftTasks.length,
       };
     });
-  }, [shifts, items]);
+  }, [allShiftsForBreakdown, todayItems]);
 
-  const totalDailyItems = items.filter((item) => item.routine_type !== "shift_routine");
+  const totalDailyItems = todayItems.filter((item) => item.routine_type !== "shift_routine");
   const doneDailyItems = totalDailyItems.filter((item) => item.completed).length;
 
   const sortChecklistItems = (list: ChecklistItem[]) =>
@@ -325,10 +423,49 @@ export function PersistentChecklistsView({
   const shiftItems = sortChecklistItems(filteredItems.filter((item) => item.routine_type === "shift_routine"));
   const dailyItems = sortChecklistItems(filteredItems.filter((item) => item.routine_type !== "shift_routine"));
 
+  const todayDateKey = storeDateKey(new Date(currentTimeMs));
+
+  const formatShiftScopeLabel = (item: ChecklistItem) => {
+    const role = item.shift_role_label || item.assignee || "Ca cụ thể";
+    const emp = item.shift_employee_name || item.assignee || "Nhân sự ca";
+    const timeRange =
+      item.shift_starts_at && item.shift_ends_at
+        ? `${formatTime(item.shift_starts_at)} — ${formatTime(item.shift_ends_at)}`
+        : item.shift_starts_at
+        ? formatTime(item.shift_starts_at)
+        : "";
+    const shiftDate = item.shift_starts_at ? storeDateKey(new Date(item.shift_starts_at)) : "";
+    const dateSuffix = shiftDate && shiftDate !== todayDateKey ? ` (${shiftDate})` : "";
+    return {
+      badgeText: `Phạm vi: Ca cụ thể · ${role}${dateSuffix}`,
+      detailText: `Nhân sự ca: ${emp}${timeRange ? ` · Khung giờ: ${timeRange}` : ""}`,
+    };
+  };
+
+  const formatDailyScopeLabel = (assignee: string) => {
+    const isWholeDay =
+      !assignee ||
+      assignee === "Toàn bộ ca làm" ||
+      assignee === "Toàn bộ ngày vận hành" ||
+      assignee === "Quầy";
+    return {
+      badgeText: isWholeDay
+        ? "Phạm vi: Toàn bộ ca làm (Việc chung)"
+        : `Phạm vi: Toàn ca làm · ${assignee}`,
+      detailText: isWholeDay
+        ? "Áp dụng xuyên suốt toàn bộ ca làm trong ngày kinh doanh"
+        : `Áp dụng cho giai đoạn ${assignee} trong ngày kinh doanh`,
+    };
+  };
+
   const renderChecklistRow = (item: ChecklistItem) => {
     const isToggling = togglingId === item.id;
     const isShiftEnded = item.routine_type === "shift_routine"
       && (!item.shift_ends_at || new Date(item.shift_ends_at).getTime() <= currentTimeMs);
+    const scopeInfo =
+      item.routine_type === "shift_routine"
+        ? formatShiftScopeLabel(item)
+        : formatDailyScopeLabel(item.assignee);
     return (
       <motion.button
         key={item.id}
@@ -341,7 +478,7 @@ export function PersistentChecklistsView({
         disabled={Boolean(togglingId) || isShiftEnded}
         aria-pressed={Boolean(item.completed)}
         style={{
-          minHeight: 64,
+          minHeight: 68,
           padding: "12px 16px",
           borderRadius: 14,
           marginBottom: 10,
@@ -351,7 +488,7 @@ export function PersistentChecklistsView({
             ? "1px solid #efd2d8"
             : "1px solid var(--line)",
           background: item.completed ? "#f6fcf9" : "var(--paper)",
-          opacity: isToggling ? 0.72 : isShiftEnded ? 0.58 : 1,
+          opacity: isToggling ? 0.72 : isShiftEnded ? 0.78 : 1,
           cursor: isShiftEnded ? "not-allowed" : "pointer",
           display: "flex",
           alignItems: "center",
@@ -377,6 +514,32 @@ export function PersistentChecklistsView({
             >
               {item.label.replace(/<[^>]*>/g, "").replace(/thi\?u/gi, "thiếu").replace(/gi\?y/gi, "giấy").replace(/\?/g, "")}
             </strong>
+
+            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  fontSize: "0.72rem",
+                  fontWeight: 700,
+                  background: item.routine_type === "shift_routine" ? "#fff0f3" : "#f3ede6",
+                  color: item.routine_type === "shift_routine" ? "var(--burgundy-dark)" : "var(--coffee)",
+                  border: item.routine_type === "shift_routine" ? "1px solid #f4cfd7" : "1px solid #e4d8cc",
+                }}
+              >
+                {scopeInfo.badgeText}
+              </span>
+              {item.required ? (
+                <span style={{ fontSize: "0.72rem", color: "var(--burgundy)", fontWeight: 700 }}>
+                  · Bắt buộc *
+                </span>
+              ) : (
+                <span style={{ fontSize: "0.72rem", color: "var(--muted)" }}>· Tùy chọn</span>
+              )}
+            </div>
 
             {item.completed ? (
               <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -407,42 +570,13 @@ export function PersistentChecklistsView({
                   )}
                 </div>
                 <small style={{ fontSize: "0.73rem", color: "var(--muted)" }}>
-                  {item.routine_type === "shift_routine" ? (
-                    <>
-                      Thuộc ca: {item.shift_employee_name || item.assignee}
-                      {item.shift_role_label ? ` (${item.shift_role_label})` : ""}
-                      {item.shift_starts_at ? ` · ${formatTime(item.shift_starts_at)} — ${formatTime(item.shift_ends_at || "")}` : ""}
-                    </>
-                  ) : (
-                    <>Quy trình trong ngày · {item.assignee}</>
-                  )}
-                  {item.required ? (
-                    <span style={{ color: "var(--muted)", fontWeight: 600 }}> · Bắt buộc *</span>
-                  ) : (
-                    " · Tùy chọn"
-                  )}
+                  {scopeInfo.detailText}
                 </small>
               </div>
             ) : (
-              <div style={{ marginTop: 3 }}>
+              <div style={{ marginTop: 4 }}>
                 <small style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
-                  {item.routine_type === "shift_routine" ? (
-                    <>
-                      Phụ trách:{" "}
-                      <strong style={{ color: "var(--burgundy-dark)" }}>
-                        {item.shift_employee_name || item.assignee}
-                      </strong>
-                      {item.shift_role_label ? ` (${item.shift_role_label})` : ""}
-                      {item.shift_starts_at ? ` · ${formatTime(item.shift_starts_at)} — ${formatTime(item.shift_ends_at || "")}` : ""}
-                    </>
-                  ) : (
-                    <>Giai đoạn: {item.assignee}</>
-                  )}
-                  {item.required ? (
-                    <span style={{ color: "var(--burgundy)", fontWeight: 700 }}> · Bắt buộc *</span>
-                  ) : (
-                    " · Tùy chọn"
-                  )}
+                  {scopeInfo.detailText}
                 </small>
               </div>
             )}
@@ -454,7 +588,15 @@ export function PersistentChecklistsView({
             className={`badge ${item.completed ? "success" : item.required ? "warning" : "neutral"}`}
             style={{ fontSize: "0.74rem", padding: "4px 9px", whiteSpace: "nowrap" }}
           >
-            {isToggling ? "Đang lưu…" : isShiftEnded ? "Ca đã kết thúc" : item.completed ? "✓ Đã xong" : item.required ? "Chưa xong *" : "Chạm xong"}
+            {isToggling
+              ? "Đang lưu…"
+              : item.completed
+              ? "✓ Đã xong"
+              : isShiftEnded
+              ? "Chưa xong (Ca đã qua)"
+              : item.required
+              ? "Chưa xong *"
+              : "Chạm xong"}
           </span>
         </div>
       </motion.button>
@@ -472,7 +614,13 @@ export function PersistentChecklistsView({
             subtitle={
               state !== "ready"
                 ? "Chưa xác nhận tiến độ hôm nay"
-                : `${done}/${items.length} công việc trong phạm vi ca hiện tại (${overallPercentage}%)`
+                : todayItems.length > 0
+                ? `${done}/${todayItems.length} công việc trong phạm vi ca hôm nay (${overallPercentage}%)${
+                    overdueShiftItems.length > 0 ? ` · ${overdueShiftItems.length} việc tồn từ ca đã qua` : ""
+                  }`
+                : overdueShiftItems.length > 0
+                ? `Hôm nay chưa có đầu việc mới · Có ${overdueShiftItems.length} việc tồn đọng từ ca đã qua cần xử lý`
+                : "0/0 công việc trong phạm vi ca hiện tại (0%)"
             }
           />
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -527,13 +675,13 @@ export function PersistentChecklistsView({
                 value={routineType}
                 onChange={(e) => setRoutineType(e.target.value as "daily_routine" | "shift_routine")}
               >
-                <option value="daily_routine">Theo ngày kinh doanh (Việc chung)</option>
-                <option value="shift_routine">Theo một ca cụ thể (Gắn nhân sự)</option>
+                <option value="daily_routine">Toàn bộ ca làm / Theo ngày kinh doanh (Việc chung)</option>
+                <option value="shift_routine">Theo một ca làm cụ thể (Gắn ca & nhân sự)</option>
               </select>
             </div>
             {routineType === "shift_routine" ? (
               <div className="field">
-                <label htmlFor="checklist-shift">Ca thực hiện *</label>
+                <label htmlFor="checklist-shift">Ca làm cụ thể *</label>
                 <select
                   id="checklist-shift"
                   required
@@ -541,9 +689,9 @@ export function PersistentChecklistsView({
                   onChange={(e) => setSelectedShiftId(e.target.value)}
                 >
                   <option value="" disabled>Chọn ca</option>
-                  {shifts.map((shift) => (
+                  {allShiftsForBreakdown.map((shift) => (
                     <option key={shift.id} value={shift.id}>
-                      {shift.employee_name} · {shift.role_label} · {new Date(shift.starts_at).toLocaleString("vi-VN")}
+                      {shift.employee_name} · {shift.role_label} · {shift.starts_at ? new Date(shift.starts_at).toLocaleString("vi-VN") : "Ca làm"}
                     </option>
                   ))}
                 </select>
@@ -551,12 +699,12 @@ export function PersistentChecklistsView({
               </div>
             ) : (
               <div className="field">
-                <label htmlFor="checklist-assignee">Giai đoạn trong ngày</label>
+                <label htmlFor="checklist-assignee">Phạm vi áp dụng trong ngày</label>
                 <select id="checklist-assignee" value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)}>
-                  <option value="Ca sáng (Mở cửa)">Ca sáng (Mở cửa)</option>
-                  <option value="Ca giữa (Giữa ngày)">Ca giữa (Giữa ngày)</option>
-                  <option value="Ca tối (Đóng cửa)">Ca tối (Đóng cửa)</option>
-                  <option value="Toàn bộ ca làm">Toàn bộ ngày vận hành</option>
+                  <option value="Toàn bộ ca làm">Toàn bộ ca làm (Việc chung cả ngày)</option>
+                  <option value="Ca sáng (Mở cửa)">Toàn ca làm · Ca sáng (Mở cửa)</option>
+                  <option value="Ca giữa (Giữa ngày)">Toàn ca làm · Ca giữa (Giữa ngày)</option>
+                  <option value="Ca tối (Đóng cửa)">Toàn ca làm · Ca tối (Đóng cửa)</option>
                 </select>
               </div>
             )}
@@ -584,16 +732,286 @@ export function PersistentChecklistsView({
           </form>
         )}
 
-        {state === "ready" && items.length > 0 && (
+        {/* Dedicated Overdue Shift Checklist Resolution Section */}
+        {state === "ready" && overdueShiftItems.length > 0 && (
+          <div
+            role="region"
+            aria-label="Việc tồn đọng từ ca đã qua cần xử lý"
+            style={{
+              background: "#fff8f1",
+              border: "1px solid #f0c9ad",
+              borderRadius: 16,
+              padding: "16px",
+              marginBottom: 20,
+              boxShadow: "0 4px 14px rgba(176, 86, 36, 0.06)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span
+                    className="badge warning"
+                    style={{
+                      background: "#fde6d2",
+                      color: "#8f3d0b",
+                      border: "1px solid #f3c199",
+                      fontSize: "0.74rem",
+                    }}
+                  >
+                    Quá hạn · Cần xử lý ({overdueShiftItems.length})
+                  </span>
+                  <strong style={{ fontSize: "0.95rem", color: "#5e2508" }}>
+                    Việc tồn đọng từ ca đã qua nhưng chưa hoàn thành
+                  </strong>
+                </div>
+                <p style={{ margin: "4px 0 0", fontSize: "0.78rem", color: "#7c5239" }}>
+                  Các việc này thuộc ca làm đã kết thúc và được tách riêng để không làm lệch % tiến độ của ca hôm nay. Bạn có thể đánh dấu hoàn thành bù, chuyển sang việc hôm nay hoặc bỏ qua.
+                </p>
+              </div>
+            </div>
+
+            <div className="stack" style={{ gap: 10 }}>
+              {overdueShiftItems.map((item) => {
+                const scopeInfo = formatShiftScopeLabel(item);
+                const isProcessing = togglingId === item.id;
+                const isPickingCarryOver = carryOverOpenId === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #f1d4be",
+                      borderRadius: 14,
+                      padding: "12px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      opacity: isProcessing ? 0.72 : 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 220 }}>
+                        <span className="mini-icon pink" style={{ flexShrink: 0, marginTop: 2 }}>
+                          <Clock3 size={16} />
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ fontSize: "0.92rem", color: "var(--ink)", display: "block", wordBreak: "break-word" }}>
+                            {item.label}
+                          </strong>
+                          <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: "0.72rem",
+                                fontWeight: 700,
+                                background: "#fff0f3",
+                                color: "var(--burgundy-dark)",
+                                border: "1px solid #f4cfd7",
+                              }}
+                            >
+                              {scopeInfo.badgeText}
+                            </span>
+                            {item.required ? (
+                              <span style={{ fontSize: "0.72rem", color: "var(--burgundy)", fontWeight: 700 }}>
+                                · Bắt buộc *
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: "0.72rem", color: "var(--muted)" }}>· Tùy chọn</span>
+                            )}
+                          </div>
+                          <small style={{ display: "block", marginTop: 4, fontSize: "0.75rem", color: "var(--muted)" }}>
+                            {scopeInfo.detailText}
+                          </small>
+                        </div>
+                      </div>
+
+                      {canManage && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            disabled={Boolean(togglingId)}
+                            onClick={() => void resolveOverdueItem(item, { action: "complete_late" })}
+                            className="button button-compact"
+                            style={{
+                              minHeight: 44,
+                              minWidth: 44,
+                              padding: "0 13px",
+                              fontSize: "0.78rem",
+                              background: "#0d6840",
+                              borderColor: "#0d6840",
+                            }}
+                            title="Xác nhận công việc này đã được thực hiện bù"
+                          >
+                            <Check size={14} /> Hoàn thành bù
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={Boolean(togglingId)}
+                            onClick={() => {
+                              if (shifts.length === 0) {
+                                void resolveOverdueItem(item, {
+                                  action: "carry_over",
+                                  targetRoutineType: "daily_routine",
+                                  assignee: "Toàn bộ ca làm",
+                                });
+                              } else {
+                                setCarryOverTarget(shifts[0]?.id ?? "daily");
+                                setCarryOverOpenId((curr) => (curr === item.id ? null : item.id));
+                              }
+                            }}
+                            className="button-secondary button-compact"
+                            style={{
+                              minHeight: 44,
+                              minWidth: 44,
+                              padding: "0 13px",
+                              fontSize: "0.78rem",
+                            }}
+                            title="Đưa công việc này sang danh sách việc cần làm hôm nay"
+                          >
+                            <RefreshCw size={14} />{" "}
+                            {shifts.length === 0 ? "Chuyển sang hôm nay (Việc chung)" : "Chuyển sang hôm nay"}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={Boolean(togglingId)}
+                            onClick={() => void resolveOverdueItem(item, { action: "dismiss" })}
+                            className="button-secondary button-compact"
+                            style={{
+                              minHeight: 44,
+                              minWidth: 44,
+                              padding: "0 12px",
+                              fontSize: "0.78rem",
+                              color: "#9a2b3e",
+                              borderColor: "#efd2d8",
+                              background: "#fff7f8",
+                            }}
+                            title="Bỏ qua và đóng công việc tồn đọng này (có ghi nhật ký hoạt động)"
+                          >
+                            <X size={14} /> Bỏ qua
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {isPickingCarryOver && shifts.length > 0 && (
+                      <div
+                        style={{
+                          paddingTop: 10,
+                          borderTop: "1px dashed #edd5c2",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1 }}>
+                          <label
+                            htmlFor={`carry-over-select-${item.id}`}
+                            style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--coffee)" }}
+                          >
+                            Chọn phạm vi hôm nay:
+                          </label>
+                          <select
+                            id={`carry-over-select-${item.id}`}
+                            value={carryOverTarget}
+                            onChange={(e) => setCarryOverTarget(e.target.value)}
+                            style={{
+                              minHeight: 44,
+                              padding: "6px 10px",
+                              borderRadius: 10,
+                              border: "1px solid var(--line)",
+                              fontSize: "0.78rem",
+                              background: "#fff",
+                            }}
+                          >
+                            <option value="daily">Toàn bộ ca làm (Việc chung hôm nay)</option>
+                            {shifts.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                Ca cụ thể: {s.role_label} · {s.employee_name} ({formatTime(s.starts_at)} — {formatTime(s.ends_at)})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <button
+                            type="button"
+                            disabled={Boolean(togglingId)}
+                            onClick={() => {
+                              if (carryOverTarget === "daily") {
+                                void resolveOverdueItem(item, {
+                                  action: "carry_over",
+                                  targetRoutineType: "daily_routine",
+                                  assignee: "Toàn bộ ca làm",
+                                });
+                              } else {
+                                void resolveOverdueItem(item, {
+                                  action: "carry_over",
+                                  targetRoutineType: "shift_routine",
+                                  targetShiftId: carryOverTarget,
+                                });
+                              }
+                            }}
+                            className="button button-compact"
+                            style={{ minHeight: 44, minWidth: 44, padding: "0 13px", fontSize: "0.78rem" }}
+                          >
+                            Xác nhận chuyển
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCarryOverOpenId(null)}
+                            className="button-secondary button-compact"
+                            style={{ minHeight: 44, minWidth: 44, padding: "0 12px", fontSize: "0.78rem" }}
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {state === "ready" && todayItems.length > 0 && (
           <>
-            {/* Progress Bar & Summary Stats */}
+            {/* Progress Bar & Summary Stats for Today */}
             <div style={{ marginBottom: 16 }}>
               <div className="progress" style={{ marginBottom: 10, height: 8, borderRadius: 999 }}>
                 <span style={{ width: `${overallPercentage}%` }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, fontSize: "0.78rem" }}>
                 <span style={{ color: "var(--muted)" }}>
-                  Tiến độ đang hiển thị: <strong style={{ color: "var(--burgundy-dark)" }}>{done}/{items.length} việc</strong> ({overallPercentage}%)
+                  Tiến độ ca hôm nay: <strong style={{ color: "var(--burgundy-dark)" }}>{done}/{todayItems.length} việc đã xong</strong> ·{" "}
+                  <strong style={{ color: todayItems.length - done > 0 ? "var(--burgundy)" : "#0d6840" }}>
+                    {todayItems.length - done} chưa xong
+                  </strong>{" "}
+                  ({overallPercentage}%)
                 </span>
                 {requiredIncompleteCount > 0 ? (
                   <span style={{ color: "var(--burgundy)", fontWeight: 600 }}>
@@ -601,14 +1019,14 @@ export function PersistentChecklistsView({
                   </span>
                 ) : (
                   <span style={{ color: "#0d6840", fontWeight: 600 }}>
-                    ✓ Đã hoàn tất các việc bắt buộc
+                    ✓ Đã hoàn tất các việc bắt buộc hôm nay
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Shift Progress Cards for Owner / Manager */}
-            {isOwnerOrManager && shifts.length > 0 && (
+            {/* Scope & Shift Progress Cards for Owner / Manager */}
+            {isOwnerOrManager && (todayItems.length > 0 || allShiftsForBreakdown.length > 0) && (
               <div
                 style={{
                   background: "var(--sand-light, #fbf7f2)",
@@ -618,15 +1036,15 @@ export function PersistentChecklistsView({
                   marginBottom: 18,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <Layers size={16} style={{ color: "var(--burgundy)" }} />
                     <strong style={{ fontSize: "0.86rem", color: "var(--burgundy-dark)" }}>
-                      Tiến độ theo ca làm việc hôm nay
+                      Phạm vi checklist hôm nay: Toàn ca làm & Ca làm cụ thể
                     </strong>
                   </div>
                   <small style={{ fontSize: "0.74rem", color: "var(--muted)" }}>
-                    Bấm vào từng ca để xem chi tiết
+                    Bấm vào từng phạm vi để lọc danh sách việc cần làm
                   </small>
                 </div>
 
@@ -642,6 +1060,7 @@ export function PersistentChecklistsView({
                     type="button"
                     onClick={() => setScopeFilter("all")}
                     style={{
+                      minHeight: 44,
                       textAlign: "left",
                       padding: "10px 12px",
                       borderRadius: 10,
@@ -656,22 +1075,26 @@ export function PersistentChecklistsView({
                     }}
                   >
                     <div>
-                      <strong style={{ color: "var(--burgundy-dark)", display: "block" }}>Tất cả công việc</strong>
-                      <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>Toàn bộ quán</span>
+                      <strong style={{ color: "var(--burgundy-dark)", display: "block" }}>Tất cả công việc hôm nay</strong>
+                      <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>Toàn bộ phạm vi checklist</span>
                     </div>
                     <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="badge neutral" style={{ fontSize: "0.7rem", padding: "2px 7px" }}>
-                        {done}/{items.length} xong
+                      <span
+                        className={`badge ${todayItems.length - done > 0 ? "warning" : "success"}`}
+                        style={{ fontSize: "0.7rem", padding: "2px 7px" }}
+                      >
+                        {todayItems.length - done > 0 ? `${todayItems.length - done} chưa xong` : `${done}/${todayItems.length} xong`}
                       </span>
-                      <span style={{ fontWeight: 700, color: "var(--burgundy)" }}>{overallPercentage}%</span>
+                      <span style={{ fontWeight: 700, color: "var(--burgundy)" }}>{done}/{todayItems.length}</span>
                     </div>
                   </button>
 
-                  {/* Daily Tasks Card */}
+                  {/* Daily Tasks Card (Whole shift / all shifts scope) */}
                   <button
                     type="button"
                     onClick={() => setScopeFilter(scopeFilter === "daily" ? "all" : "daily")}
                     style={{
+                      minHeight: 44,
                       textAlign: "left",
                       padding: "10px 12px",
                       borderRadius: 10,
@@ -686,31 +1109,48 @@ export function PersistentChecklistsView({
                     }}
                   >
                     <div>
-                      <strong style={{ color: "var(--burgundy-dark)", display: "block" }}>Việc chung trong ngày</strong>
-                      <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>Quy trình mở/đóng cửa</span>
+                      <strong style={{ color: "var(--burgundy-dark)", display: "block" }}>Toàn bộ ca làm (Việc chung)</strong>
+                      <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>Phạm vi: Toàn ca làm / Theo ngày</span>
                     </div>
                     <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span
-                        className={`badge ${doneDailyItems === totalDailyItems.length && totalDailyItems.length > 0 ? "success" : "neutral"}`}
+                        className={`badge ${
+                          totalDailyItems.length === 0
+                            ? "neutral"
+                            : doneDailyItems === totalDailyItems.length
+                            ? "success"
+                            : "warning"
+                        }`}
                         style={{ fontSize: "0.7rem", padding: "2px 7px" }}
                       >
-                        {doneDailyItems}/{totalDailyItems.length} xong
+                        {totalDailyItems.length === 0
+                          ? "0 việc"
+                          : totalDailyItems.length - doneDailyItems > 0
+                          ? `${totalDailyItems.length - doneDailyItems} chưa xong`
+                          : `✓ ${doneDailyItems}/${totalDailyItems.length} xong`}
                       </span>
                       <span style={{ fontWeight: 700, color: "var(--burgundy)" }}>
-                        {totalDailyItems.length > 0 ? Math.round((doneDailyItems / totalDailyItems.length) * 100) : 0}%
+                        {doneDailyItems}/{totalDailyItems.length}
                       </span>
                     </div>
                   </button>
 
                   {/* Individual Shifts */}
-                  {shiftProgressStats.map(({ shift, total, done: sDone, percent, isComplete }) => {
+                  {shiftProgressStats.map(({ shift, total, done: sDone, isComplete }) => {
                     const isSelected = scopeFilter === shift.id;
+                    const shiftDate = shift.starts_at ? storeDateKey(new Date(shift.starts_at)) : "";
+                    const dateSuffix = shiftDate && shiftDate !== todayDateKey ? ` (${shiftDate})` : "";
+                    const timeLabel =
+                      shift.starts_at && shift.ends_at
+                        ? `${formatTime(shift.starts_at)} — ${formatTime(shift.ends_at)}`
+                        : "";
                     return (
                       <button
                         key={shift.id}
                         type="button"
                         onClick={() => setScopeFilter(isSelected ? "all" : shift.id)}
                         style={{
+                          minHeight: 44,
                           textAlign: "left",
                           padding: "10px 12px",
                           borderRadius: 10,
@@ -726,10 +1166,10 @@ export function PersistentChecklistsView({
                       >
                         <div>
                           <strong style={{ color: "var(--burgundy-dark)", display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                            {shift.employee_name}
+                            Ca cụ thể: {shift.role_label}{dateSuffix}
                           </strong>
-                          <span style={{ color: "var(--muted)", fontSize: "0.72rem", display: "block" }}>
-                            {shift.role_label} · {formatTime(shift.starts_at)} — {formatTime(shift.ends_at)}
+                          <span style={{ color: "var(--muted)", fontSize: "0.72rem", display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                            {shift.employee_name}{timeLabel ? ` · ${timeLabel}` : ""}
                           </span>
                         </div>
                         <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -737,11 +1177,11 @@ export function PersistentChecklistsView({
                             className={`badge ${isComplete ? "success" : total === 0 ? "neutral" : "warning"}`}
                             style={{ fontSize: "0.7rem", padding: "2px 7px" }}
                           >
-                            {total === 0 ? "0 việc" : isComplete ? "✓ 100%" : `${sDone}/${total} xong`}
+                            {total === 0 ? "0 việc" : isComplete ? "✓ Đã xong" : `${total - sDone} chưa xong`}
                           </span>
                           {total > 0 && (
                             <span style={{ fontWeight: 700, color: isComplete ? "#0d6840" : "var(--burgundy)" }}>
-                              {percent}%
+                              {sDone}/{total}
                             </span>
                           )}
                         </div>
@@ -795,16 +1235,19 @@ export function PersistentChecklistsView({
               {scopeFilter !== "all" && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span className="badge neutral" style={{ fontSize: "0.74rem" }}>
-                    Đang lọc:{" "}
+                    Đang lọc phạm vi:{" "}
                     {scopeFilter === "daily"
-                      ? "Việc chung trong ngày"
-                      : shifts.find((s) => s.id === scopeFilter)?.employee_name || "Ca được chọn"}
+                      ? "Toàn bộ ca làm (Việc chung)"
+                      : (() => {
+                          const s = allShiftsForBreakdown.find((shift) => shift.id === scopeFilter);
+                          return s ? `Ca cụ thể: ${s.role_label} (${s.employee_name})` : "Ca cụ thể";
+                        })()}
                   </span>
                   <button
                     type="button"
                     onClick={() => setScopeFilter("all")}
-                    className="button-link"
-                    style={{ fontSize: "0.74rem", color: "var(--burgundy)", cursor: "pointer" }}
+                    className="button-secondary button-compact"
+                    style={{ minHeight: 44, minWidth: 44, padding: "0 12px", fontSize: "0.74rem" }}
                   >
                     Xem tất cả
                   </button>
@@ -834,6 +1277,15 @@ export function PersistentChecklistsView({
                 : "Hôm nay quán chưa có đầu việc checklist nào được giao nè. Thảnh thơi rồi nhé!"
             }
             actionLabel={canManage ? "Thêm công việc" : undefined}
+            onAction={canManage ? () => setShowForm(true) : undefined}
+          />
+        ) : todayItems.length === 0 ? (
+          <AsyncStatePanel
+            compact
+            state="empty"
+            title="Ca hôm nay chưa có công việc mới"
+            description="Bạn có thể xử lý công việc tồn đọng từ ca đã qua ở khung phía trên (Hoàn thành bù, Chuyển sang hôm nay hoặc Bỏ qua), hoặc thêm công việc mới cho hôm nay."
+            actionLabel={canManage ? "Thêm công việc hôm nay" : undefined}
             onAction={canManage ? () => setShowForm(true) : undefined}
           />
         ) : filteredItems.length === 0 ? (
@@ -876,10 +1328,10 @@ export function PersistentChecklistsView({
                 >
                   <div>
                     <strong style={{ fontSize: "0.92rem", color: "var(--burgundy-dark)", display: "block" }}>
-                      Việc theo ca làm việc ({shiftItems.length})
+                      Phạm vi: Theo ca làm cụ thể ({shiftItems.length})
                     </strong>
                     <small style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                      Gắn với từng ca và nhân sự cụ thể. Mục bắt buộc (*) cần hoàn tất trước khi bàn giao ca.
+                      Hiển thị rõ từng việc thuộc ca làm cụ thể nào và nhân sự phụ trách.
                     </small>
                   </div>
                   <span
@@ -887,7 +1339,9 @@ export function PersistentChecklistsView({
                       shiftItems.filter((i) => i.completed).length === shiftItems.length ? "success" : "warning"
                     }`}
                   >
-                    {shiftItems.filter((i) => i.completed).length}/{shiftItems.length} xong
+                    {shiftItems.filter((i) => !i.completed).length > 0
+                      ? `${shiftItems.filter((i) => !i.completed).length} chưa xong`
+                      : `${shiftItems.length}/${shiftItems.length} xong`}
                   </span>
                 </div>
                 <div className="list">{shiftItems.map(renderChecklistRow)}</div>
@@ -908,18 +1362,20 @@ export function PersistentChecklistsView({
                 >
                   <div>
                     <strong style={{ fontSize: "0.92rem", color: "var(--burgundy-dark)", display: "block" }}>
-                      Việc chung trong ngày ({dailyItems.length})
+                      Phạm vi: Toàn bộ ca làm / Việc chung trong ngày ({dailyItems.length})
                     </strong>
                     <small style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                      Quy trình chung theo giai đoạn vận hành của cửa hàng.
+                      Áp dụng chung cho toàn ca làm hoặc theo giai đoạn vận hành của cửa hàng.
                     </small>
                   </div>
                   <span
                     className={`badge ${
-                      dailyItems.filter((i) => i.completed).length === dailyItems.length ? "success" : "neutral"
+                      dailyItems.filter((i) => i.completed).length === dailyItems.length ? "success" : "warning"
                     }`}
                   >
-                    {dailyItems.filter((i) => i.completed).length}/{dailyItems.length} xong
+                    {dailyItems.filter((i) => !i.completed).length > 0
+                      ? `${dailyItems.filter((i) => !i.completed).length} chưa xong`
+                      : `${dailyItems.length}/${dailyItems.length} xong`}
                   </span>
                 </div>
                 <div className="list">{dailyItems.map(renderChecklistRow)}</div>
@@ -931,17 +1387,19 @@ export function PersistentChecklistsView({
 
       <aside className="card" style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <motion.div
-          key={`${done}-${filterMode}`}
+          key={`${done}-${filterMode}-${overdueShiftItems.length}`}
           initial={{ opacity: 0, y: 6, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           className="loopy-speech-bubble"
         >
-          {filterMode === "completed"
+          {overdueShiftItems.length > 0 && todayItems.length === 0
+            ? `Loopy nhắc nhẹ: Đang có ${overdueShiftItems.length} việc tồn từ ca đã qua cần xử lý đó nha!`
+            : filterMode === "completed"
             ? `Loopy ghi nhận: Đã hoàn thành cụ thể ${done} công việc hôm nay!`
             : isAllDone
             ? "Tuyệt vời quá! Loopy rất tự hào về bạn! Toàn bộ checklist hôm nay đã hoàn thành 100%!"
             : done > 0
-            ? `Cố lên! Đã hoàn thành ${done} việc, còn ${items.length - done} việc nữa!`
+            ? `Cố lên! Đã hoàn thành ${done} việc, còn ${todayItems.length - done} việc nữa!`
             : "Chào bạn! Hãy tích chọn các công việc khi bắt đầu ca nhé!"}
         </motion.div>
 
@@ -1248,9 +1706,9 @@ export function PersistentChecklistsView({
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.7rem", color: "var(--muted)", paddingTop: 2 }}>
                         <span>
                           {record.routineType === "shift_routine" ? (
-                            <>Theo ca: {record.shiftEmployeeName || record.assignee}{record.shiftRoleLabel ? ` (${record.shiftRoleLabel})` : ""}</>
+                            <>Phạm vi: Ca cụ thể · {record.shiftRoleLabel || record.assignee} ({record.shiftEmployeeName || record.assignee})</>
                           ) : (
-                            <>Việc trong ngày · {record.assignee}</>
+                            <>Phạm vi: Toàn ca làm · {record.assignee}</>
                           )}
                           {record.required ? " · Bắt buộc *" : " · Tùy chọn"}
                         </span>

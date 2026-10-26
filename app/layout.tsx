@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase,
     title: {
-      default: "LoopyCafe — Vận hành quán trong một nhịp",
+      default: "LoopyCafe",
       template: "%s · LoopyCafe",
     },
     description:
@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
       apple: "/brand/loopicafe-icon.png",
     },
     openGraph: {
-      title: "LoopyCafe — Vận hành quán trong một nhịp",
+      title: "LoopyCafe",
       description: "Ca làm gọn hơn. Một chạm là xong.",
       locale: "vi_VN",
       type: "website",
@@ -36,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: "LoopyCafe — Vận hành quán trong một nhịp",
+      title: "LoopyCafe",
       description: "Ca làm gọn hơn. Một chạm là xong.",
       images: ["/og-mobile.png"],
     },

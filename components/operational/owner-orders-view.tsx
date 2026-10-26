@@ -10,6 +10,8 @@ import {
   Volume2,
   VolumeX,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Edit2,
   Check,
@@ -22,14 +24,18 @@ import {
   Plus,
   Calendar,
   AlertCircle,
+  AlertTriangle,
   ClipboardX,
   Coffee,
   CheckCheck,
   Sparkles,
   FileSpreadsheet,
+  LayoutGrid,
+  List,
+  MessageSquare,
 } from "lucide-react";
 import { formatVND } from "../order/menu-card";
-import { DrinkVisual } from "../order/drink-visual";
+import { DrinkVisual, detectDrinkVisualType } from "../order/drink-visual";
 import { AsyncStatePanel, ListSkeleton, readJson } from "./shared";
 import { LatestRequestGate } from "@/platform/http/latest-request";
 import { useModalDialog } from "../order/use-modal-dialog";
@@ -166,6 +172,29 @@ function playChimeSound() {
   }
 }
 
+function getElapsedMinutes(createdAt: string): number {
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return 0;
+  return Math.max(0, Math.floor((Date.now() - created) / 60000));
+}
+
+function getWaitingTimeBadge(
+  createdAt: string,
+  status: OrderRecord["status"]
+): { label: string; urgency: "normal" | "warning" | "alert" } | null {
+  if (status === "completed" || status === "cancelled") return null;
+  const minutes = getElapsedMinutes(createdAt);
+  if (minutes < 1) return { label: "Vừa đặt", urgency: "normal" };
+  const urgency: "normal" | "warning" | "alert" =
+    minutes > 15 ? "alert" : minutes >= 5 ? "warning" : "normal";
+  if (minutes < 60) {
+    return { label: `Chờ ${minutes}p`, urgency };
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  return { label: `Chờ ${hours}h ${remainingMins}p`, urgency: "alert" };
+}
+
 function OrderWorkflowStepper({ status }: { status: OrderRecord["status"] }) {
   if (status === "cancelled") {
     return (
@@ -244,6 +273,10 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
+  const [attentionFilter, setAttentionFilter] = useState<"all" | "has_note" | "long_wait">("all");
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+  const [isKanbanClosedCollapsed, setIsKanbanClosedCollapsed] = useState(false);
   const [wastage, setWastage] = useState<WastageMetrics | null>(null);
   const [wastageReport, setWastageReport] = useState<WastageEntry[]>([]);
   const [statusFeedback, setStatusFeedback] = useState<{ kind: "error" | "success"; message: string } | null>(null);
@@ -308,6 +341,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
   // Filter & Search inside Menu Tab
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
   const [menuSearchQuery, setMenuSearchQuery] = useState<string>("");
+  const [menuStockFilter, setMenuStockFilter] = useState<"all" | "available" | "out_of_stock">("all");
 
   // Filter & Search inside Pricing Tab
   const [pricingCategoryFilter, setPricingCategoryFilter] = useState<string>("all");
@@ -365,6 +399,12 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
   });
   const [savingItem, setSavingItem] = useState(false);
   const [itemModalError, setItemModalError] = useState<string | null>(null);
+
+  // Category Quick Creation State (Inside Item Modal)
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Delete Item Confirmation Modal State
   const [deletingItem, setDeletingItem] = useState<MenuItemManagement | null>(null);
@@ -760,6 +800,9 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
     if (categories.length === 0) {
       void fetchMenu();
     }
+    setIsAddingCategory(false);
+    setNewCategoryName("");
+    setCategoryError(null);
     setItemModalMode("create");
     setItemFormData({
       name: "",
@@ -774,7 +817,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       allowsIce: true,
       allowsToppings: true,
       sortOrder: menuItems.length + 1,
-      imageUrl: "/laboong/drinks/default.jpg",
+      imageUrl: "/illustrations/drink-vector",
     });
     setItemModalError(null);
     setIsItemModalOpen(true);
@@ -782,6 +825,9 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
 
   // Open modal to edit an existing item
   const handleOpenEditModal = (item: MenuItemManagement) => {
+    setIsAddingCategory(false);
+    setNewCategoryName("");
+    setCategoryError(null);
     setItemModalMode("edit");
     setItemFormData({
       id: item.id,
@@ -797,10 +843,48 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       allowsIce: item.allows_ice !== undefined ? Boolean(item.allows_ice) : true,
       allowsToppings: item.allows_toppings !== undefined ? Boolean(item.allows_toppings) : true,
       sortOrder: item.sort_order || 0,
-      imageUrl: item.image_url || "/laboong/drinks/default.jpg",
+      imageUrl: item.image_url || "/illustrations/drink-vector",
     });
     setItemModalError(null);
     setIsItemModalOpen(true);
+  };
+
+  // Create category quickly from modal
+  const handleCreateCategory = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      setCategoryError("Tên danh mục không được để trống.");
+      return;
+    }
+    setSavingCategory(true);
+    setCategoryError(null);
+    try {
+      const res = await fetch("/api/owner/menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "category",
+          name: trimmed,
+        }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        category?: CategoryManagement;
+        error?: string;
+      };
+      if (!res.ok || data.error || !data.category) {
+        throw new Error(data.error || "Không thể tạo danh mục mới.");
+      }
+      setCategories((prev) => [...prev, data.category!]);
+      setItemFormData((prev) => ({ ...prev, categoryId: data.category!.id }));
+      setIsAddingCategory(false);
+      setNewCategoryName("");
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : "Đã có lỗi xảy ra khi tạo danh mục.");
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   // Save item (Create or Edit)
@@ -894,13 +978,15 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       });
       if (!res.ok) {
         const json = (await res.json()) as { error?: string };
-        alert(json.error || "Không thể xoá món này.");
+        setStatusFeedback({ kind: "error", message: json.error || "Không thể xoá món này." });
         return;
       }
+      const deletedName = deletingItem.name;
       setDeletingItem(null);
       await fetchMenu();
+      setStatusFeedback({ kind: "success", message: `Đã xoá món "${deletedName}" khỏi thực đơn.` });
     } catch {
-      alert("Lỗi kết nối máy chủ.");
+      setStatusFeedback({ kind: "error", message: "Lỗi kết nối máy chủ khi xoá món." });
     } finally {
       setIsDeleting(false);
     }
@@ -920,9 +1006,13 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
           prev.map((i) => (i.id === itemId ? { ...i, base_price: newPriceValue } : i)),
         );
         setEditingPriceId(null);
+        setStatusFeedback({ kind: "success", message: "Đã cập nhật giá bán thành công!" });
+      } else {
+        const json = (await res.json()) as { error?: string };
+        setStatusFeedback({ kind: "error", message: json.error || "Không thể lưu giá món." });
       }
     } catch {
-      alert("Không thể lưu giá món.");
+      setStatusFeedback({ kind: "error", message: "Không thể lưu giá món. Vui lòng thử lại." });
     }
   };
 
@@ -970,8 +1060,11 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       );
       setEditingOptionPriceId(null);
       setStatusFeedback({ kind: "success", message: "Đã cập nhật giá topping thành công!" });
-    } catch {
-      alert("Không thể đổi giá topping.");
+    } catch (err) {
+      setStatusFeedback({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Không thể đổi giá topping.",
+      });
     }
   };
 
@@ -1002,7 +1095,10 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
         message: `Đã thêm topping "${toppingFormData.name.trim()}" thành công! 🎉`,
       });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Không thể tạo topping mới.");
+      setStatusFeedback({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Không thể tạo topping mới.",
+      });
     } finally {
       setSavingTopping(false);
     }
@@ -1025,7 +1121,10 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
         message: `Đã xoá topping "${deletingOption.name}" thành công.`,
       });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Không thể xoá topping.");
+      setStatusFeedback({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Không thể xoá topping.",
+      });
     } finally {
       setIsDeletingOption(false);
     }
@@ -1044,7 +1143,10 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       if (!response.ok) throw new Error("Không lưu được trạng thái nhận đơn.");
     } catch {
       setIsOrderingOpen(!open);
-      alert("Không lưu được trạng thái nhận đơn. Vui lòng thử lại.");
+      setStatusFeedback({
+        kind: "error",
+        message: "Không lưu được trạng thái nhận đơn. Vui lòng thử lại.",
+      });
     }
   };
 
@@ -1076,6 +1178,439 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  // Computed attention counts
+  const countWithNote = useMemo(() => {
+    return orders.filter(
+      (o) => Boolean(o.customerNote?.trim()) || o.items.some((it) => Boolean(it.note?.trim()))
+    ).length;
+  }, [orders]);
+
+  const countLongWait = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        ["pending", "accepted", "preparing"].includes(o.status) &&
+        getElapsedMinutes(o.createdAt) >= 15
+    ).length;
+  }, [orders]);
+
+  // Displayed orders filtered by attention filter
+  const displayedOrders = useMemo(() => {
+    return orders.filter((ord) => {
+      if (attentionFilter === "has_note") {
+        const hasNote =
+          Boolean(ord.customerNote?.trim()) ||
+          ord.items.some((it) => Boolean(it.note?.trim()));
+        if (!hasNote) return false;
+      }
+      if (attentionFilter === "long_wait") {
+        const isWaiting = ["pending", "accepted", "preparing"].includes(ord.status);
+        const isLong = getElapsedMinutes(ord.createdAt) >= 15;
+        if (!isWaiting || !isLong) return false;
+      }
+      return true;
+    });
+  }, [orders, attentionFilter]);
+
+  // Group 1: Pending (Earliest created first for FIFO bar service)
+  const pendingOrders = useMemo(
+    () =>
+      [...displayedOrders]
+        .filter((o) => o.status === "pending")
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [displayedOrders]
+  );
+
+  // Group 2: Active (accepted, preparing, ready)
+  const activeOrders = useMemo(
+    () =>
+      [...displayedOrders]
+        .filter((o) => ["accepted", "preparing", "ready"].includes(o.status))
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [displayedOrders]
+  );
+
+  // Group 3: History (completed, cancelled - newest first)
+  const historyOrders = useMemo(
+    () =>
+      [...displayedOrders]
+        .filter((o) => ["completed", "cancelled"].includes(o.status))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [displayedOrders]
+  );
+
+  // Kanban in-prep column (accepted + preparing)
+  const inPrepOrders = useMemo(
+    () =>
+      [...displayedOrders]
+        .filter((o) => o.status === "accepted" || o.status === "preparing")
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [displayedOrders]
+  );
+
+  // Kanban ready column
+  const readyOrders = useMemo(
+    () =>
+      [...displayedOrders]
+        .filter((o) => o.status === "ready")
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [displayedOrders]
+  );
+
+  const shouldCollapseHistory =
+    isHistoryCollapsed && statusFilter !== "completed" && statusFilter !== "cancelled";
+
+  const renderOrderCard = (ord: OrderRecord) => {
+    const isPending = ord.status === "pending";
+    const isPreparing = ord.status === "preparing";
+    const isReady = ord.status === "ready";
+    const waiting = getWaitingTimeBadge(ord.createdAt, ord.status);
+
+    return (
+      <div
+        key={ord.id}
+        className={`bg-white rounded-2xl border p-4 transition-all flex flex-col justify-between ${
+          isPending
+            ? "border-[#d96d83] bg-[#fffaf4]/50 ring-1 ring-[#f4a9b7]"
+            : isReady
+            ? "border-[#a7f3d0] bg-[#f0faf5]/30 hover:border-[#6ee7b7]"
+            : isPreparing
+            ? "border-[#fbcfe8] bg-[#fff2f4]/30 hover:border-[#f4a9b7]"
+            : "border-[#eee3df] hover:border-[#dfc9c2]"
+        }`}
+      >
+        <div>
+          {/* Card Header: Order Code, Waiting Badge, Status */}
+          <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-[#f5efec]">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-base sm:text-lg text-[#332a2b] tracking-tight">
+                  {ord.orderCode}
+                </span>
+                {isPending && (
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-[#d96d83] text-white">
+                    MỚI
+                  </span>
+                )}
+                {waiting && (
+                  <span
+                    className={`px-2 py-0.5 text-[11px] font-bold rounded-full border flex items-center gap-1 ${
+                      waiting.urgency === "alert"
+                        ? "bg-[#fff5f5] text-[#b91c1c] border-[#fecaca] animate-pulse"
+                        : waiting.urgency === "warning"
+                        ? "bg-[#fff8e7] text-[#a86e23] border-[#fde68a]"
+                        : "bg-[#f0faf5] text-[#2d6a4f] border-[#bbf7d0]"
+                    }`}
+                  >
+                    <Clock size={11} />
+                    <span>{waiting.label}</span>
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-[#7b6f70] mt-1 flex items-center gap-1.5 flex-wrap">
+                <span>
+                  {new Date(ord.createdAt).toLocaleTimeString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                <span>·</span>
+                <span>{ord.itemCount} món</span>
+              </div>
+            </div>
+
+            <span
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap shrink-0 ${
+                ord.status === "pending"
+                  ? "bg-[#fff8e7] text-[#a86e23]"
+                  : ord.status === "accepted"
+                  ? "bg-[#fff2f4] text-[#6f2939]"
+                  : ord.status === "preparing"
+                  ? "bg-[#f3e4e7] text-[#6f2939]"
+                  : ord.status === "ready"
+                  ? "bg-[#f0faf5] text-[#2d6a4f]"
+                  : ord.status === "completed"
+                  ? "bg-[#f4ece8] text-[#554a4c]"
+                  : "bg-[#fff5f5] text-[#991b1b]"
+              }`}
+            >
+              {ord.status === "pending"
+                ? "Chờ xác nhận"
+                : ord.status === "accepted"
+                ? "Đã nhận"
+                : ord.status === "preparing"
+                ? "Đang chuẩn bị"
+                : ord.status === "ready"
+                ? "Sẵn sàng"
+                : ord.status === "completed"
+                ? "Hoàn tất"
+                : "Đã huỷ"}
+            </span>
+          </div>
+
+          {/* Customer Info */}
+          <div className="py-2 px-3 rounded-xl bg-[#fffaf4] border border-[#f5efec] my-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
+            <div className="truncate">
+              <span className="text-[#7b6f70]">Khách:</span>{" "}
+              <strong className="text-[#332a2b]">{ord.customerName}</strong>
+            </div>
+            <a
+              href={`tel:${ord.customerPhone}`}
+              className="inline-flex items-center gap-1 text-[#6f2939] font-bold hover:underline min-h-[44px] px-2 py-1 rounded-lg hover:bg-[#fffaf4]"
+            >
+              <Phone size={12} />
+              <span>{ord.customerPhone}</span>
+            </a>
+          </div>
+
+          {/* Order Level Note (Prominent Amber Outline) */}
+          {ord.customerNote && (
+            <div className="text-xs text-[#8a5d00] bg-[#fff8e7] border border-[#fde68a] p-2.5 rounded-xl my-2 flex items-start gap-1.5 font-medium">
+              <MessageSquare size={13} className="shrink-0 mt-0.5 text-[#d48b00]" />
+              <span>Ghi chú đơn: &ldquo;{ord.customerNote}&rdquo;</span>
+            </div>
+          )}
+
+          {/* Items with Full Recipe Formula */}
+          <div className="space-y-2 my-2.5">
+            {ord.items.map((it) => (
+              <div
+                key={it.id}
+                className="p-2.5 rounded-xl bg-[#fffaf4] border border-[#f5efec] text-xs space-y-1.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-bold text-[#332a2b] leading-snug">
+                    <span className="text-[#6f2939] font-black mr-1.5">{it.quantity}x</span>
+                    {it.name}
+                  </div>
+                  <span className="font-semibold text-[#332a2b] tabular-nums whitespace-nowrap">
+                    {formatVND(it.subtotal)}
+                  </span>
+                </div>
+
+                {/* Recipe Pills (Size, Sugar, Ice) */}
+                <div className="flex flex-wrap gap-1 text-[11px]">
+                  {it.size && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-white border border-[#e6dad5] font-semibold text-[#554a4c]">
+                      {it.size}
+                    </span>
+                  )}
+                  {it.sugar && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-white border border-[#e6dad5] text-[#554a4c]">
+                      {it.sugar}
+                    </span>
+                  )}
+                  {it.ice && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-white border border-[#e6dad5] text-[#554a4c]">
+                      {it.ice}
+                    </span>
+                  )}
+                </div>
+
+                {/* Toppings Chips */}
+                {it.toppings && it.toppings.length > 0 && (
+                  <div className="text-[11px] text-[#6f2939] font-medium flex items-center gap-1 flex-wrap pt-0.5">
+                    <span className="text-[#9c9391]">Topping:</span>
+                    {it.toppings.map((top, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-[#fff2f4] px-1.5 py-0.5 rounded-md text-[#6f2939] font-bold"
+                      >
+                        +{top.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Item Note */}
+                {it.note && (
+                  <div className="mt-1.5 text-[11px] text-[#8a5d00] italic bg-[#fffbf2] p-1.5 rounded-md border border-[#fef3c7]">
+                    Ghi chú món: &ldquo;{it.note}&rdquo;
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Cancellation Reason if cancelled */}
+          {ord.status === "cancelled" && (
+            <div className="text-xs text-[#991b1b] bg-[#fff5f5] border border-[#fecaca] p-2.5 rounded-xl mt-2 flex items-start gap-1.5">
+              <span className="font-bold whitespace-nowrap">Lý do huỷ:</span>
+              <span>{ord.cancelReason || "Huỷ bởi cửa hàng"}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Card Actions & Transition Buttons */}
+        <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex flex-wrap items-center justify-between gap-2.5">
+          <div className="font-extrabold text-sm sm:text-base text-[#6f2939] tabular-nums whitespace-nowrap">
+            {formatVND(ord.totalAmount)}
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2 justify-end flex-1">
+            {/* Cancel Button - Safe physical distance separation */}
+            {canCancelOrders &&
+              ord.status !== "completed" &&
+              ord.status !== "cancelled" && (
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => setCancelModalOrder(ord)}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl border border-[#fecaca] text-[#b91c1c] bg-[#fff5f5]/70 hover:bg-[#fee2e2] text-xs font-semibold transition-colors active:scale-95 disabled:opacity-50 whitespace-nowrap mr-auto sm:mr-2"
+                >
+                  Huỷ đơn
+                </button>
+              )}
+
+            {/* Terminal Status Badges */}
+            {ord.status === "completed" && (
+              <span className="min-h-[44px] text-xs font-bold text-[#2d6a4f] bg-[#f0faf5] border border-[#bbf7d0] px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap">
+                <Check size={14} strokeWidth={3} />
+                Đã hoàn tất
+              </span>
+            )}
+
+            {ord.status === "cancelled" && (
+              <span className="min-h-[44px] text-xs font-bold text-[#991b1b] bg-[#fff5f5] border border-[#fecaca] px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap">
+                <X size={14} strokeWidth={3} />
+                Đơn đã huỷ
+              </span>
+            )}
+
+            {/* 1-Touch Transition Action Buttons (all min-h-[44px]) */}
+            {canTransitionOrders && ord.status === "pending" && (
+              <>
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "preparing", { autoAdvance: true })}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                  title="Nhận đơn và bắt đầu pha chế ngay"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Coffee size={14} />
+                  )}
+                  <span>Nhận & Pha</span>
+                  <ArrowRight size={13} />
+                </button>
+
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
+                  className="min-h-[44px] px-3 py-2 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                  title="Hoàn tất đơn hàng ngay (1 chạm)"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCheck size={15} strokeWidth={2.5} />
+                  )}
+                  <span>Xong ngay</span>
+                </button>
+              </>
+            )}
+
+            {canTransitionOrders && ord.status === "accepted" && (
+              <>
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "preparing")}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#d96d83] hover:bg-[#c75865] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Coffee size={14} />
+                  )}
+                  <span>Bắt đầu pha</span>
+                  <ArrowRight size={13} />
+                </button>
+
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
+                  className="min-h-[44px] px-3 py-2 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                  title="Hoàn tất đơn hàng ngay (1 chạm)"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCheck size={15} strokeWidth={2.5} />
+                  )}
+                  <span>Xong ngay</span>
+                </button>
+              </>
+            )}
+
+            {canTransitionOrders && ord.status === "preparing" && (
+              <>
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "ready")}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  <span>Sẵn sàng</span>
+                  <ArrowRight size={13} />
+                </button>
+
+                <button
+                  type="button"
+                  disabled={updatingOrderIds.has(ord.id)}
+                  onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
+                  className="min-h-[44px] px-3 py-2 rounded-xl bg-[#332a2b] hover:bg-[#1f191a] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+                  title="Hoàn tất đơn hàng ngay (1 chạm)"
+                >
+                  {updatingOrderIds.has(ord.id) ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCheck size={15} strokeWidth={2.5} />
+                  )}
+                  <span>Xong ngay</span>
+                </button>
+              </>
+            )}
+
+            {canTransitionOrders && ord.status === "ready" && (
+              <button
+                type="button"
+                disabled={updatingOrderIds.has(ord.id)}
+                onClick={() => handleTransitionStatus(ord, "completed")}
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#332a2b] hover:bg-[#1f191a] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
+              >
+                {updatingOrderIds.has(ord.id) ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Check size={15} strokeWidth={3} />
+                )}
+                <span>Trả khách & Hoàn tất</span>
+              </button>
+            )}
+
+            {/* View Order Detail Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedOrder(ord)}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95 transition-colors"
+              title="Xem chi tiết đơn"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1116,7 +1651,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
               if (!soundEnabled) playChimeSound();
             }}
             title={soundEnabled ? "Tắt âm báo đơn mới" : "Bật âm báo chuông đơn mới"}
-            className={`min-h-[40px] px-3 py-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-all ${
+            className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-all ${
               soundEnabled
                 ? "bg-[#fff8e7] text-[#8a5d00] border-[#ffe8a3]"
                 : "bg-[#fffaf4] text-[#7b6f70] border-[#eee3df]"
@@ -1128,13 +1663,13 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
 
           {/* Online Ordering Toggle Quick Switch */}
           {canManageMenu && (
-            <div className="flex items-center gap-2 min-h-[40px] px-2.5 py-1 rounded-xl border border-[#eee3df] bg-[#fffaf4] text-xs">
+            <div className="flex items-center gap-2 min-h-[44px] px-3 py-1 rounded-xl border border-[#eee3df] bg-[#fffaf4] text-xs">
               <span className="font-semibold text-[#7b6f70]">Nhận đơn:</span>
               <button
                 type="button"
                 disabled={storeStatusLoading || isOrderingOpen === null}
                 onClick={() => isOrderingOpen !== null && handleToggleStoreOrdering(!isOrderingOpen)}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
+                className={`min-h-[44px] px-3 py-1.5 inline-flex items-center justify-center rounded-lg font-bold text-xs transition-all ${
                   isOrderingOpen === null
                     ? "bg-[#eee3df] text-[#7b6f70]"
                     : isOrderingOpen
@@ -1155,7 +1690,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
             type="button"
             onClick={() => fetchOrders(false)}
             aria-label="Làm mới dữ liệu đơn"
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-[#eee3df] bg-white hover:bg-[#fffaf4] text-[#332a2b] transition-colors"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-[#eee3df] bg-white hover:bg-[#fffaf4] text-[#332a2b] transition-colors"
           >
             <RefreshCw size={15} className={loadingOrders ? "animate-spin text-[#6f2939]" : ""} />
           </button>
@@ -1271,10 +1806,10 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       {/* TAB 1: ORDERS DASHBOARD */}
       {activeTab === "orders" && (
         <div className="space-y-3.5 sm:space-y-4">
-          {/* Unified Minimalist Mobile-First Control Bar (Status + Date + Search) */}
+          {/* Unified Minimalist Control Bar (Search + Date + View Toggle + Status + Attention Filters) */}
           <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#eee3df] space-y-3">
-            {/* Row 1: Search & Date Presets */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            {/* Row 1: Search, Date Presets & View Mode Toggle */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
               <div className="relative flex-1 max-w-md">
                 <Search size={15} className="absolute left-3.5 top-3 text-[#9c9391]" />
                 <input
@@ -1282,50 +1817,83 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm mã đơn (LB-..), tên, SĐT..."
-                  className="w-full pl-9 pr-4 py-2 min-h-[40px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-xs sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
+                  className="w-full pl-9 pr-4 py-2 min-h-[44px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-xs sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                <Calendar size={14} className="text-[#6f2939] shrink-0 mr-0.5" />
-                {[
-                  { key: "all", label: "Tất cả" },
-                  { key: "today", label: "Hôm nay" },
-                  { key: "yesterday", label: "Hôm qua" },
-                  { key: "7days", label: "7 ngày" },
-                  { key: "custom", label: "Chọn ngày" },
-                ].map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() => setDatePreset(p.key as typeof datePreset)}
-                    className={`px-2.5 py-1.5 min-h-[34px] rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                      datePreset === p.key
-                        ? "bg-[#6f2939] text-white"
-                        : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df] hover:text-[#332a2b]"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Date Presets */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  <Calendar size={14} className="text-[#6f2939] shrink-0 mr-0.5" />
+                  {[
+                    { key: "all", label: "Tất cả" },
+                    { key: "today", label: "Hôm nay" },
+                    { key: "yesterday", label: "Hôm qua" },
+                    { key: "7days", label: "7 ngày" },
+                    { key: "custom", label: "Chọn ngày" },
+                  ].map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => setDatePreset(p.key as typeof datePreset)}
+                      className={`px-3 py-1.5 min-h-[44px] rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center justify-center ${
+                        datePreset === p.key
+                          ? "bg-[#6f2939] text-white"
+                          : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df] hover:text-[#332a2b]"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
 
-                {datePreset === "custom" && (
-                  <input
-                    type="date"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                    className="px-2.5 py-1 text-xs rounded-xl border border-[#e6dad5] text-[#332a2b] focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
-                  />
-                )}
+                  {datePreset === "custom" && (
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => setCustomDate(e.target.value)}
+                      className="px-2.5 py-1 min-h-[44px] text-xs rounded-xl border border-[#e6dad5] text-[#332a2b] focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
+                    />
+                  )}
+                </div>
+
+                {/* View Mode Toggle: Grouped List vs Kanban */}
+                <div className="inline-flex items-center p-1 rounded-xl bg-[#fffaf4] border border-[#e6dad5] shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("list")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-lg text-xs font-bold transition-all ${
+                      viewMode === "list"
+                        ? "bg-[#6f2939] text-white shadow-2xs"
+                        : "text-[#7b6f70] hover:text-[#332a2b]"
+                    }`}
+                    title="Xem dạng danh sách phân nhóm"
+                  >
+                    <List size={14} />
+                    <span className="hidden sm:inline">Phân nhóm</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("kanban")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-lg text-xs font-bold transition-all ${
+                      viewMode === "kanban"
+                        ? "bg-[#6f2939] text-white shadow-2xs"
+                        : "text-[#7b6f70] hover:text-[#332a2b]"
+                    }`}
+                    title="Xem dạng bảng cột Kanban"
+                  >
+                    <LayoutGrid size={14} />
+                    <span className="hidden sm:inline">Kanban</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Row 2: Horizontal Minimalist Status Filter Pills */}
+            {/* Row 2: Status Filter Pills with Live Count Badges */}
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#f5efec]">
               <div className="flex overflow-x-auto gap-1.5 pb-0.5 scrollbar-none -mx-1 px-1">
                 {[
                   { key: "all", label: "Tất cả", count: counts?.total },
-                  { key: "pending", label: "Chờ xác nhận", count: counts?.pending, urgent: (counts?.pending ?? 0) > 0 },
+                  { key: "pending", label: "Chờ nhận", count: counts?.pending, urgent: (counts?.pending ?? 0) > 0 },
                   { key: "accepted", label: "Đã nhận", count: counts?.accepted },
                   { key: "preparing", label: "Đang pha", count: counts?.preparing },
                   { key: "ready", label: "Sẵn sàng", count: counts?.ready },
@@ -1338,7 +1906,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                       key={stat.key}
                       type="button"
                       onClick={() => setStatusFilter(stat.key)}
-                      className={`min-h-[36px] px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0 ${
+                      className={`min-h-[44px] px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0 ${
                         isActive
                           ? "bg-[#6f2939] text-white border-[#6f2939] shadow-2xs"
                           : stat.urgent
@@ -1368,10 +1936,73 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   "Đang xác nhận dữ liệu"
                 ) : (
                   <>
-                    Hiển thị <strong>{orders.length}</strong> đơn
+                    Hiển thị <strong>{displayedOrders.length}</strong>/{orders.length} đơn
                   </>
                 )}
               </span>
+            </div>
+
+            {/* Row 3: Quick Attention Filters */}
+            <div className="flex items-center gap-2 pt-2 border-t border-[#f5efec] flex-wrap text-xs">
+              <span className="text-[11px] font-bold text-[#7b6f70]">Cần chú ý:</span>
+
+              <button
+                type="button"
+                onClick={() => setAttentionFilter(attentionFilter === "has_note" ? "all" : "has_note")}
+                className={`min-h-[44px] px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  attentionFilter === "has_note"
+                    ? "bg-[#d48b00] text-white shadow-2xs"
+                    : "bg-[#fff8e7] text-[#8a5d00] border border-[#fde68a] hover:bg-[#fff2cf]"
+                }`}
+              >
+                <MessageSquare size={13} />
+                <span>Có ghi chú</span>
+                {countWithNote > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold tabular-nums ${
+                      attentionFilter === "has_note"
+                        ? "bg-white/20 text-white"
+                        : "bg-[#fef3c7] text-[#8a5d00]"
+                    }`}
+                  >
+                    {countWithNote}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAttentionFilter(attentionFilter === "long_wait" ? "all" : "long_wait")}
+                className={`min-h-[44px] px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  attentionFilter === "long_wait"
+                    ? "bg-[#b91c1c] text-white shadow-2xs"
+                    : "bg-[#fff5f5] text-[#b91c1c] border border-[#fecaca] hover:bg-[#fee2e2]"
+                }`}
+              >
+                <AlertTriangle size={13} />
+                <span>Chờ lâu (&gt;15p)</span>
+                {countLongWait > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold tabular-nums ${
+                      attentionFilter === "long_wait"
+                        ? "bg-white/20 text-white"
+                        : "bg-[#fee2e2] text-[#b91c1c]"
+                    }`}
+                  >
+                    {countLongWait}
+                  </span>
+                )}
+              </button>
+
+              {attentionFilter !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => setAttentionFilter("all")}
+                  className="text-[11px] text-[#7b6f70] hover:text-[#332a2b] underline ml-1"
+                >
+                  Xoá lọc chú ý
+                </button>
+              )}
             </div>
           </div>
 
@@ -1395,7 +2026,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
               <button
                 type="button"
                 onClick={() => void fetchOrders(false)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[38px] bg-white hover:bg-[#fff2cf] text-[#8a5d00] border border-[#ffe8a3] rounded-xl text-xs font-semibold shrink-0 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] bg-white hover:bg-[#fff2cf] text-[#8a5d00] border border-[#ffe8a3] rounded-xl text-xs font-semibold shrink-0 transition-colors"
               >
                 <RefreshCw size={13} />
                 Thử lại ngay
@@ -1403,7 +2034,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
             </div>
           )}
 
-          {/* Order Cards List */}
+          {/* Order Cards View Area */}
           {loadingOrders && orders.length === 0 ? (
             <div className="bg-white rounded-2xl border border-[#eee3df]">
               <ListSkeleton rows={5} />
@@ -1435,6 +2066,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   setSearchQuery("");
                   setDatePreset("all");
                   setCustomDate("");
+                  setAttentionFilter("all");
                 }}
               />
             ) : (
@@ -1444,302 +2076,210 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 description="Đơn đặt thành công từ trang khách hàng sẽ xuất hiện tại đây."
               />
             )
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pb-28 sm:pb-20">
-              {[...orders]
-                .sort((a, b) => {
-                  if (a.status === "pending" && b.status !== "pending") return -1;
-                  if (a.status !== "pending" && b.status === "pending") return 1;
-                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                })
-                .map((ord) => {
-                  const isPending = ord.status === "pending";
-                  return (
-                    <div
-                      key={ord.id}
-                      className={`bg-white rounded-2xl border p-4 transition-all flex flex-col justify-between ${
-                        isPending
-                          ? "border-[#d96d83] bg-[#fffaf4]/40 ring-1 ring-[#f4a9b7]"
-                          : "border-[#eee3df] hover:border-[#dfc9c2]"
-                      }`}
-                    >
-                      <div>
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-[#f5efec]">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-base text-[#332a2b] tracking-tight">
-                                {ord.orderCode}
-                              </span>
-                              {isPending && (
-                                <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-[#d96d83] text-white">
-                                  MỚI
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-[#7b6f70] mt-0.5 flex items-center gap-1.5">
-                              <Clock size={12} />
-                              <span>
-                                {new Date(ord.createdAt).toLocaleTimeString("vi-VN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                              <span>·</span>
-                              <span>{ord.itemCount} món</span>
-                            </div>
-                          </div>
-
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                              ord.status === "pending"
-                                ? "bg-[#fff8e7] text-[#a86e23]"
-                                : ord.status === "accepted"
-                                ? "bg-[#fff2f4] text-[#6f2939]"
-                                : ord.status === "preparing"
-                                ? "bg-[#f3e4e7] text-[#6f2939]"
-                                : ord.status === "ready"
-                                ? "bg-[#f0faf5] text-[#2d6a4f]"
-                                : ord.status === "completed"
-                                ? "bg-[#f4ece8] text-[#554a4c]"
-                                : "bg-[#fff5f5] text-[#991b1b]"
-                            }`}
-                          >
-                            {ord.status === "pending"
-                              ? "Chờ xác nhận"
-                              : ord.status === "accepted"
-                              ? "Đã nhận"
-                              : ord.status === "preparing"
-                              ? "Đang chuẩn bị"
-                              : ord.status === "ready"
-                              ? "Sẵn sàng"
-                              : ord.status === "completed"
-                              ? "Hoàn tất"
-                              : "Đã huỷ"}
-                          </span>
-                        </div>
-
-                        {/* Visual Workflow Stepper */}
-                        <OrderWorkflowStepper status={ord.status} />
-
-                        {/* Customer Info */}
-                        <div className="py-2 px-3 rounded-xl bg-[#fffaf4] border border-[#f5efec] my-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <span className="text-[#7b6f70]">Khách:</span>{" "}
-                            <strong className="text-[#332a2b]">{ord.customerName}</strong>
-                          </div>
-                          <a
-                            href={`tel:${ord.customerPhone}`}
-                            className="inline-flex items-center gap-1 text-[#6f2939] font-bold hover:underline"
-                          >
-                            <Phone size={12} />
-                            <span>{ord.customerPhone}</span>
-                          </a>
-                        </div>
-
-                        {/* Items Preview */}
-                        <div className="space-y-1.5 my-2">
-                          {ord.items.map((it) => (
-                            <div
-                              key={it.id}
-                              className="text-xs flex items-baseline justify-between text-[#554a4c]"
-                            >
-                              <div className="flex items-baseline gap-1.5 flex-grow pr-2">
-                                <span className="font-bold text-[#6f2939]">{it.quantity}x</span>
-                                <span className="font-medium text-[#332a2b]">{it.name}</span>
-                                <span className="text-[11px] text-[#9c9391]">
-                                  ({it.size || "M"}
-                                  {it.sugar ? `, ${it.sugar.split(" ")[0]}` : ""})
-                                </span>
-                              </div>
-                              <span className="font-semibold text-[#332a2b] whitespace-nowrap tabular-nums">
-                                {formatVND(it.subtotal)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {ord.customerNote && (
-                          <div className="text-xs text-[#8a5d00] bg-[#fff8e7] p-2 rounded-xl mt-2 italic">
-                            &ldquo;Ghi chú: {ord.customerNote}&rdquo;
-                          </div>
-                        )}
-
-                        {ord.status === "cancelled" && (
-                          <div className="text-xs text-[#991b1b] bg-[#fff5f5] border border-[#fecaca] p-2.5 rounded-xl mt-2 flex items-start gap-1.5">
-                            <span className="font-bold whitespace-nowrap">Lý do huỷ:</span>
-                            <span>{ord.cancelReason || "Huỷ bởi cửa hàng"}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions & Next Step Button */}
-                      <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-extrabold text-sm text-[#6f2939] tabular-nums whitespace-nowrap">
-                          {formatVND(ord.totalAmount)}
-                        </div>
-
-                        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2">
-                          {ord.status === "cancelled" && (
-                            <span className="text-[11px] font-bold text-[#991b1b] bg-[#fff5f5] border border-[#fecaca] px-2.5 py-1.5 rounded-xl whitespace-nowrap">
-                              Đơn đã huỷ
-                            </span>
-                          )}
-
-                          {ord.status === "completed" && (
-                            <span className="text-[11px] font-bold text-[#2d6a4f] bg-[#f0faf5] border border-[#bbf7d0] px-2.5 py-1.5 rounded-xl flex items-center gap-1 whitespace-nowrap">
-                              <Check size={12} strokeWidth={3} />
-                              Đã hoàn tất
-                            </span>
-                          )}
-
-                          {/* Cancel Button */}
-                          {canCancelOrders &&
-                            ord.status !== "completed" &&
-                            ord.status !== "cancelled" && (
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => setCancelModalOrder(ord)}
-                                className="min-h-[40px] px-2.5 py-1.5 rounded-xl border border-[#fecaca] text-[#b91c1c] bg-[#fff5f5]/60 hover:bg-[#fee2e2] text-xs font-semibold transition-colors active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                              >
-                                Huỷ
-                              </button>
-                            )}
-
-                          {/* Workflow Next Action Buttons */}
-                          {canTransitionOrders && ord.status === "pending" && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "preparing", { autoAdvance: true })}
-                                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                                title="Nhận đơn và bắt đầu pha chế ngay"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <Coffee size={13} />
-                                )}
-                                <span>Nhận & Pha</span>
-                                <ArrowRight size={13} />
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
-                                className="min-h-[40px] px-2.5 py-1.5 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                                title="Hoàn tất đơn hàng ngay (1 chạm)"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <CheckCheck size={14} strokeWidth={2.5} />
-                                )}
-                                <span>Xong ngay</span>
-                              </button>
-                            </>
-                          )}
-
-                          {canTransitionOrders && ord.status === "accepted" && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "preparing")}
-                                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#d96d83] hover:bg-[#c75865] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <Coffee size={13} />
-                                )}
-                                <span>Bắt đầu pha</span>
-                                <ArrowRight size={13} />
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
-                                className="min-h-[40px] px-2.5 py-1.5 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                                title="Hoàn tất đơn hàng ngay (1 chạm)"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <CheckCheck size={14} strokeWidth={2.5} />
-                                )}
-                                <span>Xong ngay</span>
-                              </button>
-                            </>
-                          )}
-
-                          {canTransitionOrders && ord.status === "preparing" && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "ready")}
-                                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#2d6a4f] hover:bg-[#23533d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <Sparkles size={13} />
-                                )}
-                                <span>Sẵn sàng</span>
-                                <ArrowRight size={13} />
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={updatingOrderIds.has(ord.id)}
-                                onClick={() => handleTransitionStatus(ord, "completed", { autoAdvance: true })}
-                                className="min-h-[40px] px-2.5 py-1.5 rounded-xl bg-[#332a2b] hover:bg-[#1f191a] active:scale-95 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                                title="Hoàn tất đơn hàng ngay (1 chạm)"
-                              >
-                                {updatingOrderIds.has(ord.id) ? (
-                                  <RefreshCw size={13} className="animate-spin" />
-                                ) : (
-                                  <CheckCheck size={14} strokeWidth={2.5} />
-                                )}
-                                <span>Xong ngay</span>
-                              </button>
-                            </>
-                          )}
-
-                          {canTransitionOrders && ord.status === "ready" && (
-                            <button
-                              type="button"
-                              disabled={updatingOrderIds.has(ord.id)}
-                              onClick={() => handleTransitionStatus(ord, "completed")}
-                              className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#332a2b] hover:bg-[#1f191a] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs whitespace-nowrap disabled:opacity-60"
-                            >
-                              {updatingOrderIds.has(ord.id) ? (
-                                <RefreshCw size={13} className="animate-spin" />
-                              ) : (
-                                <Check size={14} strokeWidth={3} />
-                              )}
-                              <span>Trả khách & Hoàn tất</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOrder(ord)}
-                            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95 transition-colors"
-                            title="Xem chi tiết đơn"
-                          >
-                            <ChevronRight size={16} />
-                          </button>
-                        </div>
-                      </div>
+          ) : displayedOrders.length === 0 ? (
+            <AsyncStatePanel
+              state="empty"
+              title="Không có đơn khớp điều kiện chú ý"
+              description="Thử chọn điều kiện chú ý khác hoặc xoá bộ lọc để xem toàn bộ danh sách."
+              actionLabel="Xem tất cả đơn"
+              onAction={() => setAttentionFilter("all")}
+            />
+          ) : viewMode === "kanban" ? (
+            /* Kanban Board Mode */
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5 pb-28 sm:pb-20 items-start">
+              {/* Column 1: Chờ xác nhận (Pending) */}
+              <div className="bg-[#fcf8f6] rounded-2xl border border-[#f0e4df] p-3 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-[#ebdcd5]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#d96d83] animate-pulse" />
+                    <h3 className="font-extrabold text-sm text-[#332a2b]">Chờ xác nhận</h3>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7]">
+                    {pendingOrders.length}
+                  </span>
+                </div>
+                <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-280px)] pr-0.5">
+                  {pendingOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-[#9c9391] bg-white/60 rounded-xl border border-dashed border-[#e6dad5]">
+                      Không có đơn chờ
                     </div>
-                  );
-                })}
+                  ) : (
+                    pendingOrders.map((ord) => renderOrderCard(ord))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 2: Đang chuẩn bị / Pha (Accepted + Preparing) */}
+              <div className="bg-[#fcf8f6] rounded-2xl border border-[#f0e4df] p-3 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-[#ebdcd5]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#6f2939]" />
+                    <h3 className="font-extrabold text-sm text-[#332a2b]">Đang pha chế</h3>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7]">
+                    {inPrepOrders.length}
+                  </span>
+                </div>
+                <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-280px)] pr-0.5">
+                  {inPrepOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-[#9c9391] bg-white/60 rounded-xl border border-dashed border-[#e6dad5]">
+                      Chưa có đơn đang pha
+                    </div>
+                  ) : (
+                    inPrepOrders.map((ord) => renderOrderCard(ord))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 3: Sẵn sàng giao (Ready) */}
+              <div className="bg-[#fcf8f6] rounded-2xl border border-[#f0e4df] p-3 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-[#ebdcd5]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#2d6a4f]" />
+                    <h3 className="font-extrabold text-sm text-[#332a2b]">Sẵn sàng giao</h3>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#f0faf5] text-[#2d6a4f] border border-[#bbf7d0]">
+                    {readyOrders.length}
+                  </span>
+                </div>
+                <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-280px)] pr-0.5">
+                  {readyOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-[#9c9391] bg-white/60 rounded-xl border border-dashed border-[#e6dad5]">
+                      Không có đơn chờ giao
+                    </div>
+                  ) : (
+                    readyOrders.map((ord) => renderOrderCard(ord))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 4: Đã xong / Huỷ (Closed) */}
+              <div className="bg-[#fcf8f6] rounded-2xl border border-[#f0e4df] p-3 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-[#ebdcd5]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#7b6f70]" />
+                    <h3 className="font-extrabold text-sm text-[#332a2b]">Đã xong / Huỷ</h3>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#f4ece8] text-[#554a4c]">
+                      {historyOrders.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsKanbanClosedCollapsed((prev) => !prev)}
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#7b6f70] hover:text-[#332a2b] rounded-lg hover:bg-black/5"
+                      title={isKanbanClosedCollapsed ? "Mở rộng cột" : "Thu gọn cột"}
+                    >
+                      {isKanbanClosedCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                    </button>
+                  </div>
+                </div>
+                {!isKanbanClosedCollapsed && (
+                  <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-280px)] pr-0.5">
+                    {historyOrders.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-[#9c9391] bg-white/60 rounded-xl border border-dashed border-[#e6dad5]">
+                        Không có đơn
+                      </div>
+                    ) : (
+                      historyOrders.map((ord) => renderOrderCard(ord))
+                    )}
+                  </div>
+                )}
+                {isKanbanClosedCollapsed && (
+                  <div
+                    onClick={() => setIsKanbanClosedCollapsed(false)}
+                    className="py-4 text-center text-xs text-[#7b6f70] bg-white/40 hover:bg-white/80 rounded-xl border border-dashed border-[#e6dad5] cursor-pointer transition-colors"
+                  >
+                    Đã thu gọn ({historyOrders.length} đơn). Bấm để xem.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Grouped List Mode */
+            <div className="space-y-6 pb-28 sm:pb-20">
+              {/* Nhóm 1: Đơn mới chờ nhận (Pending) */}
+              {pendingOrders.length > 0 && (
+                <section aria-labelledby="heading-pending-orders" className="space-y-3">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#f5efec]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-[#d96d83] animate-pulse" />
+                      <h3 id="heading-pending-orders" className="font-extrabold text-base text-[#332a2b] flex items-center gap-2">
+                        Đơn mới chờ nhận
+                        <span className="px-2 py-0.5 text-xs font-black rounded-full bg-[#d96d83] text-white">
+                          {pendingOrders.length}
+                        </span>
+                      </h3>
+                    </div>
+                    <span className="text-xs text-[#a86e23] font-semibold bg-[#fff8e7] border border-[#fde68a] px-2.5 py-0.5 rounded-full">
+                      Ưu tiên xử lý
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                    {pendingOrders.map((ord) => renderOrderCard(ord))}
+                  </div>
+                </section>
+              )}
+
+              {/* Nhóm 2: Đang xử lý & Sẵn sàng giao (Active) */}
+              {activeOrders.length > 0 && (
+                <section aria-labelledby="heading-active-orders" className="space-y-3">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#f5efec]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-[#6f2939]" />
+                      <h3 id="heading-active-orders" className="font-extrabold text-base text-[#332a2b] flex items-center gap-2">
+                        Đang xử lý & Sẵn sàng giao
+                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-[#fff2f4] text-[#6f2939] border border-[#f4a9b7]">
+                          {activeOrders.length}
+                        </span>
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                    {activeOrders.map((ord) => renderOrderCard(ord))}
+                  </div>
+                </section>
+              )}
+
+              {/* Nhóm 3: Đã hoàn tất & Đã huỷ (History - Collapsible) */}
+              {historyOrders.length > 0 && (
+                <section aria-labelledby="heading-history-orders" className="space-y-3">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#f5efec]">
+                    <button
+                      type="button"
+                      onClick={() => setIsHistoryCollapsed((prev) => !prev)}
+                      className="flex items-center gap-2 text-left group py-1 min-h-[44px]"
+                      aria-expanded={!shouldCollapseHistory}
+                    >
+                      <span className="w-3 h-3 rounded-full bg-[#7b6f70]" />
+                      <h3 id="heading-history-orders" className="font-extrabold text-base text-[#554a4c] group-hover:text-[#332a2b] flex items-center gap-2 transition-colors">
+                        Đã hoàn tất & Đã huỷ
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-[#f4ece8] text-[#554a4c]">
+                          {historyOrders.length}
+                        </span>
+                      </h3>
+                      {shouldCollapseHistory ? (
+                        <ChevronDown size={18} className="text-[#7b6f70] group-hover:text-[#332a2b] transition-transform" />
+                      ) : (
+                        <ChevronUp size={18} className="text-[#7b6f70] group-hover:text-[#332a2b] transition-transform" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsHistoryCollapsed((prev) => !prev)}
+                      className="text-xs text-[#7b6f70] hover:text-[#332a2b] font-medium min-h-[44px] px-3 inline-flex items-center"
+                    >
+                      {shouldCollapseHistory ? "Mở rộng danh sách" : "Thu gọn"}
+                    </button>
+                  </div>
+
+                  {!shouldCollapseHistory && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                      {historyOrders.map((ord) => renderOrderCard(ord))}
+                    </div>
+                  )}
+                </section>
+              )}
             </div>
           )}
         </div>
@@ -1748,19 +2288,30 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
       {activeTab === "wastage" && (
         <section className="space-y-4" aria-labelledby="wastage-title">
           <div className="rounded-2xl border border-[#fecaca] bg-[#fff5f5] p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-white p-2.5 text-[#b91c1c]">
-                <ClipboardX size={20} />
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="rounded-xl bg-white p-2.5 text-[#b91c1c] shrink-0">
+                  <ClipboardX size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h2 id="wastage-title" className="text-base sm:text-lg font-bold text-[#332a2b]">
+                    Báo cáo hao hụt sau khi bắt đầu chuẩn bị
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-[#7b6f70]">
+                    Chỉ gồm đơn bị huỷ từ trạng thái Đang chuẩn bị hoặc Sẵn sàng. Giá trị dưới đây là giá bán lẻ theo snapshot đơn,
+                    không phải chi phí nguyên liệu thực tế và không được tính là doanh thu thực thu.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h2 id="wastage-title" className="text-base sm:text-lg font-bold text-[#332a2b]">
-                  Báo cáo hao hụt sau khi bắt đầu chuẩn bị
-                </h2>
-                <p className="mt-1 text-xs leading-relaxed text-[#7b6f70]">
-                  Chỉ gồm đơn bị huỷ từ trạng thái Đang chuẩn bị hoặc Sẵn sàng. Giá trị dưới đây là giá bán lẻ theo snapshot đơn,
-                  không phải chi phí nguyên liệu thực tế và không được tính là doanh thu thực thu.
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => void fetchOrders(false)}
+                aria-label="Tải lại báo cáo hao hụt"
+                title="Tải lại báo cáo hao hụt"
+                className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center rounded-xl border border-[#fecaca] bg-white hover:bg-[#fffaf4] text-[#991b1b] active:scale-95 transition-all"
+              >
+                <RefreshCw size={15} className={loadingOrders ? "animate-spin" : ""} />
+              </button>
             </div>
           </div>
 
@@ -1883,7 +2434,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 <button
                   type="button"
                   onClick={() => setIsImportModalOpen(true)}
-                  className="flex-1 min-w-[130px] sm:flex-none min-h-[42px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white hover:bg-[#fffaf4] active:scale-95 text-[#6f2939] font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                  className="flex-1 min-w-[130px] sm:flex-none min-h-[44px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white hover:bg-[#fffaf4] active:scale-95 text-[#6f2939] font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
                 >
                   <FileSpreadsheet size={15} />
                   <span>Nhập Excel / CSV</span>
@@ -1891,7 +2442,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 <button
                   type="button"
                   onClick={handleOpenCreateModal}
-                  className="flex-1 min-w-[130px] sm:flex-none min-h-[42px] px-4 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                  className="flex-1 min-w-[130px] sm:flex-none min-h-[44px] px-4 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
                 >
                   <Plus size={15} />
                   <span>Thêm món mới</span>
@@ -1900,7 +2451,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   type="button"
                   onClick={fetchMenu}
                   aria-label="Tải lại thực đơn"
-                  className="min-h-[42px] min-w-[42px] shrink-0 flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] active:scale-95 transition-all"
+                  className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] active:scale-95 transition-all"
                 >
                   <RefreshCw size={15} className={loadingMenu ? "animate-spin text-[#6f2939]" : ""} />
                 </button>
@@ -1908,14 +2459,24 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
             </div>
 
             <div className="relative">
-              <Search size={15} className="absolute left-3.5 top-3 text-[#9c9391]" />
+              <Search size={15} className="absolute left-3.5 top-3.5 text-[#9c9391] pointer-events-none" />
               <input
                 type="text"
                 value={menuSearchQuery}
                 onChange={(e) => setMenuSearchQuery(e.target.value)}
                 placeholder="Tìm tên món ăn, thức uống..."
-                className="w-full pl-9 pr-4 py-2 min-h-[40px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-xs sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
+                className="w-full pl-9 pr-11 py-2 min-h-[44px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-base sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
               />
+              {menuSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setMenuSearchQuery("")}
+                  aria-label="Xóa từ khóa tìm kiếm thực đơn"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-[#7b6f70] hover:bg-[#eee3df]/60"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
             {/* Category Pills & Filter Presets: Tất cả, Cà phê, Trà, Trà sữa, Topping */}
@@ -1928,7 +2489,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     key={preset.id}
                     type="button"
                     onClick={() => setSelectedCategoryFilter(preset.id)}
-                    className={`px-3 py-1.5 min-h-[34px] rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    className={`px-3.5 py-1.5 min-h-[44px] rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                       isActive
                         ? "bg-[#6f2939] text-white shadow-xs"
                         : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
@@ -1937,7 +2498,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     <span>{preset.icon}</span>
                     <span>{preset.label}</span>
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
                         isActive ? "bg-white/20 text-white" : "bg-[#eee3df] text-[#554a4c]"
                       }`}
                     >
@@ -1959,7 +2520,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedCategoryFilter(cat.id)}
-                    className={`px-3 py-1.5 min-h-[34px] rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                    className={`px-3.5 py-1.5 min-h-[44px] rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
                       isActive
                         ? "bg-[#6f2939] text-white shadow-xs"
                         : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
@@ -1970,6 +2531,72 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 );
               })}
             </div>
+
+            {/* Quick Stock Availability Filter Pills */}
+            {(() => {
+              const isToppingView = selectedCategoryFilter === "topping";
+              const totalCount = isToppingView ? menuOptions.length : menuItems.length;
+              const availableCount = isToppingView
+                ? menuOptions.filter((o) => Boolean(o.is_available)).length
+                : menuItems.filter((m) => Boolean(m.is_available)).length;
+              const outOfStockCount = totalCount - availableCount;
+
+              return (
+                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-[#f5efec] flex-wrap">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                    <span className="text-[11px] font-bold text-[#7b6f70] mr-1 whitespace-nowrap">
+                      Trạng thái bán:
+                    </span>
+                    {(
+                      [
+                        { id: "all", label: "Tất cả", count: totalCount },
+                        { id: "available", label: "Đang bán", count: availableCount },
+                        { id: "out_of_stock", label: "Tạm hết", count: outOfStockCount },
+                      ] as const
+                    ).map((st) => {
+                      const active = menuStockFilter === st.id;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => setMenuStockFilter(st.id)}
+                          className={`min-h-[44px] px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                            active
+                              ? "bg-[#332a2b] text-white shadow-xs"
+                              : st.id === "out_of_stock" && st.count > 0
+                              ? "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
+                              : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
+                          }`}
+                        >
+                          <span>{st.label}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                              active ? "bg-white/20 text-white" : "bg-[#eee3df] text-[#554a4c]"
+                            }`}
+                          >
+                            {st.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {(selectedCategoryFilter !== "all" || menuSearchQuery.trim() || menuStockFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategoryFilter("all");
+                        setMenuSearchQuery("");
+                        setMenuStockFilter("all");
+                      }}
+                      className="min-h-[44px] px-3 py-1.5 rounded-xl text-xs font-semibold text-[#6f2939] hover:bg-[#fffaf4] transition-colors"
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Menu Items Grid or Topping Management Grid */}
@@ -1988,7 +2615,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 <button
                   type="button"
                   onClick={() => setIsToppingModalOpen(true)}
-                  className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs"
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs"
                 >
                   <Plus size={15} />
                   <span>Thêm Topping mới</span>
@@ -2005,42 +2632,71 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   <p className="text-[#7b6f70] text-xs">Chưa có topping nào. Nhấn &quot;+ Thêm Topping mới&quot; để tạo topping.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                  {menuOptions
-                    .filter((opt) => {
-                      if (!menuSearchQuery.trim()) return true;
-                      return normalizeMenuText(opt.name).includes(normalizeMenuText(menuSearchQuery));
-                    })
-                    .map((opt) => {
-                      const isAvailable = Boolean(opt.is_available);
-                      const isEditingPrice = editingOptionPriceId === opt.id;
-                      return (
-                        <div
-                          key={opt.id}
-                          className="bg-white rounded-2xl border border-[#eee3df] p-4 hover:border-[#dfc9c2] transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-10 h-10 rounded-xl bg-[#fff5f5] text-[#831843] flex items-center justify-center font-bold text-lg shrink-0 border border-[#fed7aa]/30">
-                                  🍮
-                                </div>
-                                <div>
-                                  <h4 className="font-bold text-sm text-[#332a2b]">{opt.name}</h4>
-                                  <span className="text-[10px] text-[#7b6f70] bg-[#f8f3ef] px-2 py-0.5 rounded-full font-medium">
-                                    Topping
-                                  </span>
-                                </div>
-                              </div>
-                              <span className="font-extrabold text-sm text-[#6f2939] tabular-nums">
-                                +{formatVND(opt.price_modifier)}
-                              </span>
-                            </div>
-                          </div>
+                (() => {
+                  const filteredOptions = menuOptions.filter((opt) => {
+                    if (menuStockFilter === "available" && !opt.is_available) return false;
+                    if (menuStockFilter === "out_of_stock" && opt.is_available) return false;
+                    if (!menuSearchQuery.trim()) return true;
+                    return normalizeMenuText(opt.name).includes(normalizeMenuText(menuSearchQuery));
+                  });
 
-                          <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex items-center justify-between gap-2">
-                            {/* Toggle Stock Switch */}
-                            <div className="flex items-center gap-2">
+                  if (filteredOptions.length === 0) {
+                    return (
+                      <AsyncStatePanel
+                        state="empty"
+                        title="Không tìm thấy topping phù hợp"
+                        description="Thử từ khóa khác hoặc đặt lại bộ lọc trạng thái."
+                        actionLabel="Xóa bộ lọc"
+                        onAction={() => {
+                          setMenuSearchQuery("");
+                          setMenuStockFilter("all");
+                        }}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                      {filteredOptions.map((opt) => {
+                        const isAvailable = Boolean(opt.is_available);
+                        const isEditingPrice = editingOptionPriceId === opt.id;
+                        return (
+                          <div
+                            key={opt.id}
+                            className={`rounded-2xl border p-4 transition-all flex flex-col justify-between ${
+                              isAvailable
+                                ? "bg-white border-[#eee3df] hover:border-[#dfc9c2]"
+                                : "bg-[#fcfaf9] border-[#e6dad5] opacity-90"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl bg-[#fff5f5] text-[#831843] flex items-center justify-center font-bold text-lg shrink-0 border border-[#fed7aa]/30">
+                                    🍮
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="font-bold text-sm text-[#332a2b] truncate">{opt.name}</h4>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="text-[10px] text-[#7b6f70] bg-[#f8f3ef] px-2 py-0.5 rounded-full font-medium">
+                                        Topping
+                                      </span>
+                                      {!isAvailable && (
+                                        <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
+                                          Tạm hết
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="font-extrabold text-sm text-[#6f2939] tabular-nums shrink-0">
+                                  +{formatVND(opt.price_modifier)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex items-center justify-between gap-2 flex-wrap">
+                              {/* Toggle Stock Switch with >= 44px touch target */}
                               <button
                                 type="button"
                                 onClick={() => handleToggleOptionStock(opt)}
@@ -2048,82 +2704,94 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                 aria-checked={isAvailable}
                                 aria-busy={updatingOptionIds.has(opt.id)}
                                 disabled={updatingOptionIds.has(opt.id)}
-                                className={`w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
-                                  isAvailable ? "bg-[#2d6a4f]" : "bg-[#d6ccc8]"
-                                }`}
+                                className="min-h-[44px] px-2.5 py-1.5 rounded-xl border border-transparent hover:bg-[#fffaf4] flex items-center gap-2 transition-colors"
                               >
-                                <div
-                                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                                    isAvailable ? "translate-x-5" : "translate-x-0"
+                                <span
+                                  className={`w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 shrink-0 ${
+                                    isAvailable ? "bg-[#2d6a4f]" : "bg-[#d6ccc8]"
                                   }`}
-                                />
-                              </button>
-                              <span
-                                className={`text-xs font-bold ${
-                                  isAvailable ? "text-[#2d6a4f]" : "text-[#9c9391]"
-                                }`}
-                              >
-                                {isAvailable ? "Còn hàng" : "Hết topping"}
-                              </span>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-1.5">
-                              {isEditingPrice ? (
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="number"
-                                    step={1000}
-                                    min={0}
-                                    value={newOptionPriceValue}
-                                    onChange={(e) => setNewOptionPriceValue(Number(e.target.value))}
-                                    className="w-20 px-2 py-1 text-xs rounded-lg border border-[#e6dad5] focus:outline-none focus:ring-1 focus:ring-[#6f2939]"
+                                >
+                                  <span
+                                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                      isAvailable ? "translate-x-5" : "translate-x-0"
+                                    }`}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveOptionPrice(opt.id)}
-                                    className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-lg bg-[#6f2939] text-white"
-                                  >
-                                    <Check size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingOptionPriceId(null)}
-                                    className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-lg bg-[#f4ece8] text-[#554a4c]"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingOptionPriceId(opt.id);
-                                      setNewOptionPriceValue(opt.price_modifier);
-                                    }}
-                                    className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#332a2b] text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all"
-                                    title="Đổi giá topping"
-                                  >
-                                    <Edit2 size={13} />
-                                    <span>Đổi giá</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeletingOption(opt)}
-                                    className="min-h-[36px] px-2 py-1.5 rounded-xl border border-[#fecaca] text-[#b91c1c] hover:bg-[#fff5f5] text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all"
-                                    title="Xoá topping"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </>
-                              )}
+                                </span>
+                                <span
+                                  className={`text-xs font-bold ${
+                                    isAvailable ? "text-[#2d6a4f]" : "text-[#9c9391]"
+                                  }`}
+                                >
+                                  {isAvailable ? "Còn hàng" : "Hết topping"}
+                                </span>
+                              </button>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-2">
+                                {isEditingPrice ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      step={1000}
+                                      min={0}
+                                      value={newOptionPriceValue}
+                                      onChange={(e) => setNewOptionPriceValue(Number(e.target.value))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") void handleSaveOptionPrice(opt.id);
+                                        if (e.key === "Escape") setEditingOptionPriceId(null);
+                                      }}
+                                      className="w-24 min-h-[44px] px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939] tabular-nums"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveOptionPrice(opt.id)}
+                                      aria-label="Lưu giá topping"
+                                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white hover:bg-[#5a1f2d]"
+                                    >
+                                      <Check size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingOptionPriceId(null)}
+                                      aria-label="Huỷ đổi giá topping"
+                                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c] hover:bg-[#eee3df]"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingOptionPriceId(opt.id);
+                                        setNewOptionPriceValue(opt.price_modifier);
+                                      }}
+                                      className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#332a2b] text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all"
+                                      title="Đổi giá topping"
+                                    >
+                                      <Edit2 size={13} />
+                                      <span>Đổi giá</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingOption(opt)}
+                                      aria-label={`Xoá topping ${opt.name}`}
+                                      className="min-h-[44px] min-w-[44px] px-2.5 py-2 rounded-xl border border-[#fecaca] text-[#b91c1c] hover:bg-[#fff5f5] text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all"
+                                      title="Xoá topping"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
               )}
             </div>
           ) : (
@@ -2134,68 +2802,127 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   <p className="text-[#7b6f70] text-xs">Đang tải thực đơn...</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                  {menuItems
-                    .filter((item) => {
-                      const cat = categories.find((c) => c.id === item.category_id);
-                      return matchesMenuFilter(
-                        item,
-                        cat?.name || "",
-                        selectedCategoryFilter,
-                        menuSearchQuery,
-                      );
-                    })
-                    .map((item) => {
-                      const isAvailable = Boolean(item.is_available);
-                      const cat = categories.find((c) => c.id === item.category_id);
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-white rounded-2xl border border-[#eee3df] p-4 hover:border-[#dfc9c2] transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            {/* Visual & Basic Info */}
-                            <div className="flex gap-3 items-start">
-                              <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-[#fffaf4] border border-[#eee3df]">
-                                <DrinkVisual
-                                  itemId={item.id}
-                                  imageUrl={item.image_url}
-                                  name={item.name}
-                                  category={cat?.name || "Thực đơn"}
-                                  className="w-full h-full object-cover"
-                                />
-                                {item.badge && (
-                                  <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-[#d96d83] text-white">
-                                    {item.badge}
-                                  </span>
-                                )}
+                (() => {
+                  const filteredMenuItems = menuItems.filter((item) => {
+                    if (menuStockFilter === "available" && !item.is_available) return false;
+                    if (menuStockFilter === "out_of_stock" && item.is_available) return false;
+                    const cat = categories.find((c) => c.id === item.category_id);
+                    return matchesMenuFilter(
+                      item,
+                      cat?.name || "",
+                      selectedCategoryFilter,
+                      menuSearchQuery,
+                    );
+                  });
+
+                  if (filteredMenuItems.length === 0) {
+                    return (
+                      <AsyncStatePanel
+                        state="empty"
+                        title="Không tìm thấy món phù hợp"
+                        description="Không có món nào khớp với từ khóa hoặc bộ lọc trạng thái hiện tại."
+                        actionLabel="Xóa bộ lọc"
+                        onAction={() => {
+                          setSelectedCategoryFilter("all");
+                          setMenuSearchQuery("");
+                          setMenuStockFilter("all");
+                        }}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                      {filteredMenuItems.map((item) => {
+                        const isAvailable = Boolean(item.is_available);
+                        const cat = categories.find((c) => c.id === item.category_id);
+                        const allowsSize = item.allows_size !== undefined ? Boolean(item.allows_size) : true;
+                        const allowsSugar = item.allows_sugar !== undefined ? Boolean(item.allows_sugar) : true;
+                        const allowsIce = item.allows_ice !== undefined ? Boolean(item.allows_ice) : true;
+                        const allowsToppings = item.allows_toppings !== undefined ? Boolean(item.allows_toppings) : true;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`rounded-2xl border p-4 transition-all flex flex-col justify-between ${
+                              isAvailable
+                                ? "bg-white border-[#eee3df] hover:border-[#dfc9c2]"
+                                : "bg-[#fcfaf9] border-[#e6dad5] opacity-90"
+                            }`}
+                          >
+                            <div>
+                              {/* Visual & Basic Info */}
+                              <div className="flex gap-3 items-start">
+                                <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-[#fffaf4] border border-[#eee3df]">
+                                  <DrinkVisual
+                                    itemId={item.id}
+                                    imageUrl={item.image_url}
+                                    name={item.name}
+                                    category={cat?.name || "Thực đơn"}
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {item.badge && (
+                                    <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-[#d96d83] text-white">
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <h3 className="font-bold text-sm text-[#332a2b] truncate">{item.name}</h3>
+                                    {!isAvailable && (
+                                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                        Tạm hết
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.english_name && (
+                                    <p className="text-xs text-[#9c9391] truncate">{item.english_name}</p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#f8f3ef] text-[#7b6f70]">
+                                      {cat?.name || "Món"}
+                                    </span>
+                                    <span className="font-extrabold text-sm text-[#6f2939] tabular-nums">
+                                      {formatVND(item.base_price)}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
 
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-bold text-sm text-[#332a2b] truncate">{item.name}</h3>
-                                {item.english_name && (
-                                  <p className="text-xs text-[#9c9391] truncate">{item.english_name}</p>
+                              {item.description && (
+                                <p className="text-xs text-[#7b6f70] mt-2 line-clamp-2">{item.description}</p>
+                              )}
+
+                              {/* Option Capability Badges */}
+                              <div className="flex items-center gap-1 mt-2.5 flex-wrap">
+                                {allowsSize && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#f8f3ef] text-[#554a4c]">
+                                    Size M/L
+                                  </span>
                                 )}
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#f8f3ef] text-[#7b6f70]">
-                                    {cat?.name || "Món"}
+                                {allowsSugar && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#f8f3ef] text-[#554a4c]">
+                                    Đường
                                   </span>
-                                  <span className="font-extrabold text-sm text-[#6f2939] tabular-nums">
-                                    {formatVND(item.base_price)}
+                                )}
+                                {allowsIce && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#f8f3ef] text-[#554a4c]">
+                                    Đá
                                   </span>
-                                </div>
+                                )}
+                                {allowsToppings && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#fff0f3] text-[#6f2939]">
+                                    +Topping
+                                  </span>
+                                )}
                               </div>
                             </div>
 
-                            {item.description && (
-                              <p className="text-xs text-[#7b6f70] mt-2 line-clamp-2">{item.description}</p>
-                            )}
-                          </div>
-
-                          {/* Action Bar */}
-                          <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex items-center justify-between gap-2">
-                            {/* Toggle Stock Switch */}
-                            <div className="flex items-center gap-2">
+                            {/* Action Bar */}
+                            <div className="mt-3.5 pt-2.5 border-t border-[#f5efec] flex items-center justify-between gap-2">
+                              {/* Toggle Stock Switch with >= 44px touch target */}
                               <button
                                 type="button"
                                 onClick={() => handleToggleItemStock(item)}
@@ -2203,50 +2930,56 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                 aria-checked={isAvailable}
                                 aria-busy={updatingMenuItemIds.has(item.id)}
                                 disabled={updatingMenuItemIds.has(item.id)}
-                                className={`w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
-                                  isAvailable ? "bg-[#2d6a4f]" : "bg-[#d6ccc8]"
-                                }`}
+                                className="min-h-[44px] px-2.5 py-1.5 rounded-xl border border-transparent hover:bg-[#fffaf4] flex items-center gap-2 transition-colors"
                               >
-                                <div
-                                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                                    isAvailable ? "translate-x-5" : "translate-x-0"
+                                <span
+                                  className={`w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 shrink-0 ${
+                                    isAvailable ? "bg-[#2d6a4f]" : "bg-[#d6ccc8]"
                                   }`}
-                                />
+                                >
+                                  <span
+                                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                      isAvailable ? "translate-x-5" : "translate-x-0"
+                                    }`}
+                                  />
+                                </span>
+                                <span
+                                  className={`text-xs font-bold ${
+                                    isAvailable ? "text-[#2d6a4f]" : "text-[#9c9391]"
+                                  }`}
+                                >
+                                  {isAvailable ? "Còn hàng" : "Hết món"}
+                                </span>
                               </button>
-                              <span
-                                className={`text-xs font-bold ${
-                                  isAvailable ? "text-[#2d6a4f]" : "text-[#9c9391]"
-                                }`}
-                              >
-                                {isAvailable ? "Còn hàng" : "Hết món"}
-                              </span>
-                            </div>
 
-                            {/* Edit & Delete Buttons */}
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditModal(item)}
-                                className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#332a2b] text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all"
-                                title="Sửa chi tiết món"
-                              >
-                                <Edit2 size={13} />
-                                <span>Sửa</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeletingItem(item)}
-                                className="min-h-[36px] px-2 py-1.5 rounded-xl border border-[#fecaca] text-[#b91c1c] hover:bg-[#fff5f5] text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all"
-                                title="Xoá món"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                              {/* Edit & Delete Buttons with >= 44px touch targets and 8px separation */}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditModal(item)}
+                                  className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#332a2b] text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all"
+                                  title="Sửa chi tiết món"
+                                >
+                                  <Edit2 size={13} />
+                                  <span>Sửa</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingItem(item)}
+                                  aria-label={`Xoá món ${item.name}`}
+                                  className="min-h-[44px] min-w-[44px] px-2.5 py-2 rounded-xl border border-[#fecaca] text-[#b91c1c] hover:bg-[#fff5f5] text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all"
+                                  title="Xoá món"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
               )}
             </>
           )}
@@ -2267,7 +3000,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
-                className="flex-1 min-w-[130px] sm:flex-none min-h-[42px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white hover:bg-[#fffaf4] active:scale-95 text-[#6f2939] font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                className="flex-1 min-w-[130px] sm:flex-none min-h-[44px] px-3.5 py-2 rounded-xl border border-[#e6dad5] bg-white hover:bg-[#fffaf4] active:scale-95 text-[#6f2939] font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
               >
                 <FileSpreadsheet size={15} />
                 <span>Nhập Excel / CSV</span>
@@ -2275,7 +3008,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
-                className="flex-1 min-w-[130px] sm:flex-none min-h-[42px] px-4 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                className="flex-1 min-w-[130px] sm:flex-none min-h-[44px] px-4 py-2 rounded-xl bg-[#6f2939] hover:bg-[#5a1f2d] active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
               >
                 <Plus size={15} />
                 <span>Thêm món mới</span>
@@ -2284,7 +3017,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 type="button"
                 onClick={fetchMenu}
                 aria-label="Tải lại thực đơn"
-                className="min-h-[42px] min-w-[42px] shrink-0 flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] active:scale-95 transition-all"
+                className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] active:scale-95 transition-all"
               >
                 <RefreshCw size={15} className={loadingMenu ? "animate-spin text-[#6f2939]" : ""} />
               </button>
@@ -2293,14 +3026,24 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
 
           {/* Search bar inside pricing tab */}
           <div className="relative">
-            <Search size={15} className="absolute left-3.5 top-3 text-[#9c9391]" />
+            <Search size={15} className="absolute left-3.5 top-3.5 text-[#9c9391] pointer-events-none" />
             <input
               type="text"
               value={pricingSearchQuery}
               onChange={(e) => setPricingSearchQuery(e.target.value)}
               placeholder="Tìm tên món ăn, đồ uống hoặc topping để chỉnh giá..."
-              className="w-full pl-9 pr-4 py-2 min-h-[40px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-xs sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
+              className="w-full pl-9 pr-11 py-2 min-h-[44px] rounded-xl border border-[#e6dad5] bg-[#fffaf4]/60 text-base sm:text-sm text-[#332a2b] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#d96d83]/40"
             />
+            {pricingSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setPricingSearchQuery("")}
+                aria-label="Xóa từ khóa tìm kiếm giá"
+                className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-[#7b6f70] hover:bg-[#eee3df]/60"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           {/* Preset filter pills inside pricing tab */}
@@ -2313,7 +3056,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   key={preset.id}
                   type="button"
                   onClick={() => setPricingCategoryFilter(preset.id)}
-                  className={`px-3 py-1.5 min-h-[34px] rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 min-h-[44px] rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                     isActive
                       ? "bg-[#6f2939] text-white shadow-xs"
                       : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
@@ -2322,7 +3065,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   <span>{preset.icon}</span>
                   <span>{preset.label}</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
                       isActive ? "bg-white/20 text-white" : "bg-[#eee3df] text-[#554a4c]"
                     }`}
                   >
@@ -2344,7 +3087,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   key={cat.id}
                   type="button"
                   onClick={() => setPricingCategoryFilter(cat.id)}
-                  className={`px-3 py-1.5 min-h-[34px] rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                  className={`px-3.5 py-1.5 min-h-[44px] rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
                     isActive
                       ? "bg-[#6f2939] text-white shadow-xs"
                       : "bg-[#f8f3ef] text-[#7b6f70] hover:bg-[#eee3df]"
@@ -2360,21 +3103,39 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
           <div className="divide-y divide-[#f5efec]">
             {/* If Topping filter is active, only show Toppings */}
             {pricingCategoryFilter === "topping" ? (
-              menuOptions
-                .filter((opt) => {
+              (() => {
+                const filteredPricingOptions = menuOptions.filter((opt) => {
                   if (!pricingSearchQuery.trim()) return true;
                   return normalizeMenuText(opt.name).includes(normalizeMenuText(pricingSearchQuery));
-                })
-                .map((opt) => {
+                });
+
+                if (filteredPricingOptions.length === 0) {
+                  return (
+                    <div className="py-6">
+                      <AsyncStatePanel
+                        state="empty"
+                        title="Không tìm thấy topping phù hợp"
+                        description="Thử từ khóa khác hoặc xóa bộ lọc tìm kiếm."
+                        actionLabel="Xóa bộ lọc"
+                        onAction={() => {
+                          setPricingSearchQuery("");
+                          setPricingCategoryFilter("all");
+                        }}
+                      />
+                    </div>
+                  );
+                }
+
+                return filteredPricingOptions.map((opt) => {
                   const isEditing = editingOptionPriceId === opt.id;
                   return (
-                    <div key={opt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div key={opt.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#fff5f5] text-[#831843] border border-[#eee3df] text-lg font-bold">
                           🍮
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-sm text-[#332a2b]">{opt.name}</span>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#f8f3ef] text-[#7b6f70]">
                               Topping
@@ -2386,36 +3147,54 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-3">
+                      <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap">
                         {isEditing ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setNewOptionPriceValue((v) => Math.max(0, v - 5000))}
+                              className="min-h-[44px] px-2.5 rounded-xl border border-[#e6dad5] bg-[#fffaf4] text-xs font-bold text-[#554a4c] hover:bg-[#f4ece8]"
+                            >
+                              -5k
+                            </button>
                             <input
                               type="number"
                               step={1000}
                               min={0}
                               value={newOptionPriceValue}
                               onChange={(e) => setNewOptionPriceValue(Number(e.target.value))}
-                              className="w-28 px-2.5 py-1.5 text-sm rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void handleSaveOptionPrice(opt.id);
+                                if (e.key === "Escape") setEditingOptionPriceId(null);
+                              }}
+                              className="w-28 min-h-[44px] px-2.5 py-1.5 text-base sm:text-sm rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939] tabular-nums"
                             />
                             <button
                               type="button"
+                              onClick={() => setNewOptionPriceValue((v) => v + 5000)}
+                              className="min-h-[44px] px-2.5 rounded-xl border border-[#e6dad5] bg-[#fffaf4] text-xs font-bold text-[#554a4c] hover:bg-[#f4ece8]"
+                            >
+                              +5k
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleSaveOptionPrice(opt.id)}
-                              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white hover:bg-[#5a1f2d]"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white hover:bg-[#5a1f2d]"
                               title="Lưu giá"
                             >
-                              <Check size={14} />
+                              <Check size={15} />
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingOptionPriceId(null)}
-                              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c] hover:bg-[#eee3df]"
+                              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c] hover:bg-[#eee3df]"
                               title="Huỷ"
                             >
-                              <X size={14} />
+                              <X size={15} />
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2">
                             <span className="font-extrabold text-sm sm:text-base text-[#6f2939] tabular-nums">
                               +{formatVND(opt.price_modifier)}
                             </span>
@@ -2425,7 +3204,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                 setEditingOptionPriceId(opt.id);
                                 setNewOptionPriceValue(opt.price_modifier);
                               }}
-                              className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-medium flex items-center gap-1"
+                              className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-semibold flex items-center gap-1.5"
                               title="Đổi giá topping"
                             >
                               <Edit2 size={13} />
@@ -2436,11 +3215,12 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                       </div>
                     </div>
                   );
-                })
+                });
+              })()
             ) : (
               <>
-                {menuItems
-                  .filter((item) => {
+                {(() => {
+                  const filteredPricingItems = menuItems.filter((item) => {
                     const cat = categories.find((c) => c.id === item.category_id);
                     return matchesMenuFilter(
                       item,
@@ -2448,13 +3228,32 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                       pricingCategoryFilter,
                       pricingSearchQuery,
                     );
-                  })
-                  .map((item) => {
+                  });
+
+                  if (filteredPricingItems.length === 0) {
+                    return (
+                      <div className="py-6">
+                        <AsyncStatePanel
+                          state="empty"
+                          title="Không tìm thấy món phù hợp"
+                          description="Không có món nào khớp với từ khóa hoặc danh mục đang chọn."
+                          actionLabel="Xóa bộ lọc"
+                          onAction={() => {
+                            setPricingSearchQuery("");
+                            setPricingCategoryFilter("all");
+                          }}
+                        />
+                      </div>
+                    );
+                  }
+
+                  return filteredPricingItems.map((item) => {
                     const isEditing = editingPriceId === item.id;
                     const cat = categories.find((c) => c.id === item.category_id);
+                    const isAvailable = Boolean(item.is_available);
                     return (
-                      <div key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
+                      <div key={item.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-[#fffaf4] border border-[#eee3df]">
                             <DrinkVisual
                               itemId={item.id}
@@ -2464,47 +3263,74 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-[#332a2b]">{item.name}</span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-[#332a2b] truncate">{item.name}</span>
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#f8f3ef] text-[#7b6f70]">
                                 {cat?.name || "Món"}
                               </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  isAvailable
+                                    ? "bg-[#f0faf5] text-[#2d6a4f]"
+                                    : "bg-amber-50 text-amber-800"
+                                }`}
+                              >
+                                {isAvailable ? "Đang bán" : "Tạm hết"}
+                              </span>
                             </div>
-                            <p className="text-xs text-[#9c9391]">{item.english_name || ""}</p>
+                            <p className="text-xs text-[#9c9391] truncate">{item.english_name || ""}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between sm:justify-end gap-3">
+                        <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap">
                           {isEditing ? (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => setNewPriceValue((v) => Math.max(1000, v - 5000))}
+                                className="min-h-[44px] px-2.5 rounded-xl border border-[#e6dad5] bg-[#fffaf4] text-xs font-bold text-[#554a4c] hover:bg-[#f4ece8]"
+                              >
+                                -5k
+                              </button>
                               <input
                                 type="number"
                                 step={1000}
                                 min={0}
                                 value={newPriceValue}
                                 onChange={(e) => setNewPriceValue(Number(e.target.value))}
-                                className="w-28 px-2.5 py-1.5 text-sm rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void handleSavePrice(item.id);
+                                  if (e.key === "Escape") setEditingPriceId(null);
+                                }}
+                                className="w-28 min-h-[44px] px-2.5 py-1.5 text-base sm:text-sm rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939] tabular-nums"
                               />
                               <button
                                 type="button"
+                                onClick={() => setNewPriceValue((v) => v + 5000)}
+                                className="min-h-[44px] px-2.5 rounded-xl border border-[#e6dad5] bg-[#fffaf4] text-xs font-bold text-[#554a4c] hover:bg-[#f4ece8]"
+                              >
+                                +5k
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleSavePrice(item.id)}
-                                className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white hover:bg-[#5a1f2d]"
+                                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white hover:bg-[#5a1f2d]"
                                 title="Lưu giá"
                               >
-                                <Check size={14} />
+                                <Check size={15} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingPriceId(null)}
-                                className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c] hover:bg-[#eee3df]"
+                                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c] hover:bg-[#eee3df]"
                                 title="Huỷ"
                               >
-                                <X size={14} />
+                                <X size={15} />
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2">
                               <span className="font-extrabold text-sm sm:text-base text-[#6f2939] tabular-nums">
                                 {formatVND(item.base_price)}
                               </span>
@@ -2514,7 +3340,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                   setEditingPriceId(item.id);
                                   setNewPriceValue(item.base_price);
                                 }}
-                                className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-medium flex items-center gap-1"
+                                className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-semibold flex items-center gap-1.5"
                                 title="Đổi giá nhanh"
                               >
                                 <Edit2 size={13} />
@@ -2523,7 +3349,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(item)}
-                                className="min-h-[36px] px-2.5 py-1.5 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-medium flex items-center gap-1"
+                                className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-semibold flex items-center gap-1.5"
                                 title="Chỉnh sửa toàn bộ thông tin món"
                               >
                                 <span>Sửa món</span>
@@ -2533,7 +3359,8 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                         </div>
                       </div>
                     );
-                  })}
+                  });
+                })()}
 
                 {/* If "all" is active and toppings exist, also show Toppings in Pricing */}
                 {pricingCategoryFilter === "all" && menuOptions.length > 0 && (
@@ -2551,7 +3378,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                         .map((opt) => {
                           const isEditing = editingOptionPriceId === opt.id;
                           return (
-                            <div key={opt.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div key={opt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#fff5f5] text-[#831843] border border-[#eee3df] text-sm font-bold">
                                   🍮
@@ -2559,30 +3386,34 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                 <span className="font-bold text-xs sm:text-sm text-[#332a2b]">{opt.name}</span>
                               </div>
 
-                              <div className="flex items-center justify-between sm:justify-end gap-3">
+                              <div className="flex items-center justify-between sm:justify-end gap-2">
                                 {isEditing ? (
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <input
                                       type="number"
                                       step={1000}
                                       min={0}
                                       value={newOptionPriceValue}
                                       onChange={(e) => setNewOptionPriceValue(Number(e.target.value))}
-                                      className="w-24 px-2 py-1 text-xs rounded-lg border border-[#e6dad5] focus:outline-none focus:ring-1 focus:ring-[#6f2939]"
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") void handleSaveOptionPrice(opt.id);
+                                        if (e.key === "Escape") setEditingOptionPriceId(null);
+                                      }}
+                                      className="w-24 min-h-[44px] px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939] tabular-nums"
                                     />
                                     <button
                                       type="button"
                                       onClick={() => handleSaveOptionPrice(opt.id)}
-                                      className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-lg bg-[#6f2939] text-white"
+                                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#6f2939] text-white"
                                     >
-                                      <Check size={12} />
+                                      <Check size={14} />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setEditingOptionPriceId(null)}
-                                      className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-lg bg-[#f4ece8] text-[#554a4c]"
+                                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-[#f4ece8] text-[#554a4c]"
                                     >
-                                      <X size={12} />
+                                      <X size={14} />
                                     </button>
                                   </div>
                                 ) : (
@@ -2596,7 +3427,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                                         setEditingOptionPriceId(opt.id);
                                         setNewOptionPriceValue(opt.price_modifier);
                                       }}
-                                      className="min-h-[32px] px-2 py-1 rounded-lg border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-medium flex items-center gap-1"
+                                      className="min-h-[44px] px-3 py-2 rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c] text-xs font-semibold flex items-center gap-1.5"
                                       title="Đổi giá topping"
                                     >
                                       <Edit2 size={12} />
@@ -2633,10 +3464,11 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
             <button
               type="button"
               onClick={fetchStoreSettings}
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c]"
+              aria-label="Tải lại cài đặt"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-[#eee3df] hover:bg-[#fffaf4] text-[#554a4c]"
               title="Tải lại cài đặt"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={15} className={storeStatusLoading ? "animate-spin text-[#6f2939]" : ""} />
             </button>
           </div>
 
@@ -2658,7 +3490,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
           )}
 
           <div className="pt-1 space-y-4">
-            <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#fffaf4] border border-[#eee3df]">
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-[#fffaf4] border border-[#eee3df]">
               <div>
                 <strong className="block text-sm text-[#332a2b]">Cổng nhận đơn online</strong>
                 <span className="text-xs text-[#7b6f70]">
@@ -2669,7 +3501,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 type="button"
                 disabled={storeStatusLoading || isOrderingOpen === null}
                 onClick={() => isOrderingOpen !== null && setIsOrderingOpen(!isOrderingOpen)}
-                className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
                   isOrderingOpen === null
                     ? "bg-[#eee3df] text-[#7b6f70]"
                     : isOrderingOpen
@@ -2695,7 +3527,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 value={openingHours}
                 onChange={(e) => setOpeningHours(e.target.value)}
                 placeholder="08:00 - 22:30"
-                className="w-full text-sm px-3 py-2 min-h-[42px] rounded-xl border border-[#e6dad5] focus:ring-2 focus:ring-[#6f2939] focus:outline-none"
+                className="w-full text-base sm:text-sm px-3 py-2 min-h-[44px] rounded-xl border border-[#e6dad5] focus:ring-2 focus:ring-[#6f2939] focus:outline-none"
               />
             </div>
 
@@ -2709,7 +3541,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 value={announcement}
                 onChange={(e) => setAnnouncement(e.target.value)}
                 placeholder="Ví dụ: Chào mừng bạn đến với LoopyCafe!"
-                className="w-full text-sm p-3 rounded-xl border border-[#e6dad5] focus:ring-2 focus:ring-[#6f2939] focus:outline-none"
+                className="w-full text-base sm:text-sm p-3 rounded-xl border border-[#e6dad5] focus:ring-2 focus:ring-[#6f2939] focus:outline-none"
               />
             </div>
 
@@ -2754,7 +3586,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                 <button
                   type="button"
                   onClick={() => setSelectedOrder(null)}
-                  className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70]"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70]"
                 >
                   <X size={20} />
                 </button>
@@ -3081,7 +3913,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     type="button"
                     onClick={() => setIsItemModalOpen(false)}
                     aria-label="Đóng cửa sổ"
-                    className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95 transition-all"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95 transition-all"
                   >
                     <X size={20} />
                   </button>
@@ -3132,24 +3964,90 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
 
                     {/* Danh mục */}
                     <div>
-                      <label htmlFor="item-category" className="block text-xs font-semibold text-[#554a4c] mb-1">
-                        Danh mục <span className="text-[#b91c1c]">*</span>
-                      </label>
-                      <select
-                        id="item-category"
-                        value={itemFormData.categoryId}
-                        onChange={(e) => setItemFormData({ ...itemFormData, categoryId: e.target.value })}
-                        className="w-full text-base sm:text-xs min-h-[44px] px-3 py-2 rounded-xl border border-[#e6dad5] bg-white focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
-                      >
-                        {categories.length === 0 && (
-                          <option value="">Đang tải danh mục...</option>
+                      <div className="flex items-center justify-between mb-1">
+                        <label htmlFor="item-category" className="block text-xs font-semibold text-[#554a4c]">
+                          Danh mục <span className="text-[#b91c1c]">*</span>
+                        </label>
+                        {!isAddingCategory && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddingCategory(true);
+                              setCategoryError(null);
+                            }}
+                            className="text-[11px] font-bold text-[#6f2939] hover:underline"
+                          >
+                            + Thêm danh mục
+                          </button>
                         )}
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                      </div>
+
+                      {!isAddingCategory ? (
+                        <select
+                          id="item-category"
+                          value={itemFormData.categoryId}
+                          onChange={(e) => {
+                            if (e.target.value === "__new_category__") {
+                              setIsAddingCategory(true);
+                              setCategoryError(null);
+                            } else {
+                              setItemFormData({ ...itemFormData, categoryId: e.target.value });
+                            }
+                          }}
+                          className="w-full text-base sm:text-xs min-h-[44px] px-3 py-2 rounded-xl border border-[#e6dad5] bg-white focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
+                        >
+                          {categories.length === 0 && (
+                            <option value="">Đang tải danh mục...</option>
+                          )}
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                          <option value="__new_category__">+ Thêm danh mục mới...</option>
+                        </select>
+                      ) : (
+                        <div className="p-2.5 bg-[#fdf8f5] rounded-xl border border-[#e6dad5] space-y-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              placeholder="Nhập tên danh mục mới..."
+                              className="flex-1 text-base sm:text-xs min-h-[40px] px-3 py-1.5 rounded-lg border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939] bg-white"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void handleCreateCategory();
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              disabled={savingCategory || !newCategoryName.trim()}
+                              onClick={() => void handleCreateCategory()}
+                              className="px-3 min-h-[40px] rounded-lg bg-[#6f2939] text-white text-xs font-semibold hover:bg-[#5b222f] disabled:opacity-50 shrink-0"
+                            >
+                              {savingCategory ? "Đang lưu..." : "Lưu"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddingCategory(false);
+                                setNewCategoryName("");
+                                setCategoryError(null);
+                              }}
+                              className="px-2.5 min-h-[40px] rounded-lg border border-[#e6dad5] text-[#554a4c] text-xs font-semibold hover:bg-[#eee3df] shrink-0"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                          {categoryError && (
+                            <p className="text-[11px] text-[#b91c1c] font-medium">{categoryError}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Giá cơ bản */}
@@ -3199,19 +4097,39 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     </div>
                   </div>
 
-                  {/* URL Hình ảnh */}
-                  <div>
-                    <label htmlFor="item-image" className="block text-xs font-semibold text-[#554a4c] mb-1">
-                      Đường dẫn ảnh đồ uống
-                    </label>
-                    <input
-                      id="item-image"
-                      type="text"
-                      value={itemFormData.imageUrl}
-                      onChange={(e) => setItemFormData({ ...itemFormData, imageUrl: e.target.value })}
-                      placeholder="/laboong/drinks/san-may.jpg"
-                      className="w-full text-base sm:text-xs min-h-[44px] px-3 py-2 rounded-xl border border-[#e6dad5] focus:outline-none focus:ring-2 focus:ring-[#6f2939]"
-                    />
+                  {/* Xem trước ảnh hoạt họa của món (Live Preview) */}
+                  <div className="p-3 sm:p-3.5 bg-[#fffaf4] rounded-2xl border border-[#eee3df] flex items-center gap-3.5">
+                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border border-[#e6dad5] bg-white shadow-xs">
+                      <DrinkVisual
+                        name={itemFormData.name}
+                        category={categories.find((c) => c.id === itemFormData.categoryId)?.name || ""}
+                        aspectRatio="square"
+                        className="w-full h-full"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {(() => {
+                        const selectedCat = categories.find((c) => c.id === itemFormData.categoryId);
+                        const visualMeta = detectDrinkVisualType(itemFormData.name, selectedCat?.name || "");
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#eee3df] text-[#554a4c]">
+                              <span>{visualMeta.badgeIcon}</span>
+                              <span>{visualMeta.badgeLabel}</span>
+                            </span>
+                            <span className="text-[11px] font-medium text-[#7b6f70]">
+                              (Mẫu ảnh hoạt họa tự động)
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      <p className="text-xs font-semibold text-[#332a2b] truncate">
+                        {itemFormData.name.trim() || "Tên món ăn / thức uống"}
+                      </p>
+                      <p className="text-[11px] text-[#7b6f70] leading-relaxed">
+                        Hệ thống tự động hiển thị mẫu ảnh minh họa vector sắc nét theo phân loại (Cà phê, Trà, Trà sữa, Topping...). Không cần liên kết ảnh ngoài.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Mô tả món */}
@@ -3232,49 +4150,49 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   {/* Tùy chọn món (Checkboxes) */}
                   <div className="p-3.5 bg-[#fffaf4] rounded-2xl border border-[#eee3df] space-y-2.5">
                     <span className="block text-xs font-bold text-[#332a2b]">Tuỳ chọn cho khách hàng:</span>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-[#554a4c]">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#554a4c]">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df] hover:border-[#dfc9c2]">
                         <input
                           type="checkbox"
                           checked={itemFormData.allowsSize}
                           onChange={(e) => setItemFormData({ ...itemFormData, allowsSize: e.target.checked })}
-                          className="w-4 h-4 rounded accent-[#6f2939]"
+                          className="w-4 h-4 rounded accent-[#6f2939] shrink-0"
                         />
                         <span>Cho chọn Size (M/L)</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df] hover:border-[#dfc9c2]">
                         <input
                           type="checkbox"
                           checked={itemFormData.allowsSugar}
                           onChange={(e) => setItemFormData({ ...itemFormData, allowsSugar: e.target.checked })}
-                          className="w-4 h-4 rounded accent-[#6f2939]"
+                          className="w-4 h-4 rounded accent-[#6f2939] shrink-0"
                         />
                         <span>Cho chọn Đường</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df] hover:border-[#dfc9c2]">
                         <input
                           type="checkbox"
                           checked={itemFormData.allowsIce}
                           onChange={(e) => setItemFormData({ ...itemFormData, allowsIce: e.target.checked })}
-                          className="w-4 h-4 rounded accent-[#6f2939]"
+                          className="w-4 h-4 rounded accent-[#6f2939] shrink-0"
                         />
                         <span>Cho chọn Đá</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df] hover:border-[#dfc9c2]">
                         <input
                           type="checkbox"
                           checked={itemFormData.allowsToppings}
                           onChange={(e) => setItemFormData({ ...itemFormData, allowsToppings: e.target.checked })}
-                          className="w-4 h-4 rounded accent-[#6f2939]"
+                          className="w-4 h-4 rounded accent-[#6f2939] shrink-0"
                         />
                         <span>Cho thêm Topping</span>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer select-none col-span-2 pt-2 border-t border-[#eee3df]">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none sm:col-span-2 min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df] hover:border-[#dfc9c2]">
                         <input
                           type="checkbox"
                           checked={itemFormData.isAvailable}
                           onChange={(e) => setItemFormData({ ...itemFormData, isAvailable: e.target.checked })}
-                          className="w-4 h-4 rounded accent-[#2d6a4f]"
+                          className="w-4 h-4 rounded accent-[#2d6a4f] shrink-0"
                         />
                         <span className="font-bold text-[#2d6a4f]">Đang phục vụ (Còn hàng)</span>
                       </label>
@@ -3402,7 +4320,7 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                     type="button"
                     onClick={() => setIsToppingModalOpen(false)}
                     aria-label="Đóng cửa sổ"
-                    className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[#fffaf4] text-[#7b6f70] active:scale-95"
                   >
                     <X size={20} />
                   </button>
@@ -3442,13 +4360,13 @@ export function OwnerOrdersView({ permissions = [] }: { permissions?: readonly s
                   />
                 </div>
 
-                <div className="p-3.5 bg-[#fffaf4] rounded-2xl border border-[#eee3df]">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div className="p-2 bg-[#fffaf4] rounded-2xl border border-[#eee3df]">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none min-h-[44px] px-3 py-2 rounded-xl bg-white border border-[#eee3df]">
                     <input
                       type="checkbox"
                       checked={toppingFormData.isAvailable}
                       onChange={(e) => setToppingFormData({ ...toppingFormData, isAvailable: e.target.checked })}
-                      className="w-4 h-4 rounded accent-[#2d6a4f]"
+                      className="w-4 h-4 rounded accent-[#2d6a4f] shrink-0"
                     />
                     <span className="font-bold text-xs text-[#2d6a4f]">Đang phục vụ (Còn hàng)</span>
                   </label>

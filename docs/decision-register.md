@@ -1,6 +1,6 @@
 # Sổ quyết định nghiệp vụ
 
-Cập nhật: 2026-10-25. Chủ quyết định: chủ dự án. Các quyết định `DEC-001..009` đã được chấp nhận ngày 2026-10-13 từ tài liệu “Đề xuất phương án xử lý cho 11 nghiệp vụ chưa chốt”.
+Cập nhật: 2026-10-26. Chủ quyết định: chủ dự án. Các quyết định `DEC-001..009` đã được chấp nhận ngày 2026-10-13 từ tài liệu “Đề xuất phương án xử lý cho 11 nghiệp vụ chưa chốt”.
 
 `ACCEPTED` nghĩa là chính sách sản phẩm đã chốt và là căn cứ cho thay đổi mới. Trạng thái này **không** có nghĩa code, schema, migration, UI hoặc test hiện tại đã triển khai xong. Chênh lệch được theo dõi tại [implementation status](implementation-status.md) và chỉ được coi là hoàn thành khi đạt [acceptance matrix](acceptance-matrix.md).
 
@@ -20,6 +20,7 @@ Cập nhật: 2026-10-25. Chủ quyết định: chủ dự án. Các quyết đ
 | DEC-010 | ACCEPTED | Tách quản trị hệ thống khỏi vận hành; System Admin quản lý tài khoản và RBAC |
 | DEC-011 | ACCEPTED | Vai trò tùy chỉnh theo cửa hàng, catalog quyền và phân công thay ca |
 | DEC-015 | ACCEPTED | Mỗi cửa hàng chỉ có một System Admin và một Owner; lỗi truy cập được khôi phục trên đúng tài khoản hiện có |
+| DEC-017 | ACCEPTED | OWNER không phải nhập lý do khi sửa hồ sơ thường hoặc đổi trạng thái nhân viên cấp dưới; giữ lý do cho thay đổi nhạy cảm |
 
 ## DEC-001 — Tự duyệt và phạm vi role
 
@@ -211,6 +212,17 @@ Chỉ các hàng acceptance thuộc phạm vi phát hành có evidence PASS tạ
 - Không đổi schema D1. Nếu có object R2 thật, phải kiểm kê/chuyển và đối chiếu key/bytes/hash trước rollout; không tự xóa dữ liệu R2. Local dùng Supabase Storage loopback với bucket private được provision cô lập.
 - Tác động: adapter storage, runtime binding, local config, test HTTP/SDK và cleanup, build production riêng. Triển khai/provider thật và migration remote cần evidence riêng theo release gate; đồng bộ source không chứng minh đã deploy.
 - Hướng dẫn và giới hạn domain/email/backup: [triển khai Free](free-production-deployment.md).
+
+## DEC-017 — Giảm nhập lý do cho thao tác Owner thông thường
+
+**Trạng thái:** ACCEPTED — 2026-10-26. **Người quyết định:** chủ dự án trong phiên làm việc. Bổ sung DEC-010 và DEC-015 ở phạm vi hồ sơ nhân sự cấp dưới; không nới guard tài khoản Owner.
+
+- OWNER được cập nhật trực tiếp thông tin hồ sơ thông thường và trạng thái `active`, `suspended`, `offboarded` của nhân viên cấp dưới mà không bắt buộc nhập lý do.
+- Các mutation này vẫn phải kiểm quyền server, target không phải `owner`/`system_admin`/chính mình, `updated_at` hoặc `access_revision`, xác nhận tác động khi khóa/nghỉ việc, audit actor + before/after và đồng bộ Auth khi có liên kết.
+- Vẫn bắt buộc lý do khi đổi vai trò/quyền hoặc mức lương, cấp lại mật khẩu, thao tác lên OWNER, sửa/duyệt công, điều chỉnh lương, sửa ca cận giờ, bypass bàn giao, hủy đơn sau pha và các ngoại lệ khác đã được quyết định riêng.
+- Trường lý do trong UI Nhân sự là tùy chọn mặc định, chuyển thành bắt buộc và giải thích tại chỗ khi thay đổi nhạy cảm.
+
+**Lý do:** giảm ma sát cho công việc quản lý nhân sự hằng ngày nhưng vẫn bảo toàn dấu vết và guard cho thay đổi có tác động bảo mật, tài chính hoặc dữ liệu. **Tác động:** cập nhật UI/API/test/tài liệu; không đổi schema hoặc migration. Rollout vẫn cần kiểm chứng tích hợp Auth cho trạng thái tài khoản.
 
 ## Quyết định nền
 

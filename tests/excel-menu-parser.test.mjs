@@ -7,7 +7,9 @@ import {
   parseCsvText,
   buildItemsFromSheetData,
   findHeaderRow,
+  generateSampleExcelFile,
 } from "../lib/excel-menu-parser.ts";
+import * as XLSX from "xlsx";
 
 test("normalizeKeyword cleans accents and special characters", () => {
   assert.equal(normalizeKeyword("Tên Món Ăn (bắt buộc)"), "ten mon an bat buoc");
@@ -91,4 +93,53 @@ test("findHeaderRow & buildItemsFromSheetData parses heterogeneous table rows", 
   assert.equal(items[2].categoryName, "Topping");
 
   assert.deepEqual(detectedCategories.sort(), ["Cà Phê", "Topping", "Trà Sữa"].sort());
+});
+
+test("generateSampleExcelFile produces valid OpenXML XLSX for Windows Office", () => {
+  const bytes = generateSampleExcelFile();
+
+  // 1. Must be a valid Uint8Array
+  assert.ok(bytes instanceof Uint8Array, "Must return a Uint8Array");
+  assert.ok(bytes.byteLength > 5000, `Expected byteLength > 5000, got ${bytes.byteLength}`);
+
+  // 2. Must start with standard ZIP magic number PK\x03\x04
+  assert.equal(bytes[0], 0x50, "Magic byte 0 should be 'P'");
+  assert.equal(bytes[1], 0x4b, "Magic byte 1 should be 'K'");
+  assert.equal(bytes[2], 0x03, "Magic byte 2 should be 0x03");
+  assert.equal(bytes[3], 0x04, "Magic byte 3 should be 0x04");
+
+  // 3. Blob creation must preserve full binary buffer without 'undefined' corruption
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  assert.equal(blob.size, bytes.byteLength, "Blob size must match exact bytes length");
+  assert.notEqual(blob.size, 9, "Blob must not be corrupted 9-byte 'undefined'");
+
+  // 4. Must parse cleanly with SheetJS / XLSX reader
+  const wb = XLSX.read(bytes, { type: "array" });
+  assert.ok(wb.SheetNames.includes("Thực đơn"), "Should contain 'Thực đơn' sheet");
+  const ws = wb.Sheets["Thực đơn"];
+  assert.ok(ws, "Sheet should exist");
+
+  // 5. Must have numeric cells for Price column (B2..B8) for Excel compatibility
+  assert.equal(ws["B2"]?.t, "n", "Price cell B2 must be numeric (t: 'n')");
+  assert.equal(ws["B2"]?.v, 35000, "Price value should be 35000");
+
+  // 6. Must parse into 100% valid items with zero errors
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  const { headerRowIndex, headers } = findHeaderRow(aoa);
+  const mapping = autoDetectColumnMapping(headers);
+  const { items } = buildItemsFromSheetData(aoa, headerRowIndex, mapping);
+
+  assert.equal(items.length, 7, "Should have 7 sample items");
+  assert.ok(
+    items.every((item) => item.isValid),
+    "All sample items must be valid without errors",
+  );
+  assert.equal(items[0].name, "Cà phê sữa đá");
+  assert.equal(items[0].basePrice, 35000);
+  assert.equal(items[0].allowsSize, true);
+  assert.equal(items[6].name, "Bánh Croissant bơ tỏi");
+  assert.equal(items[6].basePrice, 28000);
+  assert.equal(items[6].allowsSize, false);
 });

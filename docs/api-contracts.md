@@ -19,7 +19,7 @@ Cập nhật: 2026-10-13. Đây là chuẩn review và bản đồ truy vết, k
 | `GET /api/admin/roles` | catalog và sets; admin/owner đọc, chỉ admin sửa |
 | `PUT /api/admin/roles/{role}/permissions` | full set, `expectedRevision`, reason; chỉ manager/team_lead và catalog cho phép |
 | `/api/admin/accounts` | chỉ identity, role, status, login/activation; không trả job/pay/attendance/evidence |
-| `/api/team` | hồ sơ nghiệp vụ và rate history; OWNER có action riêng để tạm khóa, cho hoạt động lại hoặc đánh dấu nghỉ việc đối với tài khoản cấp dưới, kèm revision và lý do |
+| `/api/team` | hồ sơ nghiệp vụ và rate history; OWNER có action riêng để tạm khóa, cho hoạt động lại hoặc đánh dấu nghỉ việc đối với tài khoản cấp dưới, kèm revision nhưng không bắt buộc lý do; đổi role/quyền hoặc mức lương vẫn bắt buộc lý do |
 | `GET /api/admin/audit` | whitelist sự kiện quản trị và metadata đã lọc |
 
 Mã lỗi chuẩn: `permission_denied`, `permission_conflict`, `permission_not_assignable`, `last_owner_protected`, `reauthentication_required`, `account_conflict`, `operation_pending`. Account mutation yêu cầu idempotency key; retry cùng key/cùng payload tiếp tục hoặc replay, payload khác trả conflict.

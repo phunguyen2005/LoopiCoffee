@@ -4,12 +4,14 @@ import { readJson } from "@/platform/http/client";
 import Link from "next/link";
 import {
   Bell,
+  Calendar,
   Check,
   CheckCheck,
   CheckCircle2,
   ExternalLink,
   FileClock,
   RotateCw,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AsyncStatePanel, ListSkeleton } from "@/components/operational/shared";
@@ -403,26 +405,41 @@ const META_FIELD_LABELS: Record<string, string> = {
   severity: "Mức độ nghiêm trọng",
 };
 
+type DateFilterPreset = "all" | "today" | "yesterday" | "7days" | "custom";
+
 export function AuditView() {
   const [events, setEvents] = useState<AuditEventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "attendance" | "employee" | "payroll" | "store">("all");
+  const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
+  const [customDate, setCustomDate] = useState<string>("");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
-  const loadAudit = useCallback(async () => {
+  const loadAudit = useCallback(async (preset: DateFilterPreset = datePreset, specificDate: string = customDate) => {
     setLoading(true);
     setLoadError("");
     try {
-      const payload = await readJson<{ events: AuditEventItem[] }>(await fetch("/api/audit", { cache: "no-store" }));
+      let url = "/api/audit";
+      const today = getTodayVnDate();
+      if (preset === "today") {
+        url += `?date=${today}`;
+      } else if (preset === "yesterday") {
+        url += `?date=${getYesterdayVnDate()}`;
+      } else if (preset === "7days") {
+        url += `?from=${getSevenDaysAgoVnDate()}&to=${today}`;
+      } else if (preset === "custom" && specificDate) {
+        url += `?date=${specificDate}`;
+      }
+      const payload = await readJson<{ events: AuditEventItem[] }>(await fetch(url, { cache: "no-store" }));
       setEvents(payload.events ?? []);
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : "Không thể tải lịch sử hoạt động.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [datePreset, customDate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadAudit(); }, 0);
@@ -430,7 +447,18 @@ export function AuditView() {
   }, [loadAudit]);
 
   const filteredEvents = useMemo(() => {
+    const today = getTodayVnDate();
+    const yesterday = getYesterdayVnDate();
+    const sevenDaysAgo = getSevenDaysAgoVnDate();
+
     return (events ?? []).filter((event) => {
+      // Date preset verification
+      const eventDate = getEventVnDate(event.created_at);
+      if (datePreset === "today" && eventDate !== today) return false;
+      if (datePreset === "yesterday" && eventDate !== yesterday) return false;
+      if (datePreset === "7days" && (eventDate < sevenDaysAgo || eventDate > today)) return false;
+      if (datePreset === "custom" && customDate && eventDate !== customDate) return false;
+
       const actorText = formatActor(event.actor_email, event.actor_name, event.actor_role);
       const matchesSearch =
         search.trim() === "" ||
@@ -473,7 +501,7 @@ export function AuditView() {
 
       return matchesSearch && matchesCategory;
     });
-  }, [events, search, categoryFilter]);
+  }, [events, search, categoryFilter, datePreset, customDate]);
 
   const groupedEvents = useMemo(() => {
     const groups: Array<{ label: string; events: AuditEventItem[] }> = [];
@@ -491,6 +519,16 @@ export function AuditView() {
     }
     return groups;
   }, [filteredEvents]);
+
+  const resetAllFilters = () => {
+    setSearch("");
+    setCategoryFilter("all");
+    setDatePreset("all");
+    setCustomDate("");
+    void loadAudit("all", "");
+  };
+
+  const hasAnyFilter = search.trim() !== "" || categoryFilter !== "all" || datePreset !== "all";
 
   const formatMetaValue = (key: string, value: unknown): string => {
     if (value === null || value === undefined) return "—";
@@ -545,14 +583,34 @@ export function AuditView() {
       <section className="card" style={{ padding: "20px 24px" }}>
         <div className="section-row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h2 className="card-title" style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>Lịch sử hoạt động</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h2 className="card-title" style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>Lịch sử hoạt động</h2>
+              {datePreset !== "all" && (
+                <span className="badge pink" style={{ fontSize: "0.78rem", padding: "2px 8px", borderRadius: 10 }}>
+                  Đối soát: {datePreset === "today" ? "Hôm nay" : datePreset === "yesterday" ? "Hôm qua" : datePreset === "7days" ? "7 ngày qua" : formatVnDisplayDate(customDate)}
+                </span>
+              )}
+            </div>
             <p className="card-subtitle" style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--muted)" }}>
               Những thay đổi gần đây ở quán đều được lưu tại đây.
             </p>
           </div>
-          <span className="badge neutral" style={{ fontSize: "0.82rem" }}>
-            {loading || loadError ? "— hoạt động" : `${events.length} hoạt động được ghi nhận`}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="badge neutral" style={{ fontSize: "0.82rem" }}>
+              {loading || loadError ? "— hoạt động" : `${events.length} hoạt động được ghi nhận`}
+            </span>
+            <button
+              type="button"
+              className="button-secondary text-xs"
+              onClick={() => void loadAudit(datePreset, customDate)}
+              disabled={loading}
+              title="Làm mới lịch sử hoạt động"
+              style={{ padding: "6px 12px", minHeight: 34, display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 10 }}
+            >
+              <RotateCw size={14} className={loading ? "animate-spin" : ""} />
+              <span>Làm mới</span>
+            </button>
+          </div>
         </div>
 
         {/* Reassurance banner */}
@@ -574,8 +632,128 @@ export function AuditView() {
           Dữ liệu lưu trữ chính xác để đối soát; không lưu tọa độ GPS chi tiết, ảnh khuôn mặt, mật khẩu hoặc mã phiên.
         </div>
 
+        {/* Date Filter Bar for Reconciling (Bộ lọc ngày đối soát) */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: 16,
+            paddingTop: 14,
+            borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.06))",
+          }}
+        >
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.82rem", fontWeight: 600, color: "var(--foreground, #332a2b)" }}>
+            <Calendar size={15} style={{ color: "#6f2939" }} />
+            <span>Đối soát theo ngày:</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            {(
+              [
+                { key: "all", label: "Tất cả các ngày" },
+                { key: "today", label: "Hôm nay" },
+                { key: "yesterday", label: "Hôm qua" },
+                { key: "7days", label: "7 ngày qua" },
+                { key: "custom", label: "Chọn ngày cụ thể" },
+              ] as const
+            ).map((p) => {
+              const isActive = datePreset === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  className={`filter-chip ${isActive ? "active" : ""}`}
+                  onClick={() => {
+                    if (p.key === "custom") {
+                      setDatePreset("custom");
+                      if (!customDate) {
+                        const today = getTodayVnDate();
+                        setCustomDate(today);
+                        void loadAudit("custom", today);
+                      } else {
+                        void loadAudit("custom", customDate);
+                      }
+                    } else {
+                      setDatePreset(p.key);
+                      if (p.key === "all") setCustomDate("");
+                      void loadAudit(p.key, "");
+                    }
+                  }}
+                  style={{
+                    padding: "5px 12px",
+                    minHeight: 34,
+                    borderRadius: 20,
+                    fontSize: "0.8rem",
+                    fontWeight: isActive ? 700 : 500,
+                    border: isActive ? "1px solid var(--primary, #6f2939)" : "1px solid var(--border-subtle, #e2e8f0)",
+                    background: isActive ? "var(--primary, #6f2939)" : "transparent",
+                    color: isActive ? "#ffffff" : "inherit",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+
+            {datePreset === "custom" && (
+              <input
+                type="date"
+                aria-label="Chọn ngày đối soát"
+                value={customDate}
+                max={getTodayVnDate()}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomDate(val);
+                  if (val) void loadAudit("custom", val);
+                }}
+                style={{
+                  padding: "4px 10px",
+                  minHeight: 34,
+                  fontSize: "0.82rem",
+                  borderRadius: 10,
+                  border: "1px solid var(--primary, #6f2939)",
+                  backgroundColor: "#fff",
+                  color: "#332a2b",
+                  outline: "none",
+                }}
+              />
+            )}
+
+            {datePreset !== "all" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDatePreset("all");
+                  setCustomDate("");
+                  void loadAudit("all", "");
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 8px",
+                  fontSize: "0.78rem",
+                  color: "#7b6f70",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+                title="Bỏ lọc ngày để xem tất cả"
+              >
+                <X size={13} />
+                <span>Bỏ lọc ngày</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Filter & Search Bar */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between", marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.06))" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-subtle, rgba(0,0,0,0.06))" }}>
           <div style={{ position: "relative", flex: "1 1 240px", maxWidth: 360 }}>
             <input
               type="text"
@@ -623,15 +801,19 @@ export function AuditView() {
         {loading ? (
           <ListSkeleton rows={5} />
         ) : loadError ? (
-          <AsyncStatePanel state="error" title="Không thể tải lịch sử hoạt động" description={loadError} actionLabel="Thử lại" onAction={() => void loadAudit()} />
+          <AsyncStatePanel state="error" title="Không thể tải lịch sử hoạt động" description={loadError} actionLabel="Thử lại" onAction={() => void loadAudit(datePreset, customDate)} />
         ) : filteredEvents.length === 0 ? (
-          search.trim() || categoryFilter !== "all" ? (
+          hasAnyFilter ? (
             <AsyncStatePanel
               state="empty"
-              title="Không có hoạt động khớp bộ lọc"
-              description="Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc hiện tại."
+              title={
+                datePreset !== "all"
+                  ? `Không có hoạt động nào trong ${datePreset === "today" ? "hôm nay" : datePreset === "yesterday" ? "hôm qua" : datePreset === "7days" ? "7 ngày qua" : `ngày ${formatVnDisplayDate(customDate)}`}`
+                  : "Không có hoạt động khớp bộ lọc"
+              }
+              description="Thử tìm kiếm với từ khóa khác, đổi ngày hoặc xóa các bộ lọc hiện tại."
               actionLabel="Xóa bộ lọc"
-              onAction={() => { setSearch(""); setCategoryFilter("all"); }}
+              onAction={resetAllFilters}
             />
           ) : (
             <AsyncStatePanel
@@ -796,6 +978,53 @@ export function AuditView() {
       </section>
     </div>
   );
+}
+
+function getTodayVnDate(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function getYesterdayVnDate(): string {
+  const yesterday = new Date(Date.now() - 86_400_000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(yesterday);
+}
+
+function getSevenDaysAgoVnDate(): string {
+  const past = new Date(Date.now() - 7 * 86_400_000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(past);
+}
+
+function getEventVnDate(isoString: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(isoString));
+}
+
+function formatVnDisplayDate(ymdString: string): string {
+  if (!ymdString) return "";
+  const parts = ymdString.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return ymdString;
 }
 
 function formatDateGroup(isoString: string): string {

@@ -36,21 +36,29 @@ export interface CartItemOption {
 
 interface ItemDetailModalProps {
   item: MenuItemData | null;
+  categoryName?: string;
   options: MenuOptionItem[];
+  cartItemToEdit?: CartItemOption | null;
   onClose: () => void;
   onAddToCart: (cartItem: CartItemOption) => void;
+  onUpdateCartItem?: (updatedCartItem: CartItemOption) => void;
 }
 
 export function ItemDetailModal({
   item,
+  categoryName,
   options,
+  cartItemToEdit,
   onClose,
   onAddToCart,
+  onUpdateCartItem,
 }: ItemDetailModalProps) {
   const dialogRef = useModalDialog(Boolean(item), onClose);
+  const isEditMode = Boolean(cartItemToEdit);
+
   // Helper to de-duplicate options by name
   const dedupeByName = (arr: MenuOptionItem[]) =>
-    Array.from(new Map(arr.map((item) => [item.name, item])).values());
+    Array.from(new Map(arr.map((option) => [option.name, option])).values());
 
   // Available options filtered by group
   const sizeOptions = dedupeByName(options.filter((o) => o.group_type === "size" && o.is_available && item?.allows_size));
@@ -58,20 +66,42 @@ export function ItemDetailModal({
   const iceOptions = dedupeByName(options.filter((o) => o.group_type === "ice" && o.is_available && item?.allows_ice));
   const toppingOptions = dedupeByName(options.filter((o) => o.group_type === "topping" && o.is_available && item?.allows_toppings));
 
-  // Selection states
-  const defaultSize = sizeOptions.find((o) => o.is_default) || sizeOptions[0] || { name: "Size M", price_modifier: 0 };
-  const defaultSugar = sugarOptions.find((o) => o.is_default) || sugarOptions[0] || { name: "100% đường", price_modifier: 0 };
-  const defaultIce = iceOptions.find((o) => o.is_default) || iceOptions[0] || { name: "100% đá", price_modifier: 0 };
+  // Selection defaults
+  const defaultSize = sizeOptions.find((o) => o.is_default) || sizeOptions[0] || { name: "Size M", price_modifier: 0, id: "", group_type: "size", is_default: 1, is_available: 1 };
+  const defaultSugar = sugarOptions.find((o) => o.is_default) || sugarOptions[0] || { name: "100% đường", price_modifier: 0, id: "", group_type: "sugar", is_default: 1, is_available: 1 };
+  const defaultIce = iceOptions.find((o) => o.is_default) || iceOptions[0] || { name: "100% đá", price_modifier: 0, id: "", group_type: "ice", is_default: 1, is_available: 1 };
 
-  const [selectedSize, setSelectedSize] = useState<MenuOptionItem>(defaultSize as MenuOptionItem);
-  const [selectedSugar, setSelectedSugar] = useState<MenuOptionItem>(defaultSugar as MenuOptionItem);
-  const [selectedIce, setSelectedIce] = useState<MenuOptionItem>(defaultIce as MenuOptionItem);
-  const [selectedToppings, setSelectedToppings] = useState<Array<{ id: string; name: string; price: number }>>([]);
-  const [quantity, setQuantity] = useState(1);
-  const [note, setNote] = useState("");
+  const [selectedSize, setSelectedSize] = useState<MenuOptionItem>(() => {
+    if (cartItemToEdit) {
+      const match = sizeOptions.find((o) => (cartItemToEdit.sizeId && o.id === cartItemToEdit.sizeId) || o.name === cartItemToEdit.size);
+      if (match) return match;
+    }
+    return defaultSize as MenuOptionItem;
+  });
+
+  const [selectedSugar, setSelectedSugar] = useState<MenuOptionItem>(() => {
+    if (cartItemToEdit) {
+      const match = sugarOptions.find((o) => (cartItemToEdit.sugarId && o.id === cartItemToEdit.sugarId) || o.name === cartItemToEdit.sugar);
+      if (match) return match;
+    }
+    return defaultSugar as MenuOptionItem;
+  });
+
+  const [selectedIce, setSelectedIce] = useState<MenuOptionItem>(() => {
+    if (cartItemToEdit) {
+      const match = iceOptions.find((o) => (cartItemToEdit.iceId && o.id === cartItemToEdit.iceId) || o.name === cartItemToEdit.ice);
+      if (match) return match;
+    }
+    return defaultIce as MenuOptionItem;
+  });
+
+  const [selectedToppings, setSelectedToppings] = useState<Array<{ id: string; name: string; price: number }>>(
+    cartItemToEdit?.toppings ? [...cartItemToEdit.toppings] : []
+  );
+  const [quantity, setQuantity] = useState(cartItemToEdit?.quantity || 1);
+  const [note, setNote] = useState(cartItemToEdit?.note || "");
 
   if (!item) return null;
-
 
   // Calculate pricing
   const sizeModifier = (item.allows_size ? selectedSize?.price_modifier || 0 : 0)
@@ -80,6 +110,29 @@ export function ItemDetailModal({
   const toppingsTotal = selectedToppings.reduce((sum, t) => sum + t.price, 0);
   const unitPrice = item.base_price + sizeModifier + toppingsTotal;
   const totalPrice = unitPrice * quantity;
+
+  // Display label formatting helpers
+  const formatSizeButtonText = (sz: MenuOptionItem) => {
+    const base = sz.name.replace(/^Size\s+/i, "");
+    const diff = sz.price_modifier > 0 ? ` +${formatVND(sz.price_modifier)}` : "";
+    return `${base}${diff}`;
+  };
+
+  const formatSugarButtonText = (sg: MenuOptionItem) => {
+    if (sg.name.includes("100%")) return "100% (Chuẩn)";
+    if (sg.name.includes("70%")) return "70%";
+    if (sg.name.includes("50%")) return "50%";
+    if (sg.name.includes("0%") || sg.name.toLowerCase().includes("không đường")) return "0% (Không đường)";
+    return sg.name;
+  };
+
+  const formatIceButtonText = (ic: MenuOptionItem) => {
+    if (ic.name.includes("100%")) return "100% (Chuẩn)";
+    if (ic.name.includes("70%")) return "70%";
+    if (ic.name.includes("50%")) return "50%";
+    if (ic.name.includes("0%") || ic.name.toLowerCase().includes("không đá")) return "0% (Không đá)";
+    return ic.name;
+  };
 
   // Toggle topping
   const toggleTopping = (top: MenuOptionItem) => {
@@ -92,8 +145,8 @@ export function ItemDetailModal({
     }
   };
 
-  const handleAdd = () => {
-    onAddToCart({
+  const handleSave = () => {
+    const cartItemData: CartItemOption = {
       itemId: item.id,
       name: item.name,
       englishName: item.english_name,
@@ -109,7 +162,13 @@ export function ItemDetailModal({
       toppings: selectedToppings,
       note: note.trim(),
       subtotal: totalPrice,
-    });
+    };
+
+    if (isEditMode && onUpdateCartItem) {
+      onUpdateCartItem(cartItemData);
+    } else {
+      onAddToCart(cartItemData);
+    }
     onClose();
   };
 
@@ -148,7 +207,7 @@ export function ItemDetailModal({
           {/* Hero Image Section */}
           <div className="w-full bg-[#EAE2D7] relative p-4 sm:p-6 flex items-center justify-center">
             <div className="w-44 h-44 sm:w-56 sm:h-56">
-              <DrinkVisual itemId={item.id} name={item.name} aspectRatio="square" />
+              <DrinkVisual itemId={item.id} name={item.name} category={categoryName} aspectRatio="square" />
             </div>
           </div>
 
@@ -176,13 +235,16 @@ export function ItemDetailModal({
 
             <hr className="my-5 border-[#E6DFD5]" />
 
-            {/* Size Group (Reference screenshot 1 segmented pills) */}
+            {/* Size Group (Segmented Pills) */}
             {sizeOptions.length > 0 && (
-              <div className="mb-5">
-                <label className="block text-xs font-bold text-[#231F1D] uppercase tracking-wider mb-2.5">
-                  Kích cỡ (Size) <span className="text-stone-400 font-normal">1 lựa chọn</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#231F1D] uppercase tracking-wider">
+                    Kích cỡ (Size)
+                  </label>
+                  <span className="text-[11px] text-stone-400">1 lựa chọn</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   {sizeOptions.map((sz) => {
                     const isSelected = selectedSize?.name === sz.name;
                     return (
@@ -190,16 +252,13 @@ export function ItemDetailModal({
                         key={sz.id}
                         type="button"
                         onClick={() => setSelectedSize(sz)}
-                        className={`py-3 px-3 rounded-xl border text-center transition-all ${
+                        className={`min-h-[44px] min-w-0 flex-1 px-3 py-2 rounded-xl border text-xs sm:text-sm text-center transition-all active:scale-[0.98] ${
                           isSelected
                             ? "bg-[#EBF1EA] border-[#3D5A40] text-[#2B3E2D] font-bold shadow-sm ring-1 ring-[#3D5A40]"
                             : "bg-white border-[#DDD4C7] text-stone-700 hover:border-stone-400 font-medium"
                         }`}
                       >
-                        <div className="text-sm font-semibold">{sz.name.split(" ")[0]} {sz.name.split(" ")[1]}</div>
-                        <div className="text-xs text-stone-500 mt-0.5">
-                          {sz.price_modifier > 0 ? `+${formatVND(sz.price_modifier)}` : "Giá chuẩn"}
-                        </div>
+                        {formatSizeButtonText(sz)}
                       </button>
                     );
                   })}
@@ -207,13 +266,16 @@ export function ItemDetailModal({
               </div>
             )}
 
-            {/* Sugar Level Group */}
+            {/* Sugar Level Group (Segmented Pills) */}
             {sugarOptions.length > 0 && (
-              <div className="mb-5">
-                <label className="block text-xs font-bold text-[#231F1D] uppercase tracking-wider mb-2.5">
-                  Lượng đường <span className="text-stone-400 font-normal">1 lựa chọn</span>
-                </label>
-                <div className="grid grid-cols-2 min-[360px]:grid-cols-4 gap-1.5 sm:gap-2">
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#231F1D] uppercase tracking-wider">
+                    Lượng đường
+                  </label>
+                  <span className="text-[11px] text-stone-400">1 lựa chọn</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {sugarOptions.map((sg) => {
                     const isSelected = selectedSugar?.name === sg.name;
                     return (
@@ -221,16 +283,13 @@ export function ItemDetailModal({
                         key={sg.id}
                         type="button"
                         onClick={() => setSelectedSugar(sg)}
-                        className={`min-h-[44px] py-2 px-2 rounded-xl border text-xs text-center flex flex-col justify-center items-center transition-all active:scale-95 ${
+                        className={`min-h-[44px] min-w-0 flex-1 basis-[calc(50%-0.375rem)] sm:basis-0 px-2 py-2 rounded-xl border text-xs text-center font-semibold transition-all active:scale-[0.98] ${
                           isSelected
                             ? "bg-[#EBF1EA] border-[#3D5A40] text-[#2B3E2D] font-bold shadow-sm ring-1 ring-[#3D5A40]"
                             : "bg-white border-[#DDD4C7] text-stone-700 hover:border-stone-400 font-medium"
                         }`}
                       >
-                        <div className="font-bold">{sg.name.split(" ")[0]}</div>
-                        <div className="text-[10px] text-stone-400 mt-0.5 truncate max-w-full">
-                          {sg.name.includes("Chuẩn vị") ? "Chuẩn vị" : sg.name.includes("Ít") ? "Ít ngọt" : "Tùy chọn"}
-                        </div>
+                        {formatSugarButtonText(sg)}
                       </button>
                     );
                   })}
@@ -238,13 +297,16 @@ export function ItemDetailModal({
               </div>
             )}
 
-            {/* Ice Level Group */}
+            {/* Ice Level Group (Segmented Pills) */}
             {iceOptions.length > 0 && (
-              <div className="mb-5">
-                <label className="block text-xs font-bold text-[#231F1D] uppercase tracking-wider mb-2.5">
-                  Lượng đá <span className="text-stone-400 font-normal">1 lựa chọn</span>
-                </label>
-                <div className="grid grid-cols-2 min-[360px]:grid-cols-4 gap-1.5 sm:gap-2">
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#231F1D] uppercase tracking-wider">
+                    Lượng đá
+                  </label>
+                  <span className="text-[11px] text-stone-400">1 lựa chọn</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {iceOptions.map((ic) => {
                     const isSelected = selectedIce?.name === ic.name;
                     return (
@@ -252,16 +314,13 @@ export function ItemDetailModal({
                         key={ic.id}
                         type="button"
                         onClick={() => setSelectedIce(ic)}
-                        className={`min-h-[44px] py-2 px-2 rounded-xl border text-xs text-center flex flex-col justify-center items-center transition-all active:scale-95 ${
+                        className={`min-h-[44px] min-w-0 flex-1 basis-[calc(50%-0.375rem)] sm:basis-0 px-2 py-2 rounded-xl border text-xs text-center font-semibold transition-all active:scale-[0.98] ${
                           isSelected
                             ? "bg-[#EBF1EA] border-[#3D5A40] text-[#2B3E2D] font-bold shadow-sm ring-1 ring-[#3D5A40]"
                             : "bg-white border-[#DDD4C7] text-stone-700 hover:border-stone-400 font-medium"
                         }`}
                       >
-                        <div className="font-bold">{ic.name.split(" ")[0]}</div>
-                        <div className="text-[10px] text-stone-400 mt-0.5 truncate max-w-full">
-                          {ic.name.includes("Không") ? "Không đá" : "Đá viên"}
-                        </div>
+                        {formatIceButtonText(ic)}
                       </button>
                     );
                   })}
@@ -269,13 +328,16 @@ export function ItemDetailModal({
               </div>
             )}
 
-            {/* Topping Multi-Select Group */}
+            {/* Topping Multi-Select Group (Compact Chips) */}
             {toppingOptions.length > 0 && (
-              <div className="mb-5">
-                <label className="block text-xs font-bold text-[#231F1D] uppercase tracking-wider mb-2.5">
-                  Thêm Topping <span className="text-stone-400 font-normal">Chọn nhiều</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#231F1D] uppercase tracking-wider">
+                    Thêm Topping
+                  </label>
+                  <span className="text-[11px] text-stone-400">Tùy chọn (tối đa 10)</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   {toppingOptions.map((top) => {
                     const isSelected = selectedToppings.some((t) => t.name === top.name);
                     return (
@@ -283,26 +345,24 @@ export function ItemDetailModal({
                         key={top.id}
                         type="button"
                         onClick={() => toggleTopping(top)}
-                        className={`min-h-[44px] flex items-center justify-between p-3 rounded-xl border text-left transition-all active:scale-[0.99] ${
+                        className={`min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs sm:text-sm transition-all active:scale-[0.98] ${
                           isSelected
-                            ? "bg-[#EBF1EA] border-[#3D5A40] text-[#2B3E2D] font-medium shadow-sm"
-                            : "bg-white border-[#DDD4C7] text-stone-700 hover:border-stone-400"
+                            ? "bg-[#EBF1EA] border-[#3D5A40] text-[#2B3E2D] font-semibold shadow-sm ring-1 ring-[#3D5A40]"
+                            : "bg-white border-[#DDD4C7] text-stone-700 hover:border-stone-400 font-medium"
                         }`}
                       >
-                        <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold pr-2">
-                          <div
-                            className={`w-4 h-4 rounded flex items-center justify-center border ${
-                              isSelected
-                                ? "bg-[#3D5A40] border-[#3D5A40] text-white"
-                                : "border-stone-300 bg-white"
-                            }`}
-                          >
-                            {isSelected && <Check size={12} strokeWidth={3} />}
-                          </div>
-                          <span>{top.name}</span>
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                            isSelected
+                              ? "bg-[#3D5A40] border-[#3D5A40] text-white"
+                              : "border-stone-300 bg-white"
+                          }`}
+                        >
+                          {isSelected && <Check size={12} strokeWidth={3} />}
                         </div>
-                        <span className="text-xs font-bold text-[#C85A32] whitespace-nowrap">
-                          +{formatVND(top.price_modifier)}
+                        <span>{top.name}</span>
+                        <span className="text-[11px] font-bold text-[#C85A32]">
+                          (+{formatVND(top.price_modifier)})
                         </span>
                       </button>
                     );
@@ -312,7 +372,7 @@ export function ItemDetailModal({
             )}
 
             {/* Note Input */}
-            <div className="mb-4">
+            <div className="mb-3">
               <label htmlFor="item-note" className="block text-xs font-bold text-[#231F1D] uppercase tracking-wider mb-1.5">
                 Ghi chú riêng cho món này
               </label>
@@ -329,8 +389,8 @@ export function ItemDetailModal({
           </div>
         </div>
 
-        {/* Footer Fixed Bar with Quantity Stepper and Add Button */}
-        <div className="sticky bottom-0 z-20 p-4 sm:p-5 bg-white/95 backdrop-blur-md border-t border-[#EAE3D9] flex flex-col gap-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
+        {/* Sticky Bottom Bar with Quantity Stepper and Action Button */}
+        <div className="sticky bottom-0 z-20 p-3 sm:p-4 bg-white/95 backdrop-blur-sm border-t border-[#EAE3D9] flex flex-col gap-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
           <div className="flex items-center justify-between">
             <span className="text-xs sm:text-sm font-bold text-stone-600 uppercase tracking-wider">
               Số lượng
@@ -360,14 +420,14 @@ export function ItemDetailModal({
             </div>
           </div>
 
-          {/* Large CTA Add to Cart Button */}
+          {/* Action CTA Button */}
           <button
             type="button"
-            onClick={handleAdd}
-            className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-[#C85A32] hover:bg-[#B34E29] active:scale-[0.99] text-white font-bold text-base shadow-lg shadow-orange-950/15 flex items-center justify-between transition-all"
+            onClick={handleSave}
+            className="w-full min-h-[48px] py-3 px-5 sm:px-6 rounded-2xl bg-[#C85A32] hover:bg-[#B34E29] active:scale-[0.99] text-white font-bold text-base shadow-lg shadow-orange-950/15 flex items-center justify-between transition-all"
           >
-            <span>Thêm vào giỏ</span>
-            <span className="font-extrabold text-lg">{formatVND(totalPrice)}</span>
+            <span>{isEditMode ? "Cập nhật món" : "Thêm vào giỏ"}</span>
+            <span className="font-extrabold text-base sm:text-lg">{formatVND(totalPrice)}</span>
           </button>
         </div>
       </div>

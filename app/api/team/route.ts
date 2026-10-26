@@ -288,11 +288,11 @@ export const PATCH = apiHandler(async (request: Request) => {
     hourlyRate: "money",
     monthlySalary: "money",
     expectedUpdatedAt: "string",
-    reason: "string",
+    reason: "string?",
     role: "string?",
     roleId: "string?",
-    status: "string",
-    expectedRevision: "number",
+    status: "string?",
+    expectedRevision: "number?",
     action: "string?",
   }) as {
     id?: string;
@@ -317,8 +317,8 @@ export const PATCH = apiHandler(async (request: Request) => {
   if (typeof body.id !== "string") {
     return Response.json({ error: "Thiếu tài khoản cần cập nhật." }, { status: 400 });
   }
-  if (!body.action && (typeof body.expectedUpdatedAt !== "string" || typeof body.reason !== "string" || body.reason.trim().length < 5)) {
-    return Response.json({ error: "Thiếu tài khoản, phiên bản hoặc lý do cập nhật." }, { status: 400 });
+  if (!body.action && typeof body.expectedUpdatedAt !== "string") {
+    return Response.json({ error: "Thiếu tài khoản hoặc phiên bản hồ sơ cần cập nhật." }, { status: 400 });
   }
   const db = await ensureDatabase();
   const employee = await db.prepare(`SELECT id, email, store_id, role, role_id, status, auth_user_id, display_name, job_title, phone, start_date,
@@ -340,8 +340,8 @@ export const PATCH = apiHandler(async (request: Request) => {
     if (!body.status || !["active", "suspended", "offboarded"].includes(body.status)) {
       throw new ApplicationError("Trạng thái nhân viên không hợp lệ.", 400, "invalid_status");
     }
-    if (!Number.isInteger(body.expectedRevision) || typeof body.reason !== "string" || body.reason.trim().length < 5) {
-      throw new ApplicationError("Hãy nhập lý do và tải lại hồ sơ trước khi cập nhật trạng thái.", 400, "reason_required");
+    if (!Number.isInteger(body.expectedRevision)) {
+      throw new ApplicationError("Hãy tải lại hồ sơ trước khi cập nhật trạng thái.", 400, "account_conflict");
     }
     const updated = await updateEmployeeAccess(db, auth.actor, employee.id, {
       status: body.status,
@@ -349,12 +349,19 @@ export const PATCH = apiHandler(async (request: Request) => {
       reason: body.reason,
     });
     if (employee.auth_user_id) {
-      const supabase = createAdmin();
-      const { error } = await supabase.auth.admin.updateUserById(employee.auth_user_id, {
-        ban_duration: body.status === "active" ? "none" : "876000h",
-      });
-      if (error) {
-        throw classifyAuthError(error, "Trạng thái trong hệ thống đã cập nhật nhưng dịch vụ đăng nhập chưa đồng bộ. Hãy thử lại.");
+      let supabase: ReturnType<typeof createAdmin> | null = null;
+      try {
+        supabase = createAdmin();
+      } catch {
+        // In local environments or tests without supabase configured
+      }
+      if (supabase) {
+        const { error } = await supabase.auth.admin.updateUserById(employee.auth_user_id, {
+          ban_duration: body.status === "active" ? "none" : "876000h",
+        });
+        if (error) {
+          throw classifyAuthError(error, "Trạng thái trong hệ thống đã cập nhật nhưng dịch vụ đăng nhập chưa đồng bộ. Hãy thử lại.");
+        }
       }
     }
     invalidateIdentityCache();
@@ -407,7 +414,28 @@ export const PATCH = apiHandler(async (request: Request) => {
     invalidateIdentityCache();
     return Response.json({ updated: true, temporaryPassword, mustChangePassword: true });
   }
-  const updateReason = body.reason!;
+  const updateReason = body.reason?.trim() ?? "";
+
+  // Status transition check:
+  let nextStatus: EmployeeStatus = employee.status;
+  let statusChanged = false;
+
+  if (body.status !== undefined && body.status !== employee.status) {
+    if (auth.actor.role !== "owner" || employee.id === auth.actor.id || employee.role === "owner" || employee.role === "system_admin") {
+      throw new ApplicationError("Chỉ Chủ quán được cập nhật trạng thái tài khoản nhân viên khác.", 403, "permission_denied");
+    }
+    if (!["active", "suspended", "offboarded"].includes(body.status)) {
+      throw new ApplicationError("Trạng thái nhân viên không hợp lệ.", 400, "invalid_status");
+    }
+    if (!Number.isInteger(body.expectedRevision)) {
+      throw new ApplicationError("Hãy tải lại hồ sơ trước khi cập nhật trạng thái.", 400, "account_conflict");
+    }
+    if (body.expectedRevision !== employee.access_revision) {
+      throw new ApplicationError("Tài khoản vừa được cập nhật. Hãy tải lại.", 409, "account_conflict");
+    }
+    nextStatus = body.status as EmployeeStatus;
+    statusChanged = true;
+  }
 
   // Role and Permission Assignment check:
   let nextRole: ActorRole = employee.role;
@@ -444,40 +472,68 @@ export const PATCH = apiHandler(async (request: Request) => {
   const jobTitle = clean(body.jobTitle, employee.job_title ?? "Nhân viên", 100);
   const phone = clean(body.phone, employee.phone ?? "", 30, true);
   const startDate = dateValue(body.startDate, employee.start_date);
-  const compensationType = ["hourly", "monthly", "none"].includes(String(body.compensationType)) ? String(body.compensationType) : employee.compensation_type ?? "none";
+  const currentCompensationType = employee.compensation_type ?? "none";
+  const compensationType = ["hourly", "monthly", "none"].includes(String(body.compensationType)) ? String(body.compensationType) : currentCompensationType;
   const participates = body.participatesAttendance === undefined ? Boolean(employee.participates_attendance) : Boolean(body.participatesAttendance);
   const payrollEligible = compensationType !== "none" && (body.payrollEligible === undefined ? Boolean(employee.payroll_eligible) : Boolean(body.payrollEligible));
   const hourlyRate = money(body.hourlyRate, employee.hourly_rate ?? 0);
   const monthlySalary = money(body.monthlySalary, employee.monthly_salary ?? 0);
-  const rateChanged = compensationType !== employee.compensation_type || hourlyRate !== (employee.hourly_rate ?? 0) || monthlySalary !== (employee.monthly_salary ?? 0);
+  const rateChanged = compensationType !== currentCompensationType || hourlyRate !== (employee.hourly_rate ?? 0) || monthlySalary !== (employee.monthly_salary ?? 0);
+  const payrollChanged = rateChanged || payrollEligible !== Boolean(employee.payroll_eligible);
+  if ((roleChanged || payrollChanged) && updateReason.length < 5) {
+    throw new ApplicationError(
+      "Hãy nhập lý do khi thay đổi vai trò, quyền tính lương hoặc mức lương (tối thiểu 5 ký tự).",
+      400,
+      "reason_required",
+    );
+  }
   const now = new Date().toISOString();
 
   const statements = [
     db.prepare(`UPDATE employees SET display_name = ?, job_title = ?, phone = ?, start_date = ?, participates_attendance = ?,
-      payroll_eligible = ?, compensation_type = ?, hourly_rate = ?, monthly_salary = ?, role = ?, role_id = ?,
+      payroll_eligible = ?, compensation_type = ?, hourly_rate = ?, monthly_salary = ?, role = ?, role_id = ?, status = ?,
       access_revision = access_revision + ?, updated_at = ?
       WHERE id = ? AND store_id = ? AND updated_at = ?
         AND (role != 'owner' OR (? = 'owner')
           OR EXISTS (SELECT 1 FROM employees other
             WHERE other.store_id = employees.store_id AND other.role = 'owner'
+              AND other.status = 'active' AND other.id != employees.id))
+        AND (role != 'owner' OR (? = 'owner' AND ? IN ('active', 'invited'))
+          OR EXISTS (SELECT 1 FROM employees other
+            WHERE other.store_id = employees.store_id AND other.role = 'owner'
               AND other.status = 'active' AND other.id != employees.id))`)
       .bind(
         displayName, jobTitle, phone, startDate, participates ? 1 : 0, payrollEligible ? 1 : 0,
-        compensationType, hourlyRate, monthlySalary, nextRole, nextRoleId,
-        roleChanged ? 1 : 0, now, employee.id, auth.actor.storeId, body.expectedUpdatedAt,
+        compensationType, hourlyRate, monthlySalary, nextRole, nextRoleId, nextStatus,
+        (roleChanged || statusChanged) ? 1 : 0, now, employee.id, auth.actor.storeId, body.expectedUpdatedAt,
         nextRole,
+        nextRole, nextStatus,
       ),
     auditStatement(db, auth.actor.email, "employee", employee.id, "employee.profile_updated", {
-      reason: updateReason.trim().slice(0, 300),
+      reason: updateReason.slice(0, 300) || undefined,
       rateChanged,
       roleChanged,
+      statusChanged,
       previousRole: roleChanged ? employee.role : undefined,
       previousRoleId: roleChanged ? employee.role_id : undefined,
+      previousStatus: statusChanged ? employee.status : undefined,
       nextRole: roleChanged ? nextRole : undefined,
       nextRoleId: roleChanged ? nextRoleId : undefined,
-      fields: ["displayName", "jobTitle", "phone", "startDate", "participatesAttendance", "payrollEligible", "compensationType", ...(roleChanged ? ["role", "roleId"] : [])],
+      nextStatus: statusChanged ? nextStatus : undefined,
+      fields: ["displayName", "jobTitle", "phone", "startDate", "participatesAttendance", "payrollEligible", "compensationType", ...(roleChanged ? ["role", "roleId"] : []), ...(statusChanged ? ["status"] : [])],
     }, now, true),
   ];
+
+  if (statusChanged) {
+    statements.push(
+      auditStatement(db, auth.actor.email, "employee", employee.id, "employee.access_updated", {
+        previousRole: employee.role, previousRoleId: employee.role_id, previousStatus: employee.status,
+        role: nextRole, roleId: nextRoleId, status: nextStatus,
+        reason: updateReason.slice(0, 300) || undefined,
+        highPriority: auth.actor.role === "system_admin" && (employee.role === "owner" || nextRole === "owner"),
+      }, now, true),
+    );
+  }
 
   if (rateChanged) {
     statements.push(
@@ -499,18 +555,41 @@ export const PATCH = apiHandler(async (request: Request) => {
     throw new ApplicationError("Hồ sơ vừa được cập nhật hoặc không thể hạ quyền Chủ quán cuối cùng. Hãy tải lại.", 409, "account_conflict");
   }
 
-  if (roleChanged && employee.auth_user_id) {
+  if (employee.auth_user_id && (roleChanged || statusChanged)) {
+    let supabase: ReturnType<typeof createAdmin> | null = null;
     try {
-      const supabase = createAdmin();
-      await supabase.auth.admin.updateUserById(employee.auth_user_id, {
-        app_metadata: { role: nextRole, role_id: nextRoleId, store_id: employee.store_id },
-      });
+      supabase = createAdmin();
     } catch {
       // Local dev or non-fatal auth sync
     }
+    if (supabase) {
+      try {
+        const authUpdates: { app_metadata?: Record<string, unknown>; ban_duration?: string } = {};
+        if (roleChanged) {
+          authUpdates.app_metadata = { role: nextRole, role_id: nextRoleId, store_id: employee.store_id };
+        }
+        if (statusChanged) {
+          authUpdates.ban_duration = nextStatus === "active" ? "none" : "876000h";
+        }
+        await supabase.auth.admin.updateUserById(employee.auth_user_id, authUpdates);
+      } catch {
+        // Non-fatal auth sync
+      }
+    }
   }
 
-  return Response.json({ updated: true, updatedAt: now, role: nextRole, roleId: nextRoleId });
+  if (statusChanged || roleChanged) {
+    invalidateIdentityCache();
+  }
+
+  return Response.json({
+    updated: true,
+    updatedAt: now,
+    role: nextRole,
+    roleId: nextRoleId,
+    status: nextStatus,
+    revision: employee.access_revision + ((roleChanged || statusChanged) ? 1 : 0),
+  });
 });
 
 function clean(value: unknown, fallback: string, max: number, allowEmpty = false) {

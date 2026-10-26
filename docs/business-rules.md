@@ -1,7 +1,7 @@
 # Quy tắc nghiệp vụ
 
 Cập nhật: 2026-10-16. Quy tắc nền kế thừa phạm vi dự án; hiện trạng triển khai được tách tại [implementation-status](implementation-status.md).
-Các quyết định `DEC-001..016` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
+Các quyết định `DEC-001..017` đã được chấp nhận tại [decision-register](decision-register.md). Quy tắc dưới đây là đích bắt buộc; không suy ra code hiện tại đã đáp ứng nếu chưa có evidence.
 
 ## Phạm vi và thuật ngữ
 
@@ -21,6 +21,7 @@ Các quyết định `DEC-001..016` đã được chấp nhận tại [decision-
 - ROLE-006: Sole OWNER chỉ được sửa công của chính mình qua luồng ngoại lệ có before/after, lý do, high-priority audit và báo cáo đối soát; không được giả là phê duyệt độc lập.
 - ROLE-007: `team_lead` hệ thống chỉ xử lý swap của cấp dưới, checklist/bàn giao/sự cố theo ca; không duyệt nghỉ, sửa công, xem ảnh/GPS, chốt lương, quản lý tài khoản/cấu hình/đơn hàng.
 - ROLE-008: Theo DEC-015, mỗi cửa hàng chỉ có một `system_admin` và một `owner`. Không tạo tài khoản đặc quyền thay thế khi lỗi kích hoạt; phải khôi phục mật khẩu/lời mời/liên kết Auth trên đúng hồ sơ. Owner duy nhất không được hạ vai trò, khóa hoặc offboard; ghi tạo/nâng Owner phải chặn race bằng điều kiện nguyên tử.
+- ROLE-009: Theo DEC-017, OWNER được sửa hồ sơ thông thường và đổi trạng thái `active`/`suspended`/`offboarded` của nhân viên cấp dưới mà không bắt buộc nhập lý do; server vẫn kiểm quyền, target, revision và ghi audit. Đổi vai trò/quyền hoặc mức lương, cấp lại mật khẩu và các ngoại lệ ảnh hưởng công/lương/vận hành vẫn bắt buộc lý do theo quy tắc chuyên biệt.
 
 ## Lịch và yêu cầu
 
