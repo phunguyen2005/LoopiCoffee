@@ -6,7 +6,7 @@ Ngày: 2026-10-26. Theo DEC-016: Workers Free + D1 Free + Supabase Free (Auth v�
 
 ## 1. Dịch vụ và giới hạn
 
-- Cloudflare Workers **Free**, D1 **Free**, Images **Free** nếu dùng `IMAGES`; không bật gói Paid. Dùng hostname `workers.dev` để không mua tên miền cho ứng dụng. Free có quota và có thể trả lỗi khi hết quota; cần kiểm tra CPU thực tế của SSR trên Workers Free.
+- Cloudflare Workers **Free**, D1 **Free**, Images **Free** nếu dùng `IMAGES`; không bật gói Paid. Ứng dụng dùng custom domain đã sở hữu `https://app.phundt.id.vn`; `workers.dev` chỉ là địa chỉ dự phòng. Free có quota và có thể trả lỗi khi hết quota; cần kiểm tra CPU thực tế của SSR trên Workers Free.
 - Supabase organization **Free**, không nâng cấp Pro. Auth và private Storage cùng project. Free có 1 GB file storage và quota egress; hết quota có thể gián đoạn. Project ít hoạt động có thể bị pause. Không dùng image transformation trả phí của Supabase.
 - Resend Free chỉ có quota gửi email, không cấp domain gửi thư riêng. Nếu chưa sở hữu domain xác minh được, email production vẫn là một hạng mục cần giải quyết; không coi default SMTP của Supabase hay domain test Resend là nghiệm thu gửi thư cho nhân viên.
 - Không có SLA trả phí hoặc bảo đảm miễn phí vĩnh viễn. Theo dõi điều khoản/quota của nhà cung cấp. Không bật add-on trả phí để vượt quota.
@@ -44,7 +44,7 @@ npm run local:storage:verify
 
 ## 4. Tạo Worker và D1
 
-Cloudflare → Storage & databases → D1 → tạo `loopicafe-production`, ghi database ID. Tạo Worker tên `loopicafe-production`, giữ gói Workers Free. Dùng hostname được cấp `https://loopicafe-production.<account>.workers.dev` làm canonical app URL.
+Cloudflare → Storage & databases → D1 → tạo `loopicafe-production`, ghi database ID. Tạo Worker tên `loopicafe-production`, giữ gói Workers Free. Gắn custom domain `app.phundt.id.vn` vào Worker; Cloudflare tạo DNS và chứng chỉ. Giữ route `custom_domain` trong `wrangler.production.example.jsonc` để lần deploy tiếp theo không ghi đè cấu hình Dashboard. Canonical app URL là `https://app.phundt.id.vn`.
 
 Khi triển khai bằng máy cá nhân, copy `wrangler.production.example.jsonc` thành `wrangler.production.jsonc` và điền D1 ID thật. File cấu hình riêng này được Git ignore; không dùng ID local hoặc cấu hình `tooling/local-runtime/wrangler.jsonc`.
 
@@ -69,7 +69,7 @@ Build environment variables (không chứa service-role key):
 | `CLOUDFLARE_D1_DATABASE_ID` | ID thật của D1 production |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/public key của project |
-| `NEXT_PUBLIC_APP_URL` | canonical HTTPS Worker URL |
+| `NEXT_PUBLIC_APP_URL` | `https://app.phundt.id.vn` |
 
 Build script tạo config từ example khi chưa có config riêng và đã cung cấp D1 ID. Vite tạo `dist/server/wrangler.json` cho bundle production, đồng bộ ba public settings và `APP_URL` vào runtime vars. Không dùng `npm run build` cho cloud: đó là wrapper chỉ dành cho local. Production đọc public build settings từ môi trường CI hoặc `tooling/production-runtime/.env.production`, không nạp root `.env.local`.
 
