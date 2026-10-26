@@ -24,22 +24,22 @@ CUSTOMER không cần tài khoản, được cấp quyền đúng đơn qua rece
 | Xem/chốt kỳ lương | Không | Không | Có | Khi có `payroll.read` / `payroll.finalize` | Có | Không |
 | Mở lại kỳ finalized | Không | Không | Không | Không (chỉ OWNER) | Có | Không |
 | Quản lý menu/đơn và hủy đơn | Không mặc định | Không mặc định | Có | Khi có `menu.manage` / `orders.*` | Có | Không |
-| Quản lý tài khoản đăng nhập | Không | Không | Không | Không | Không | Có, trừ admin; OWNER theo guard DEC-010 |
+| Quản lý tài khoản đăng nhập | Không | Không | Không | Không | Không | Toàn quyền (tạo/sửa nhiều Owner, đổi email, xóa tài khoản & dữ liệu có mã PIN theo DEC-018) |
 | Quản lý hồ sơ công việc/lương | Không | Theo scope thực hiện | Cấp dưới khi có `people.update` | Cùng store (trừ Owner/Admin/chính mình) khi có `people.update` | Có | Không |
-| Cấu hình role-permission & custom role | Không | Không | Không | Không | Chỉ đọc đối soát | Có với manager/team_lead và custom roles trong catalog |
+| Cấu hình role-permission & custom role | Không | Không | Không | Không | Chỉ đọc đối soát | Toàn quyền từ toàn bộ catalog cho `manager`, `team_lead`, `employee` và `custom_roles` (DEC-018) |
 | Xem audit tài khoản/quyền đã lọc | Không | Không | Không | Không | Có | Có |
 | Cấu hình cửa hàng/audit nghiệp vụ | Không | Không | Không | Không | Có | Không |
 | Hạ tầng/migration/log kỹ thuật theo runbook | Không | Không | Không | Không | Không mặc định | Có, không can thiệp nghiệp vụ |
 
 Quyền “Có” luôn yêu cầu membership active, same-store/resource scope, expected state/revision và cấm self-approval. UI chỉ phản ánh policy; server/application mới là điểm cưỡng chế.
 
-## Catalog RBAC & Vai trò tùy chỉnh (DEC-010 & DEC-014)
+## Catalog RBAC & Vai trò tùy chỉnh (DEC-010, DEC-014 & DEC-018)
 
-- MANAGER có thể được cấu hình từ toàn bộ catalog nghiệp vụ: dashboard, people, shifts, review requests, attendance/evidence, payroll/export, operations, menu/orders.
-- `team_lead` chỉ có thể được cấu hình `requests.swap.apply`, `checklists.manage`, `incidents.transition`, `handovers.manage`.
+- Toàn bộ 25 quyền trong `permissionCatalog` có thể được `system_admin` cấu hình cho tất cả vai trò hệ thống (`manager`, `team_lead`, `employee`) cũng như các vai trò tùy chỉnh (`custom_roles`).
+- Vai trò `employee` mặc định có 0 quyền quản lý (chỉ dùng luồng cá nhân) nhưng có thể được `system_admin` cấp thêm quyền bất kỳ từ catalog tại `/app/admin/roles`.
 - Vai trò tùy chỉnh (`custom_roles`) theo cửa hàng bắt đầu với 0 quyền nghiệp vụ; `system_admin` được chọn từ toàn bộ catalog nghiệp vụ (phải thỏa mãn dependencies, không có wildcard). Khi được cấp quyền duyệt/cập nhật, vai trò tùy chỉnh được phép thao tác với nhân sự khác trong cùng cửa hàng (kể cả đồng cấp), nhưng tuyệt đối không được tự duyệt chính mình và không được thao tác lên `owner` hoặc `system_admin`.
 - Quyền thao tác kéo theo quyền đọc theo dependencies trong catalog; server từ chối tập thiếu phụ thuộc. Chặn lưu trữ (`archive`) vai trò tùy chỉnh khi còn tài khoản được gán; thiếu hoặc lưu trữ vai trò phải fail-closed.
-- OWNER cố định toàn bộ quyền nghiệp vụ; employee giữ luồng cá nhân; `system_admin` chỉ dùng API quản trị riêng.
+- OWNER cố định toàn bộ quyền nghiệp vụ; `system_admin` dùng khu vực quản trị `/app/admin/*`.
 
 ## Baseline source trước DEC-010
 

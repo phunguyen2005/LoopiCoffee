@@ -23,7 +23,7 @@ export type CustomRoleRecord = {
 
 export async function loadRolePermissions(db: D1Database, storeId: string, role: string) {
   if (role === "owner") return { permissions: [...defaultPermissionsForRole(role)], revision: 0, configured: true };
-  if (role === "system_admin" || role === "employee") return { permissions: [] as PermissionKey[], revision: 0, configured: true };
+  if (role === "system_admin") return { permissions: [] as PermissionKey[], revision: 0, configured: true };
   if (role.startsWith("crole_")) {
     const custom = await db.prepare(
       "SELECT id, status FROM custom_roles WHERE id = ? AND store_id = ?",
@@ -35,7 +35,10 @@ export async function loadRolePermissions(db: D1Database, storeId: string, role:
   const set = await db.prepare(
     "SELECT revision FROM role_permission_sets WHERE store_id = ? AND role = ?",
   ).bind(storeId, role).first<{ revision: number }>();
-  if (!set) return { permissions: [] as PermissionKey[], revision: 0, configured: false };
+  if (!set) {
+    if (role === "employee") return { permissions: [] as PermissionKey[], revision: 0, configured: true };
+    return { permissions: [] as PermissionKey[], revision: 0, configured: false };
+  }
   const rows = await db.prepare(
     "SELECT permission_key FROM role_permissions WHERE store_id = ? AND role = ? ORDER BY permission_key",
   ).bind(storeId, role).all<{ permission_key: PermissionKey }>();
@@ -44,7 +47,7 @@ export async function loadRolePermissions(db: D1Database, storeId: string, role:
 
 export async function loadRbacConfiguration(db: D1Database, storeId: string) {
   const roles = await Promise.all(
-    (["manager", "team_lead"] as const).map(async (role) => ({
+    (["manager", "team_lead", "employee"] as const).map(async (role) => ({
       role,
       ...(await loadRolePermissions(db, storeId, role)),
     })),
@@ -168,15 +171,13 @@ export async function updateCustomRole(
   roleId: string,
   data: { name?: string; description?: string },
   expectedRevision: number,
-  reason: string,
+  reason: string | undefined,
   idempotencyKey: string,
 ) {
   if (actor.role !== "system_admin") {
     throw new ApplicationError("Chỉ quản trị hệ thống được cập nhật vai trò tùy chỉnh.", 403, "permission_denied");
   }
-  if (!reason || reason.trim().length < 5) {
-    throw new ApplicationError("Hãy nhập lý do thay đổi vai trò (tối thiểu 5 ký tự).", 400, "reason_required");
-  }
+  const normalizedReason = (reason ?? "").trim().slice(0, 300) || "Cập nhật vai trò tùy chỉnh bởi Quản trị hệ thống";
   if (!/^[a-zA-Z0-9_-]{12,100}$/.test(idempotencyKey)) {
     throw new ApplicationError("Thiếu mã thao tác hợp lệ.", 400, "invalid_idempotency_key");
   }
@@ -236,7 +237,7 @@ export async function updateCustomRole(
       JSON.stringify({
         previous: { name: role.name, description: role.description, revision: expectedRevision },
         role: { id: roleId, name: newName, description: newDescription, revision: nextRevision },
-        reason: reason.trim(),
+        reason: normalizedReason,
         highPriority: true,
       }),
       now,
@@ -264,15 +265,13 @@ export async function archiveCustomRole(
   actor: { email: string; storeId: string; role: ActorRole },
   roleId: string,
   expectedRevision: number,
-  reason: string,
+  reason: string | undefined,
   idempotencyKey: string,
 ) {
   if (actor.role !== "system_admin") {
     throw new ApplicationError("Chỉ quản trị hệ thống được lưu trữ vai trò tùy chỉnh.", 403, "permission_denied");
   }
-  if (!reason || reason.trim().length < 5) {
-    throw new ApplicationError("Hãy nhập lý do lưu trữ vai trò (tối thiểu 5 ký tự).", 400, "reason_required");
-  }
+  const normalizedReason = (reason ?? "").trim().slice(0, 300) || "Lưu trữ vai trò tùy chỉnh bởi Quản trị hệ thống";
   if (!/^[a-zA-Z0-9_-]{12,100}$/.test(idempotencyKey)) {
     throw new ApplicationError("Thiếu mã thao tác hợp lệ.", 400, "invalid_idempotency_key");
   }
@@ -328,7 +327,7 @@ export async function archiveCustomRole(
       roleId,
       JSON.stringify({
         role: { id: roleId, name: role.name, status: "archived", revision: nextRevision },
-        reason: reason.trim(),
+        reason: normalizedReason,
         highPriority: true,
       }),
       now,
@@ -356,13 +355,12 @@ export async function replaceRolePermissions(
   role: string,
   requested: readonly string[],
   expectedRevision: number,
-  reason: string,
+  reason: string | undefined,
   idempotencyKey: string,
 ) {
   if (actor.role !== "system_admin") throw new ApplicationError("Chỉ quản trị hệ thống được cấu hình quyền.", 403, "permission_denied");
-  if (reason.trim().length < 5) throw new ApplicationError("Hãy nhập lý do thay đổi quyền (tối thiểu 5 ký tự).", 400, "reason_required");
 
-  const isCustom = role !== "manager" && role !== "team_lead";
+  const isCustom = role !== "manager" && role !== "team_lead" && role !== "employee";
   if (isCustom) {
     const customRole = await db.prepare(
       "SELECT id, status FROM custom_roles WHERE id = ? AND store_id = ?",
@@ -389,7 +387,7 @@ export async function replaceRolePermissions(
   if (!/^[a-zA-Z0-9_-]{12,100}$/.test(idempotencyKey)) {
     throw new ApplicationError("Thiếu mã thao tác hợp lệ.", 400, "invalid_idempotency_key");
   }
-  const normalizedReason = reason.trim().slice(0, 300);
+  const normalizedReason = (reason ?? "").trim().slice(0, 300) || "Cập nhật bộ quyền bởi Quản trị hệ thống";
   const prior = await db.prepare(
     "SELECT metadata FROM audit_events WHERE id = ? AND store_id = ? AND actor_email = ? AND action = 'rbac.permissions_updated'",
   ).bind(idempotencyKey, actor.storeId, actor.email).first<{ metadata: string }>();
@@ -400,6 +398,11 @@ export async function replaceRolePermissions(
       return { role, permissions, revision: metadata.revision ?? expectedRevision + 1, replayed: true };
     }
     throw new ApplicationError("Mã thao tác đã được dùng cho nội dung khác.", 409, "permission_conflict");
+  }
+  if (!isCustom) {
+    await db.prepare(
+      "INSERT OR IGNORE INTO role_permission_sets (store_id, role, revision, updated_by, updated_at) VALUES (?, ?, 0, ?, ?)",
+    ).bind(actor.storeId, role, actor.email, new Date().toISOString()).run();
   }
   const current = await db.prepare(
     "SELECT revision FROM role_permission_sets WHERE store_id = ? AND role = ?",

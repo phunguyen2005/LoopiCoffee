@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, KeyRound, MailPlus, RefreshCw, Search, ShieldCheck, UserPlus } from "lucide-react";
+import { Check, KeyRound, Lock, Mail, MailPlus, RefreshCw, Search, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { AsyncStatePanel, ListSkeleton, readJson, roleLabel } from "./operational/shared";
 
 type AccountRole = "owner" | "manager" | "team_lead" | "employee";
@@ -16,6 +16,7 @@ type Account = {
 export function AdminAccountsView() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+  const [hasPinConfigured, setHasPinConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -25,6 +26,10 @@ export function AdminAccountsView() {
   const [reason, setReason] = useState("");
   const [roleSelectValue, setRoleSelectValue] = useState<string>("employee");
   const [status, setStatus] = useState<AccountStatus>("active");
+  const [newEmail, setNewEmail] = useState("");
+  const [deletePin, setDeletePin] = useState("");
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinForm, setPinForm] = useState({ currentPin: "", newPin: "" });
   const [credential, setCredential] = useState<{ email: string; displayName: string; password: string } | null>(null);
   const [lostPasswordTarget, setLostPasswordTarget] = useState<{ id?: string; email: string; displayName: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -47,10 +52,11 @@ export function AdminAccountsView() {
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/admin/accounts", { cache: "no-store" });
-      const payload = await readJson<{ accounts?: Account[]; customRoles?: CustomRole[]; error?: string }>(response);
+      const payload = await readJson<{ accounts?: Account[]; customRoles?: CustomRole[]; hasPinConfigured?: boolean; error?: string }>(response);
       if (!response.ok) throw new Error(payload.error ?? "Không thể tải tài khoản.");
       setAccounts(payload.accounts ?? []);
       setCustomRoles(payload.customRoles ?? []);
+      setHasPinConfigured(Boolean(payload.hasPinConfigured));
       return payload.accounts ?? [];
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể tải tài khoản.");
@@ -63,16 +69,23 @@ export function AdminAccountsView() {
 
   const [statusFilter, setStatusFilter] = useState<"all" | AccountStatus>("all");
   const [roleFilter, setRoleFilter] = useState<"all" | AccountRole>("all");
-  const [pending, setPending] = useState<null | "change_role" | "update_status" | "reset_password">(null);
+  const [pending, setPending] = useState<null | "change_role" | "update_status" | "reset_password" | "change_email" | "delete_account">(null);
 
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    if (!selected && !showCreate) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) { setSelected(null); setPending(null); setShowCreate(false); } };
+    if (!selected && !showCreate && !showPinDialog) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) {
+        setSelected(null);
+        setPending(null);
+        setShowCreate(false);
+        setShowPinDialog(false);
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, showCreate, busy]);
+  }, [selected, showCreate, showPinDialog, busy]);
 
   const filtered = useMemo(() => accounts.filter((account) => {
     const needle = search.trim().toLowerCase();
@@ -80,8 +93,32 @@ export function AdminAccountsView() {
     if (roleFilter !== "all" && account.role !== roleFilter) return false;
     return !needle || account.display_name.toLowerCase().includes(needle) || account.email.toLowerCase().includes(needle);
   }), [accounts, search, statusFilter, roleFilter]);
-  const ownerCount = accounts.filter((account) => account.role === "owner").length;
-  const hasOwner = ownerCount > 0;
+
+  async function saveSecurityPin(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/admin/accounts", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "set_pin",
+          currentPin: pinForm.currentPin.trim() || undefined,
+          newPin: pinForm.newPin.trim(),
+        }),
+      });
+      const payload = await readJson<{ error?: string; ok?: boolean }>(response);
+      if (!response.ok) throw new Error(payload.error ?? "Không thể thiết lập mã PIN.");
+      setHasPinConfigured(true);
+      setPinForm({ currentPin: "", newPin: "" });
+      setShowPinDialog(false);
+      setMessage("Đã lưu mã PIN bảo mật (4–6 ký tự) và ghi nhật ký quản trị.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không thể thiết lập mã PIN.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function createAccount(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setMessage(""); setLostPasswordTarget(null);
@@ -121,7 +158,11 @@ export function AdminAccountsView() {
     finally { setBusy(false); }
   }
 
-  async function mutate(action: "change_role" | "update_status" | "reset_password" | "resend_invite", forceNewKey = false, explicitTarget?: Account) {
+  async function mutate(
+    action: "change_role" | "update_status" | "reset_password" | "resend_invite" | "change_email" | "delete_account",
+    forceNewKey = false,
+    explicitTarget?: Account,
+  ) {
     const targetAccount = explicitTarget ?? selected;
     if (!targetAccount) return;
     setPending(null);
@@ -136,6 +177,8 @@ export function AdminAccountsView() {
         role: targetRole,
         roleId: targetRoleId,
         status,
+        newEmail: action === "change_email" ? newEmail.trim().toLowerCase() : undefined,
+        pin: action === "delete_account" ? deletePin.trim() : undefined,
         reason,
         expectedRevision: targetAccount.access_revision,
       };
@@ -145,7 +188,7 @@ export function AdminAccountsView() {
       const response = await fetch("/api/admin/accounts", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({
         ...bodyPayload, idempotencyKey,
       }) });
-      const payload = await readJson<{ error?: string; temporaryPassword?: string; replayed?: boolean; passwordRetrievable?: boolean }>(response);
+      const payload = await readJson<{ error?: string; temporaryPassword?: string; replayed?: boolean; passwordRetrievable?: boolean; newEmail?: string; deleted?: boolean }>(response);
       if (!response.ok) throw new Error(payload.error ?? "Không thể cập nhật tài khoản.");
       mutateKeyRef.current = null;
       if (payload.temporaryPassword) {
@@ -154,32 +197,57 @@ export function AdminAccountsView() {
       } else if (payload.replayed && action === "reset_password" && payload.passwordRetrievable === false) {
         setLostPasswordTarget({ id: targetAccount.id, email: targetAccount.email, displayName: targetAccount.display_name });
       }
-      setMessage(payload.replayed ? "Thao tác đã hoàn tất trước đó." : "Đã cập nhật tài khoản và ghi nhật ký quản trị.");
-      setReason(""); setSelected(null); await load();
+      if (action === "delete_account") {
+        setMessage(`Đã xóa vĩnh viễn tài khoản ${targetAccount.email} cùng toàn bộ dữ liệu liên quan và ghi nhật ký quản trị.`);
+      } else if (action === "change_email") {
+        setMessage(`Đã đổi email đăng nhập thành ${payload.newEmail ?? newEmail.trim().toLowerCase()} và ghi nhật ký quản trị.`);
+      } else {
+        setMessage(payload.replayed ? "Thao tác đã hoàn tất trước đó." : "Đã cập nhật tài khoản và ghi nhật ký quản trị.");
+      }
+      setReason(""); setDeletePin(""); setSelected(null); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể cập nhật tài khoản."); }
     finally { setBusy(false); }
   }
 
   const selectedCurrentVal = selected ? (selected.role_id ? `custom:${selected.role_id}` : selected.role) : "";
-  const isOwnerSelected = !!selected && (selected.role === "owner" || roleSelectValue === "owner");
-  const soleOwnerSelected = selected?.role === "owner" && ownerCount === 1;
   const blockingStatus = status === "suspended" || status === "offboarded";
-  const confirmDanger = pending === "reset_password" || (pending === "update_status" && blockingStatus);
+  const confirmDanger = pending === "delete_account" || pending === "reset_password" || (pending === "update_status" && blockingStatus);
   const confirmConsequence = pending === "change_role"
     ? "Quyền truy cập thay đổi ngay; phiên đăng nhập hiện tại phải tải lại quyền."
     : pending === "update_status"
       ? blockingStatus ? "Tài khoản bị chặn đăng nhập ngay tại dịch vụ xác thực." : "Tài khoản được phép đăng nhập trở lại."
-      : "Mật khẩu cũ bị thay thế; mật khẩu tạm chỉ hiển thị một lần.";
-  const confirmTitle = pending === "change_role" ? "Đổi vai trò" : pending === "update_status" ? "Cập nhật trạng thái" : "Cấp mật khẩu tạm";
-  const needsReason = isOwnerSelected && reason.trim().length < 5;
+      : pending === "change_email"
+        ? `Địa chỉ email đăng nhập sẽ đổi sang ${newEmail.trim().toLowerCase()} và đồng bộ sang toàn bộ hồ sơ, chấm công, bảng lương.`
+        : pending === "delete_account"
+          ? "Tài khoản đăng nhập cùng toàn bộ dữ liệu liên quan (ca làm, chấm công, bảng lương, yêu cầu, bàn giao, sự cố, thông báo) sẽ bị xóa vĩnh viễn và không thể khôi phục."
+          : "Mật khẩu cũ bị thay thế; mật khẩu tạm chỉ hiển thị một lần.";
+  const confirmTitle = pending === "change_role"
+    ? "Đổi vai trò"
+    : pending === "update_status"
+      ? "Cập nhật trạng thái"
+      : pending === "change_email"
+        ? "Đổi email đăng nhập"
+        : pending === "delete_account"
+          ? "Xóa vĩnh viễn tài khoản & dữ liệu"
+          : "Cấp mật khẩu tạm";
+  const deletePinReady = deletePin.trim().length >= 4 && deletePin.trim().length <= 6;
 
   return <div className="stack adm-page">
     <header className="adm-header">
-      <div><h2 className="card-title">Tài khoản</h2><p className="card-subtitle">Tạo, khóa và phân vai trò đăng nhập. Công và lương quản lý riêng tại mục Nhân sự.</p></div>
-      <button type="button" className="button" onClick={() => { setError(""); setShowCreate(true); }}><UserPlus size={17} /> Tạo tài khoản</button>
+      <div><h2 className="card-title">Tài khoản</h2><p className="card-subtitle">Toàn quyền tạo, đổi email, phân vai trò (kể cả nhiều Chủ quán) và xóa tài khoản kèm dữ liệu.</p></div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => { setError(""); setPinForm({ currentPin: "", newPin: "" }); setShowPinDialog(true); }}
+        >
+          <Lock size={16} /> {hasPinConfigured ? "Đổi mã PIN bảo mật" : "Thiết lập mã PIN"}
+        </button>
+        <button type="button" className="button" onClick={() => { setError(""); setShowCreate(true); }}><UserPlus size={17} /> Tạo tài khoản</button>
+      </div>
     </header>
     {message && <div className="notice success" role="status">{message}</div>}
-    {error && !showCreate && !selected && <div className="notice danger" role="alert">{error}</div>}
+    {error && !showCreate && !selected && !showPinDialog && <div className="notice danger" role="alert">{error}</div>}
     {lostPasswordTarget && (
       <div className="notice warning" role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <span>
@@ -198,6 +266,57 @@ export function AdminAccountsView() {
             <KeyRound size={15} /> Cấp mật khẩu tạm mới
           </button>
         )}
+      </div>
+    )}
+
+    {showPinDialog && (
+      <div className="admin-dialog-backdrop" role="presentation" onMouseDown={() => !busy && setShowPinDialog(false)}>
+        <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="pin-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            <span className="mini-icon amber"><Lock size={18} /></span>
+            <h2 id="pin-dialog-title">{hasPinConfigured ? "Đổi mã PIN bảo mật" : "Thiết lập mã PIN bảo mật"}</h2>
+          </div>
+          <p className="text-sm text-[#7b6f70]">
+            Mã PIN (từ 4 đến 6 ký tự) dùng để xác thực mỗi khi Quản trị hệ thống thực hiện xóa vĩnh viễn tài khoản và dữ liệu.
+          </p>
+          {error && <div className="notice danger" role="alert">{error}</div>}
+          <form className="stack" onSubmit={saveSecurityPin}>
+            {hasPinConfigured && (
+              <label className="field">
+                <span>Mã PIN hiện tại</span>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  maxLength={6}
+                  autoComplete="off"
+                  placeholder="Nhập mã PIN hiện tại (4–6 ký tự)"
+                  value={pinForm.currentPin}
+                  onChange={(event) => setPinForm({ ...pinForm, currentPin: event.target.value })}
+                />
+              </label>
+            )}
+            <label className="field">
+              <span>Mã PIN mới (4–6 ký tự)</span>
+              <input
+                type="password"
+                required
+                minLength={4}
+                maxLength={6}
+                autoComplete="new-password"
+                placeholder="Nhập 4 đến 6 ký tự"
+                value={pinForm.newPin}
+                onChange={(event) => setPinForm({ ...pinForm, newPin: event.target.value })}
+              />
+            </label>
+            <div className="admin-dialog-actions">
+              <button className="button" disabled={busy || pinForm.newPin.trim().length < 4 || pinForm.newPin.trim().length > 6}>
+                <Lock size={16} /> {busy ? "Đang lưu…" : "Lưu mã PIN"}
+              </button>
+              <button type="button" className="button-secondary" disabled={busy} onClick={() => setShowPinDialog(false)}>Hủy</button>
+            </div>
+          </form>
+        </section>
       </div>
     )}
 
@@ -271,7 +390,7 @@ export function AdminAccountsView() {
               <option value="employee">Nhân viên</option>
               <option value="team_lead">Trưởng ca</option>
               <option value="manager">Quản lý</option>
-              <option value="owner" disabled={hasOwner}>Chủ quán{hasOwner ? " (đã có)" : ""}</option>
+              <option value="owner">Chủ quán</option>
             </optgroup>
             {customRoles.length > 0 && (
               <optgroup label="Vai trò tùy chỉnh">
@@ -283,10 +402,9 @@ export function AdminAccountsView() {
               </optgroup>
             )}
           </select>
-          {hasOwner && <small className="muted">Mỗi cửa hàng chỉ có một Chủ quán. Hãy khôi phục tài khoản hiện tại thay vì tạo thêm.</small>}
         </label>
         <label className="field"><span>Kích hoạt</span><select value={create.activationMethod} onChange={(event) => setCreate({ ...create, activationMethod: event.target.value as typeof create.activationMethod })}><option value="invite">Gửi lời mời</option><option value="temporary_password">Mật khẩu tạm</option></select></label>
-        {createRoleValue === "owner" && <label className="field admin-span-2"><span>Lý do tạo Chủ quán</span><textarea required minLength={5} value={create.reason} onChange={(event) => setCreate({ ...create, reason: event.target.value })} /></label>}
+        <label className="field admin-span-2"><span>Ghi chú / Lý do (tùy chọn)</span><textarea value={create.reason} onChange={(event) => setCreate({ ...create, reason: event.target.value })} placeholder="Ghi chú nội bộ cho nhật ký quản trị (nếu cần)" /></label>
         <div className="admin-dialog-actions admin-span-2">
           <button className="button" disabled={busy}><UserPlus size={17} />{busy ? "Đang tạo…" : "Tạo tài khoản"}</button>
           <button type="button" className="button-secondary" disabled={busy} onClick={() => setShowCreate(false)}>Hủy</button>
@@ -314,7 +432,11 @@ export function AdminAccountsView() {
                   setSelected(account);
                   setRoleSelectValue(currentVal);
                   setStatus(account.status);
+                  setNewEmail(account.email);
+                  setDeletePin("");
                   setReason("");
+                  setPending(null);
+                  setError("");
                 }}
               >
                 <span className="adm-avatar" aria-hidden>{(account.display_name.trim()[0] ?? "?").toUpperCase()}</span>
@@ -337,13 +459,31 @@ export function AdminAccountsView() {
             <h2 id="account-dialog-title">{selected.display_name}</h2><p>{selected.email}</p>
             {error && <div className="notice danger" role="alert">{error}</div>}
             <label className="field">
+              <span>Email đăng nhập</span>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(event) => setNewEmail(event.target.value)}
+                placeholder="email@loopi.vn"
+              />
+            </label>
+            <button
+              type="button"
+              className="button-secondary"
+              disabled={busy || !newEmail.trim() || newEmail.trim().toLowerCase() === selected.email.toLowerCase()}
+              onClick={() => setPending("change_email")}
+            >
+              <Mail size={16} /> Đổi email đăng nhập
+            </button>
+
+            <label className="field">
               <span>Vai trò</span>
-              <select value={roleSelectValue} disabled={soleOwnerSelected} onChange={(event) => setRoleSelectValue(event.target.value)}>
+              <select value={roleSelectValue} onChange={(event) => setRoleSelectValue(event.target.value)}>
                 <optgroup label="Vai trò hệ thống">
                   <option value="employee">Nhân viên</option>
                   <option value="team_lead">Trưởng ca</option>
                   <option value="manager">Quản lý</option>
-                  <option value="owner" disabled={hasOwner && selected.role !== "owner"}>Chủ quán{hasOwner && selected.role !== "owner" ? " (đã có)" : ""}</option>
+                  <option value="owner">Chủ quán</option>
                 </optgroup>
                 {customRoles.length > 0 && (
                   <optgroup label="Vai trò tùy chỉnh">
@@ -355,22 +495,78 @@ export function AdminAccountsView() {
                   </optgroup>
                 )}
               </select>
-              {soleOwnerSelected && <small className="muted">Đây là Chủ quán duy nhất. Có thể đặt lại mật khẩu hoặc gửi lại lời mời, nhưng không thể hạ vai trò.</small>}
             </label>
-            <button className="button-secondary" disabled={busy || soleOwnerSelected || roleSelectValue === selectedCurrentVal} onClick={() => setPending("change_role")}><ShieldCheck size={16} /> Đổi vai trò</button>
-            <label className="field"><span>Trạng thái</span><select value={status} onChange={(event) => setStatus(event.target.value as AccountStatus)}><option value="active">Đang hoạt động</option><option value="suspended" disabled={soleOwnerSelected}>Tạm khóa</option><option value="offboarded" disabled={soleOwnerSelected}>Đã nghỉ việc</option>{selected.status === "invited" && <option value="invited">Chờ kích hoạt</option>}</select>{soleOwnerSelected && <small className="muted">Không thể khóa Chủ quán duy nhất. Dùng khôi phục mật khẩu hoặc lời mời để sửa lỗi truy cập.</small>}</label>
+            <button className="button-secondary" disabled={busy || roleSelectValue === selectedCurrentVal} onClick={() => setPending("change_role")}><ShieldCheck size={16} /> Đổi vai trò</button>
+            <label className="field">
+              <span>Trạng thái</span>
+              <select value={status} onChange={(event) => setStatus(event.target.value as AccountStatus)}>
+                <option value="active">Đang hoạt động</option>
+                <option value="suspended">Tạm khóa</option>
+                <option value="offboarded">Đã nghỉ việc</option>
+                {selected.status === "invited" && <option value="invited">Chờ kích hoạt</option>}
+              </select>
+            </label>
             <button className="button-secondary" disabled={busy || status === selected.status} onClick={() => setPending("update_status")}>Cập nhật trạng thái</button>
-            {isOwnerSelected && <label className="field"><span>Lý do thao tác với Chủ quán (tối thiểu 5 ký tự)</span><textarea required minLength={5} value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
+            <label className="field">
+              <span>Ghi chú / Lý do (tùy chọn)</span>
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ghi chú nội bộ cho nhật ký quản trị (nếu cần)" />
+            </label>
             {pending && <div className={`admin-confirm${confirmDanger ? " danger" : ""}`} role="alertdialog" aria-labelledby="admin-confirm-title">
                 <strong id="admin-confirm-title">{confirmTitle} cho {selected.display_name}?</strong>
                 <p>{selected.email}. {confirmConsequence} Thao tác được ghi vào nhật ký quản trị.</p>
-                {needsReason && <p role="alert">Cần nhập lý do trước khi xác nhận.</p>}
+                {pending === "delete_account" && (
+                  !hasPinConfigured ? (
+                    <div className="notice warning text-xs" style={{ marginTop: 8 }}>
+                      Bạn chưa thiết lập mã PIN bảo mật (4–6 ký tự). Vui lòng thiết lập mã PIN trước khi xóa tài khoản.
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="button button-compact"
+                          onClick={() => { setShowPinDialog(true); }}
+                        >
+                          <Lock size={14} /> Thiết lập mã PIN ngay
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="field" style={{ marginTop: 8 }}>
+                      <span>Nhập mã PIN bảo mật (4–6 ký tự) để xác nhận xóa</span>
+                      <input
+                        type="password"
+                        required
+                        minLength={4}
+                        maxLength={6}
+                        autoComplete="off"
+                        placeholder="Mã PIN (4–6 ký tự)"
+                        value={deletePin}
+                        onChange={(event) => setDeletePin(event.target.value)}
+                      />
+                    </label>
+                  )
+                )}
                 <div className="admin-dialog-actions">
-                  <button className={confirmDanger ? "button button-danger" : "button"} disabled={busy || needsReason} onClick={() => void mutate(pending)}>{busy ? "Đang xử lý…" : "Xác nhận"}</button>
+                  <button
+                    className={confirmDanger ? "button button-danger" : "button"}
+                    disabled={busy || (pending === "delete_account" && (!hasPinConfigured || !deletePinReady))}
+                    onClick={() => void mutate(pending)}
+                  >
+                    {busy ? "Đang xử lý…" : pending === "delete_account" ? "Xác nhận xóa vĩnh viễn" : "Xác nhận"}
+                  </button>
                   <button className="button-secondary" disabled={busy} onClick={() => setPending(null)}>Hủy</button>
                 </div>
               </div>}
-            <div className="admin-dialog-actions"><button className="button-secondary" disabled={busy} onClick={() => setPending("reset_password")}><KeyRound size={16} /> Mật khẩu tạm</button>{selected.status === "invited" && <button className="button-secondary" disabled={busy} onClick={() => void mutate("resend_invite")}><MailPlus size={16} /> Gửi lại lời mời</button>}</div>
+            <div className="admin-dialog-actions">
+              <button className="button-secondary" disabled={busy} onClick={() => setPending("reset_password")}><KeyRound size={16} /> Mật khẩu tạm</button>
+              {selected.status === "invited" && <button className="button-secondary" disabled={busy} onClick={() => void mutate("resend_invite")}><MailPlus size={16} /> Gửi lại lời mời</button>}
+              <button
+                type="button"
+                className="button button-danger"
+                disabled={busy}
+                onClick={() => { setDeletePin(""); setPending("delete_account"); }}
+              >
+                <Trash2 size={16} /> Xóa tài khoản & dữ liệu
+              </button>
+            </div>
             <button className="button ghost" disabled={busy} onClick={() => { setSelected(null); setPending(null); }}>Đóng</button>
           </section>
         </div>

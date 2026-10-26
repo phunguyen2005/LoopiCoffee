@@ -50,7 +50,7 @@ export const PATCH = apiHandler(async (request: Request) => {
     name: "string",
     description: "string",
     expectedRevision: "number",
-    reason: "string",
+    reason: "string?",
     idempotencyKey: "string",
   }) as {
     roleId?: string;
@@ -62,7 +62,7 @@ export const PATCH = apiHandler(async (request: Request) => {
     idempotencyKey?: string;
   };
 
-  if (!body.roleId || !body.action || typeof body.expectedRevision !== "number" || !body.reason || !body.idempotencyKey) {
+  if (!body.roleId || !body.action || typeof body.expectedRevision !== "number" || !body.idempotencyKey) {
     throw new ApplicationError("Thông tin cập nhật vai trò không hợp lệ.", 400, "invalid_input");
   }
 

@@ -429,11 +429,10 @@ describe("Adversarial Workflow & Interaction Verification Suite (challenger_uiux
         /aria-label="Thanh lưu thay đổi ma trận quyền trên thiết bị di động"/
       );
 
-      // Prompt & Scroll-into-view behavior
+      // Prompt & direct save behavior
       assert.match(rbacSrc, /Ma trận quyền đã thay đổi/);
-      assert.match(rbacSrc, /Nhập lý do để lưu/);
       assert.match(rbacSrc, /Sẵn sàng lưu thay đổi/);
-      assert.match(rbacSrc, /el\?\.scrollIntoView\(\{ behavior: "smooth" \}\)/);
+      assert.match(rbacSrc, /onClick=\{\(\) => void save\(\)\}/);
     });
 
     test("Dirty state logic accurately detects additions, deletions, and set equality", () => {

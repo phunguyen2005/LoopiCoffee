@@ -109,3 +109,14 @@ Các thay đổi dưới đây đã được triển khai trên working tree sau
 - UI Admin vô hiệu hóa Owner thứ hai, bảo vệ Owner duy nhất khỏi hạ role/khóa/offboard và hướng sang gửi lại lời mời hoặc cấp mật khẩu tạm trên đúng tài khoản.
 - Kiểm chứng ngày 2026-10-25: test RBAC/bảo mật/workforce 53/53 PASS; Auth Playwright 12/12 PASS gồm đăng nhập Admin/Owner, refresh/logout, quyền API, chặn API Owner thứ hai và trạng thái UI; lint các file thay đổi PASS; Docker daemon, Supabase Auth, SMTP local và app 4173 đều healthy.
 - Full TypeScript check còn bị chặn bởi lỗi có sẵn, ngoài phạm vi DEC-015: `components/operational/owner-orders-view.tsx` chưa định nghĩa `normalizeMenuText` tại ba vị trí sử dụng (6 diagnostics). Chưa deploy hoặc xác minh recovery trên production/Supabase hosted.
+
+## Mở rộng toàn quyền System Admin (DEC-018) — working tree 2026-10-26
+
+- **IMPLEMENTED & VERIFIED (local)** cho DEC-018:
+  - Mở khóa toàn bộ 25 quyền trong `permissionCatalog` (`modules/people/domain/permissions.ts`) cho cả `manager`, `team_lead`, `employee` và `custom_roles`. UI `/app/admin/roles` cho phép chọn và cấu hình trực tiếp vai trò `Nhân viên` (`employee`) bên cạnh `Quản lý`, `Trưởng ca` và các vai trò tùy chỉnh; trường lý do là tùy chọn.
+  - Gỡ bỏ giới hạn một `owner` (`owner_limit`), gỡ bỏ bắt buộc re-auth 5 phút, gỡ bỏ bắt buộc nhập lý do và gỡ bỏ chặn hạ vai trò/khóa/xóa `owner` cuối cùng đối với `system_admin` trong `modules/people/application/update-access.ts` và `/api/admin/accounts`.
+  - Bổ sung `modules/people/application/admin-account-management.ts`:
+    - Thiết lập/đổi/xác thực mã PIN bảo mật 4–6 ký tự (`setAdminSecurityPin`, `verifyAdminSecurityPin`, băm SHA-256 có salt, lưu trong `role_permissions` dưới khóa nội bộ `__admin_pin__` để không làm lệch schema migration).
+    - Đổi email đăng nhập (`changeAccountEmail`): đồng bộ Supabase Auth và cập nhật nguyên tử (cascade) địa chỉ email mới trên 16 bảng D1 liên quan.
+    - Xóa vĩnh viễn tài khoản và toàn bộ dữ liệu liên quan (`deleteAccountAndData`): bắt buộc xác thực mã PIN 4–6 ký tự, xóa user trên Supabase Auth và xóa nguyên tử toàn bộ dữ liệu ca làm, chấm công, ngoại lệ/điều chỉnh công, bảng lương/điều chỉnh lương, yêu cầu, bàn giao, sự cố, thông báo, đồng thuận và hồ sơ nhân sự trong D1.
+  - Toàn bộ thao tác (`account.email_changed`, `account.deleted`, `admin.pin_configured`, ...) được ghi vào `audit_events` và hiển thị tại `/app/admin/audit` (đã lọc bỏ hoàn toàn các khóa nhạy cảm như PIN/mật khẩu).

@@ -20,6 +20,8 @@ const categories = [
 const detailLabels: Record<string, string> = {
   role: "Vai trò", roleId: "Mã vai trò", activationMethod: "Cách kích hoạt", reason: "Lý do", status: "Trạng thái",
   previousRole: "Vai trò cũ", previousStatus: "Trạng thái cũ", name: "Tên", permissions: "Quyền",
+  previousEmail: "Email cũ", newEmail: "Email mới", email: "Email", displayName: "Họ tên",
+  pinVerified: "Xác thực PIN", mode: "Hình thức",
 };
 
 export function AdminAuditView() {

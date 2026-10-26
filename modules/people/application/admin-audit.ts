@@ -14,12 +14,12 @@ export type AdminAuditEvent = {
 export type AdminAuditFilters = { category?: string | null; q?: string | null; limit?: number };
 
 const categoryPatterns: Record<Exclude<AdminAuditCategory, "all">, string[]> = {
-  account: ["account.%"],
+  account: ["account.%", "admin.%"],
   access: ["employee.access_%"],
   rbac: ["rbac.%"],
 };
 const allPatterns = [...categoryPatterns.account, ...categoryPatterns.access, ...categoryPatterns.rbac];
-const sensitiveKey = /pass(word)?|token|secret|key|authorization|credential/i;
+const sensitiveKey = /pass(word)?|token|secret|key|authorization|credential|^pin$|currentpin|newpin|pinhash|pinsalt/i;
 
 /** Parses stored metadata into a flat, display-safe object; sensitive keys are dropped. */
 export function sanitizeAuditDetails(raw: string | null): AdminAuditEvent["details"] {
@@ -47,12 +47,12 @@ export async function loadAdminAudit(db: D1Database, storeId: string, filters: A
   const clauses = [`a.store_id = ?`, `(${patterns.map(() => "a.action LIKE ?").join(" OR ")})`];
   const params: unknown[] = [storeId, ...patterns];
   if (q) {
-    clauses.push("(lower(a.actor_email) LIKE ? ESCAPE '\\' OR lower(a.action) LIKE ? ESCAPE '\\' OR lower(COALESCE(t.email, '')) LIKE ? ESCAPE '\\')");
+    clauses.push("(lower(a.actor_email) LIKE ? ESCAPE '\\' OR lower(a.action) LIKE ? ESCAPE '\\' OR lower(COALESCE(t.email, json_extract(a.metadata, '$.newEmail'), json_extract(a.metadata, '$.email'), '')) LIKE ? ESCAPE '\\')");
     const like = `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
     params.push(like, like, like);
   }
   const result = await db.prepare(`SELECT a.id, a.actor_email, a.entity_type, a.entity_id, a.action, a.metadata, a.created_at,
-      CASE WHEN a.entity_type = 'employee' THEN t.email WHEN a.entity_type = 'custom_role' THEN cr.name ELSE a.entity_id END AS target_label
+      CASE WHEN a.entity_type = 'employee' THEN COALESCE(t.email, json_extract(a.metadata, '$.newEmail'), json_extract(a.metadata, '$.email'), a.entity_id) WHEN a.entity_type = 'custom_role' THEN cr.name ELSE a.entity_id END AS target_label
     FROM audit_events a
     LEFT JOIN employees t ON a.entity_type = 'employee' AND t.id = a.entity_id AND t.store_id = a.store_id
     LEFT JOIN custom_roles cr ON a.entity_type = 'custom_role' AND cr.id = a.entity_id AND cr.store_id = a.store_id

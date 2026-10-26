@@ -40,52 +40,28 @@ export async function updateEmployeeAccess(
   if (!canManageEmployee(actor, employee) || (change.role !== undefined && !canAssignRole(actor, change.role))) {
     throw new ApplicationError("Bạn không có quyền thay đổi tài khoản này.", 403, "forbidden");
   }
-  const promotesToOwner = role === "owner" && employee.role !== "owner";
-  if (promotesToOwner) {
-    const existingOwner = await db.prepare(
-      "SELECT id FROM employees WHERE store_id = ? AND role = 'owner' AND id <> ? LIMIT 1",
-    ).bind(actor.storeId, employeeId).first<{ id: string }>();
-    if (existingOwner) {
-      throw new ApplicationError(
-        "Cửa hàng đã có tài khoản Chủ quán. Hãy khôi phục tài khoản đó thay vì tạo thêm.",
-        409,
-        "owner_limit",
-      );
-    }
-  }
+  const isSystemAdmin = actor.role === "system_admin";
   const now = new Date().toISOString();
   const results = await db.batch([
     db.prepare(
       `UPDATE employees SET role = ?, role_id = ?, status = ?, access_revision = access_revision + 1, updated_at = ?
        WHERE id = ? AND store_id = ? AND role = ? AND status = ? AND access_revision = ?
-         AND (? != 'owner' OR role = 'owner' OR NOT EXISTS (SELECT 1 FROM employees existing_owner
-           WHERE existing_owner.store_id = employees.store_id AND existing_owner.role = 'owner'
-             AND existing_owner.id != employees.id))
-         AND (role != 'owner' OR (? = 'owner' AND ? IN ('active', 'invited'))
+         AND (? = 1 OR role != 'owner' OR (? = 'owner' AND ? IN ('active', 'invited'))
            OR EXISTS (SELECT 1 FROM employees other
              WHERE other.store_id = employees.store_id AND other.role = 'owner'
                AND other.status = 'active' AND other.id != employees.id))`,
-    ).bind(role, roleId, status, now, employeeId, actor.storeId, employee.role, employee.status, employee.access_revision, role, role, status),
+    ).bind(
+      role, roleId, status, now, employeeId, actor.storeId, employee.role, employee.status, employee.access_revision,
+      isSystemAdmin ? 1 : 0, role, status,
+    ),
     auditStatement(db, actor.email, "employee", employeeId, "employee.access_updated", {
       previousRole: employee.role, previousRoleId: employee.role_id, previousStatus: employee.status,
       role, roleId, status,
-      reason: change.reason?.trim().slice(0, 300) || undefined,
-      highPriority: actor.role === "system_admin" && (employee.role === "owner" || role === "owner"),
-    }, now, true),
+      reason: change.reason?.trim().slice(0, 300) || (isSystemAdmin ? "Cập nhật bởi Quản trị hệ thống" : undefined),
+      highPriority: isSystemAdmin && (employee.role === "owner" || role === "owner"),
+    }, now, true, crypto.randomUUID(), actor.storeId),
   ]);
   if (!results[0].meta.changes) {
-    if (promotesToOwner) {
-      const existingOwner = await db.prepare(
-        "SELECT id FROM employees WHERE store_id = ? AND role = 'owner' AND id <> ? LIMIT 1",
-      ).bind(actor.storeId, employeeId).first<{ id: string }>();
-      if (existingOwner) {
-        throw new ApplicationError(
-          "Cửa hàng đã có tài khoản Chủ quán. Hãy khôi phục tài khoản đó thay vì tạo thêm.",
-          409,
-          "owner_limit",
-        );
-      }
-    }
     throw new ApplicationError("Không thể thay đổi Chủ quán cuối cùng hoặc tài khoản vừa được cập nhật. Hãy tải lại.", 409, "access_conflict");
   }
   return { ...employee, role, role_id: roleId, status, access_revision: employee.access_revision + 1 };

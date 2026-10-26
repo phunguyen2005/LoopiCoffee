@@ -5,7 +5,7 @@ import { Archive, Edit3, Plus, RefreshCw, Save, ShieldCheck, Users } from "lucid
 import { AsyncStatePanel, ViewHeader, readJson } from "./operational/shared";
 
 type Permission = { key: string; label: string; description: string; group: string; assignableTo: string[]; dependsOn?: string[] };
-type SystemRoleSet = { role: "manager" | "team_lead"; permissions: string[]; revision: number; configured: boolean };
+type SystemRoleSet = { role: "manager" | "team_lead" | "employee"; permissions: string[]; revision: number; configured: boolean };
 type CustomRoleRecord = {
   id: string;
   name: string;
@@ -103,11 +103,8 @@ export function RbacView() {
 
   const available = useMemo(() => {
     if (!payload) return [];
-    if (isCustomRole) {
-      return payload.catalog;
-    }
-    return payload.catalog.filter((item) => item.assignableTo.includes(role as "manager" | "team_lead"));
-  }, [payload, role, isCustomRole]);
+    return payload.catalog;
+  }, [payload]);
 
   const groups = useMemo(() => [...new Set(available.map((item) => item.group))], [available]);
 
@@ -182,7 +179,7 @@ export function RbacView() {
   }
 
   async function handleUpdateCustomRole() {
-    if (!currentCustomRole || !editName.trim() || editReason.trim().length < 5) return;
+    if (!currentCustomRole || !editName.trim()) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -196,7 +193,7 @@ export function RbacView() {
           name: editName.trim(),
           description: editDesc.trim() || undefined,
           expectedRevision: currentCustomRole.revision,
-          reason: editReason.trim(),
+          reason: editReason.trim() || undefined,
           idempotencyKey: crypto.randomUUID(),
         }),
       });
@@ -214,7 +211,7 @@ export function RbacView() {
   }
 
   async function handleArchiveCustomRole() {
-    if (!currentCustomRole || archiveReason.trim().length < 5) return;
+    if (!currentCustomRole) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -226,7 +223,7 @@ export function RbacView() {
           roleId: currentCustomRole.id,
           action: "archive",
           expectedRevision: currentCustomRole.revision,
-          reason: archiveReason.trim(),
+          reason: archiveReason.trim() || undefined,
           idempotencyKey: crypto.randomUUID(),
         }),
       });
@@ -288,6 +285,7 @@ export function RbacView() {
               <optgroup label="Vai trò hệ thống">
                 <option value="manager">Quản lý</option>
                 <option value="team_lead">Trưởng ca</option>
+                <option value="employee">Nhân viên</option>
               </optgroup>
               {payload?.customRoles && payload.customRoles.length > 0 && (
                 <optgroup label="Vai trò tùy chỉnh">
@@ -434,13 +432,11 @@ export function RbacView() {
               />
             </label>
             <label className="field">
-              <span>Lý do thay đổi (tối thiểu 5 ký tự) *</span>
+              <span>Ghi chú / Lý do thay đổi (tùy chọn)</span>
               <textarea
-                required
-                minLength={5}
                 value={editReason}
                 onChange={(e) => setEditReason(e.target.value)}
-                placeholder="Nhập lý do điều chỉnh tên hoặc mô tả..."
+                placeholder="Nhập ghi chú điều chỉnh tên hoặc mô tả (nếu có)..."
               />
             </label>
             <div className="admin-dialog-actions justify-end mt-2">
@@ -455,7 +451,7 @@ export function RbacView() {
               <button
                 type="button"
                 className="button"
-                disabled={busy || editName.trim().length < 2 || editReason.trim().length < 5}
+                disabled={busy || editName.trim().length < 2}
                 onClick={() => void handleUpdateCustomRole()}
               >
                 {busy ? "Đang lưu…" : "Lưu thay đổi"}
@@ -483,13 +479,11 @@ export function RbacView() {
               </div>
             )}
             <label className="field">
-              <span>Lý do lưu trữ (tối thiểu 5 ký tự) *</span>
+              <span>Ghi chú / Lý do lưu trữ (tùy chọn)</span>
               <textarea
-                required
-                minLength={5}
                 value={archiveReason}
                 onChange={(e) => setArchiveReason(e.target.value)}
-                placeholder="Nhập lý do lưu trữ vai trò này..."
+                placeholder="Nhập ghi chú lưu trữ vai trò này (nếu có)..."
               />
             </label>
             <div className="admin-dialog-actions justify-end mt-2">
@@ -504,7 +498,7 @@ export function RbacView() {
               <button
                 type="button"
                 className="button button-danger"
-                disabled={busy || currentCustomRole.assignedCount > 0 || archiveReason.trim().length < 5}
+                disabled={busy || currentCustomRole.assignedCount > 0}
                 onClick={() => void handleArchiveCustomRole()}
               >
                 {busy ? "Đang xử lý…" : "Xác nhận lưu trữ"}
@@ -544,11 +538,9 @@ export function RbacView() {
       {payload?.editable && (
         <section className="card rbac-save">
           <label className="field">
-            <span>Lý do thay đổi bộ quyền (tối thiểu 5 ký tự) *</span>
+            <span>Ghi chú / Lý do thay đổi bộ quyền (tùy chọn)</span>
             <textarea
               id="rbac-reason-input"
-              minLength={5}
-              required
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Ví dụ: Điều chỉnh phạm vi xử lý đơn và xem báo cáo cho vai trò này"
@@ -563,7 +555,7 @@ export function RbacView() {
             <button
               type="button"
               className="button min-h-[44px]"
-              disabled={busy || reason.trim().length < 5}
+              disabled={busy}
               onClick={() => void save()}
             >
               <Save size={17} /> {busy ? "Đang lưu…" : "Lưu bộ quyền"}
@@ -580,22 +572,14 @@ export function RbacView() {
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-bold text-[#6f2939]">Ma trận quyền đã thay đổi</span>
             <span className="text-[11px] text-[#635657] truncate">
-              {reason.trim().length < 5 ? "Nhập lý do để lưu" : "Sẵn sàng lưu thay đổi"}
+              Sẵn sàng lưu thay đổi
             </span>
           </div>
           <button
             type="button"
             className="button min-h-[44px] shrink-0 text-xs px-3 py-2"
             disabled={busy}
-            onClick={() => {
-              if (reason.trim().length < 5) {
-                const el = document.getElementById("rbac-reason-input");
-                el?.focus();
-                el?.scrollIntoView({ behavior: "smooth" });
-              } else {
-                void save();
-              }
-            }}
+            onClick={() => void save()}
           >
             <Save size={15} /> {busy ? "Đang lưu…" : "Lưu quyền"}
           </button>

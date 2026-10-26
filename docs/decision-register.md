@@ -224,6 +224,26 @@ Chỉ các hàng acceptance thuộc phạm vi phát hành có evidence PASS tạ
 
 **Lý do:** giảm ma sát cho công việc quản lý nhân sự hằng ngày nhưng vẫn bảo toàn dấu vết và guard cho thay đổi có tác động bảo mật, tài chính hoặc dữ liệu. **Tác động:** cập nhật UI/API/test/tài liệu; không đổi schema hoặc migration. Rollout vẫn cần kiểm chứng tích hợp Auth cho trạng thái tài khoản.
 
+## DEC-018 — Mở rộng toàn quyền quản trị tài khoản, phân quyền RBAC, đổi email, nhiều Chủ quán và xóa tài khoản kèm dữ liệu cho System Admin
+
+**Trạng thái:** ACCEPTED — 2026-10-26. **Người quyết định:** chủ dự án trong phiên làm việc (`/grill-me`). Thay thế phần giới hạn một Owner và guard của DEC-010/DEC-015 đối với `system_admin`, đồng thời mở rộng catalog RBAC.
+
+- **Phạm vi System Admin:** `system_admin` vẫn hoạt động tách biệt tại khu vực Quản trị hệ thống (`/app/admin/*`), không trộn màn hình vận hành hằng ngày nhưng nắm toàn quyền đối với tài khoản và ma trận phân quyền của cửa hàng.
+- **Nhiều Chủ quán & gỡ bỏ rào cản thao tác của System Admin:**
+  - `system_admin` được phép tạo mới hoặc nâng cấp nhiều tài khoản `owner` trong cùng cửa hàng (bỏ giới hạn `owner_limit` một Owner đối với `system_admin`). Các tài khoản `owner` hiện hữu trong `/app/team` chỉ quản lý từ `manager` trở xuống.
+  - Gỡ bỏ yêu cầu xác thực lại 5 phút (`reauthentication_required`), gỡ bỏ bắt buộc nhập lý do (`reason_required` trở thành tùy chọn) và gỡ bỏ rào cản chặn hạ quyền/khóa/xóa `owner` cuối cùng đối với `system_admin`.
+- **Đổi địa chỉ email đăng nhập:**
+  - Chỉ `system_admin` tại `/app/admin/accounts` được đổi email của bất kỳ tài khoản nào (kể cả `owner` và nhân viên).
+  - Khi đổi email, hệ thống cập nhật ngay trên Supabase Auth (`email_confirm: true`) và cập nhật nguyên tử (cascade) địa chỉ email mới trên toàn bộ các bảng dữ liệu liên quan trong D1 (`employees`, `shifts`, `attendance_*`, `payroll_*`, `requests`, `handovers`, `incidents`, `notifications`, `employee_consents`, `employee_rate_history`).
+- **Xóa vĩnh viễn tài khoản & dữ liệu kèm mã PIN bảo mật (4–6 ký tự):**
+  - `system_admin` có thể thiết lập và đổi **mã PIN bảo mật (4–6 ký tự)** ngay tại `/app/admin/accounts` (lưu băm SHA-256 có salt).
+  - Mọi thao tác xóa vĩnh viễn tài khoản (cả `owner` lẫn nhân viên) đều bắt buộc nhập đúng mã PIN bảo mật. Khi xác nhận, hệ thống xóa tài khoản khỏi Supabase Auth + D1 (`employees`) và xóa sạch toàn bộ dữ liệu gắn với tài khoản đó trong D1.
+- **Mở khóa toàn bộ Catalog RBAC & Nhật ký quản trị:**
+  - Mở khóa toàn bộ 25 quyền trong `permissionCatalog` cho tất cả vai trò hệ thống có thể cấu hình (`manager`, `team_lead`, `employee`) cũng như `custom_roles` tại `/app/admin/roles` (vẫn giữ kiểm tra phụ thuộc quyền `dependsOn`).
+  - Toàn bộ thao tác của `system_admin` (tạo tài khoản, đổi vai trò/trạng thái, đổi email, cấp mật khẩu tạm, xóa tài khoản & dữ liệu, thiết lập mã PIN, cập nhật RBAC) đều được ghi vào `audit_events` và hiển thị tại `/app/admin/audit` (tuyệt đối không lộ giá trị mã PIN hoặc mật khẩu).
+
+**Lý do:** trao quyền kiểm soát tối cao và linh hoạt cho Quản trị hệ thống khi vận hành thực tế (hỗ trợ đồng sáng lập/nhiều chủ quán, đổi email nhân sự, dọn dẹp triệt để tài khoản và dữ liệu thử nghiệm/nghỉ việc có bảo vệ bằng PIN). **Tác động:** cập nhật domain RBAC, application services, API `/api/admin/accounts` và `/api/admin/roles`, UI Admin, tài liệu và bộ kiểm thử tự động; giữ nguyên 21 migration và 36 bảng D1.
+
 ## Quyết định nền
 
 Single-store MVP, stack hiện hữu, modular monolith, timezone Việt Nam, server authorization, Supabase Storage private (DEC-016 thay R2), Supabase Auth, không thanh toán online/giao hàng/kho chuyên sâu. Không cần xin lại các quyết định này.

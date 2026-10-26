@@ -1254,6 +1254,37 @@ function resolveEventPresentation(
     };
   }
 
+  if (action === "account.email_changed") {
+    const prev = meta?.previousEmail ? String(meta.previousEmail) : "";
+    const next = meta?.newEmail ? String(meta.newEmail) : "";
+    const detail = prev && next ? ` từ ${prev} sang ${next}` : "";
+    return {
+      title: "Đổi email đăng nhập",
+      summary: `Đã cập nhật địa chỉ email đăng nhập của tài khoản${detail}.`,
+      categoryBadge: "Nhân sự & phân quyền",
+      iconType: "amber",
+    };
+  }
+
+  if (action === "account.deleted") {
+    const targetEmail = meta?.email ? ` (${String(meta.email)})` : "";
+    return {
+      title: "Xóa vĩnh viễn tài khoản & dữ liệu",
+      summary: `Đã xóa vĩnh viễn tài khoản${targetEmail} và toàn bộ dữ liệu liên quan khỏi hệ thống.`,
+      categoryBadge: "Nhân sự & phân quyền",
+      iconType: "pink",
+    };
+  }
+
+  if (action === "admin.pin_configured") {
+    return {
+      title: "Thiết lập mã PIN bảo mật",
+      summary: "Quản trị hệ thống đã khởi tạo hoặc cập nhật mã PIN xác thực xóa dữ liệu.",
+      categoryBadge: "Nhân sự & phân quyền",
+      iconType: "amber",
+    };
+  }
+
   if (action === "employee.invitation_accepted") {
     return {
       title: "Kích hoạt tài khoản thành công",
